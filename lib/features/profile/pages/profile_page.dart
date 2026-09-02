@@ -1,0 +1,168 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import '../../../config/env/env_config.dart';
+import '../../../config/router/route_paths.dart';
+import '../../../config/theme/app_colors.dart';
+import '../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../../shared/widgets/gradient_background.dart';
+import '../../../shared/widgets/page_app_bar.dart';
+import '../../auth/providers/auth_session_provider.dart';
+import '../../lottery/providers/lottery_live_provider.dart';
+import '../../room/pages/room_shell_page.dart';
+import 'personal_settings_page.dart';
+
+class ProfilePage extends ConsumerStatefulWidget {
+  const ProfilePage({super.key, this.roomId});
+
+  final String? roomId;
+
+  @override
+  ConsumerState<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends ConsumerState<ProfilePage>
+    with AutomaticKeepAliveClientMixin {
+  bool _bgMusic = true;
+
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    final user = ref.watch(authSessionProvider.select((s) => s.user));
+    if (user == null) {
+      return const Scaffold(body: Center(child: Text('未登录')));
+    }
+    final roomId = widget.roomId;
+
+    return AppPageScaffold(
+      body: GradientBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              PageAppBar(
+                title: '个人中心',
+                onBack: roomId == null
+                    ? () => appSafePop(context)
+                    : () => goRoomLottery(context, roomId),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  child: Column(
+                    children: [
+                SizedBox(height: 12.h),
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: CircleAvatar(
+                    radius: 40.r,
+                    backgroundColor: AppColors.primaryLight,
+                    child: Icon(Icons.person, size: 48.sp, color: Colors.white),
+                  ),
+                ),
+                SizedBox(height: 12.h),
+                Text(user.nickname, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                SizedBox(height: 4.h),
+                Text('(${user.username})', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
+                Text('ID:${user.id}', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint)),
+                SizedBox(height: 24.h),
+                Material(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(18.r),
+                  clipBehavior: Clip.antiAlias,
+                  child: Column(
+                    children: [
+                      _tile('账号管理', onTap: () {
+                        pushShellCover(context, const PersonalSettingsPage());
+                      }),
+                      const Divider(indent: 16, endIndent: 16, height: 1),
+                      ListTile(
+                        tileColor: Colors.transparent,
+                        title: Text('背景音乐', style: TextStyle(fontSize: 15.sp)),
+                        trailing: Switch(
+                          value: _bgMusic,
+                          onChanged: (v) => setState(() => _bgMusic = v),
+                          activeThumbColor: Colors.white,
+                          activeTrackColor: AppColors.primaryLight,
+                        ),
+                      ),
+                      const Divider(indent: 16, endIndent: 16, height: 1),
+                      ListTile(
+                        tileColor: Colors.transparent,
+                        title: Text('检查版本', style: TextStyle(fontSize: 15.sp)),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('当前版本', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                                Text(EnvConfig.appVersion, style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                              ],
+                            ),
+                            Icon(Icons.chevron_right, color: AppColors.textHint),
+                          ],
+                        ),
+                        onTap: () => AppToast.info('已是最新版本 ${EnvConfig.appVersion}'),
+                      ),
+                      const Divider(indent: 16, endIndent: 16, height: 1),
+                      _tile('分享App', onTap: () => AppToast.info('分享功能待对接')),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 28.h),
+                GestureDetector(
+                  onTap: () async {
+                    dismissAllShellCovers();
+                    final rid = roomId ?? user.roomId;
+                    if (rid != null && rid.isNotEmpty) {
+                      ref.invalidate(roomLotteryLiveProvider(rid));
+                    }
+                    await ref.read(authSessionProvider.notifier).logout();
+                    if (context.mounted) context.go(RoutePaths.login);
+                  },
+                  child: Container(
+                    width: double.infinity,
+                    height: 48.h,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF70B6E8),
+                      borderRadius: BorderRadius.circular(24.r),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.logout, color: Colors.white, size: 18.sp),
+                        SizedBox(width: 8.w),
+                        Text('退出登录', style: TextStyle(color: Colors.white, fontSize: 15.sp)),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tile(String label, {VoidCallback? onTap}) {
+    return ListTile(
+      onTap: onTap,
+      tileColor: Colors.transparent,
+      title: Text(label, style: TextStyle(fontSize: 15.sp)),
+      trailing: Icon(Icons.chevron_right, color: AppColors.textHint),
+    );
+  }
+}

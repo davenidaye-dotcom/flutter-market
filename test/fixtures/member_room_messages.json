@@ -1,0 +1,38 @@
+[
+  {
+    "id": "sealed-JS_SC-4730",
+    "gameType": "JS_SC",
+    "msgType": "SEALED",
+    "issueNo": "4730",
+    "content": "======停止战斗====== =======封盘线=======",
+    "senderName": "管理员",
+    "createdAt": "2026-08-29T21:05:00"
+  },
+  {
+    "id": "seal-warn-JS_SC-4730",
+    "gameType": "JS_SC",
+    "msgType": "SEAL_WARN",
+    "issueNo": "4730",
+    "content": "注意：距离封盘时间还有9秒，封盘之后将不能再投注！",
+    "senderName": "管理员",
+    "createdAt": "2026-08-29T21:04:51"
+  },
+  {
+    "id": "draw-JS_SC-4729",
+    "gameType": "JS_SC",
+    "msgType": "DRAW_RESULT",
+    "issueNo": "4729",
+    "content": "第4729期开奖: 8,10,6,7,3,1,4,5,2,9",
+    "senderName": "管理员",
+    "createdAt": "2026-08-29T21:03:00"
+  },
+  {
+    "id": "bet-chat-JS_SC-900001",
+    "gameType": "JS_SC",
+    "msgType": "CHAT",
+    "issueNo": "4730",
+    "content": "大100",
+    "senderName": "player01",
+    "createdAt": "2026-08-29T21:04:30"
+  }
+]

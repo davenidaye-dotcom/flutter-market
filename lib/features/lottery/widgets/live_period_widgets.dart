@@ -1,0 +1,314 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+
+import '../../../config/theme/app_colors.dart';
+import '../../../data/models/lottery_game_model.dart';
+import '../../../shared/widgets/flip_countdown.dart';
+import '../../../shared/widgets/lottery_ball.dart';
+import '../providers/lottery_live_provider.dart';
+import '../utils/draw_history_rows.dart';
+import '../utils/lottery_period_ui.dart';
+
+/// 从房间 live 态读取最新开奖快照（不读 uiTick）。
+({String issue, List<int> ranks, bool placeholder}) latestDrawSnapshot(
+  RoomLotteryLiveState state,
+  String gameId,
+) {
+  final g = state.gameById(gameId);
+  if (g == null) {
+    return (issue: '', ranks: const <int>[], placeholder: false);
+  }
+  final ranks = g.previousResults.where((n) => n > 0).toList(growable: false);
+  final issue = g.previousIssue?.trim() ?? '';
+  final placeholder = ranks.isEmpty && g.isDrawing;
+  return (issue: issue, ranks: ranks, placeholder: placeholder);
+}
+
+/// 上期期号：仅 [latestDrawWatchKey] 变化时重建。
+class LiveLatestDrawIssueText extends ConsumerWidget {
+  const LiveLatestDrawIssueText({
+    super.key,
+    required this.roomId,
+    required this.gameId,
+    this.compact = false,
+    this.style,
+    this.emptyLabel = '--',
+  });
+
+  final String roomId;
+  final String gameId;
+  final bool compact;
+  final TextStyle? style;
+  final String emptyLabel;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(
+      roomLotteryLiveProvider(roomId).select((s) {
+        final g = s.gameById(gameId);
+        if (g == null) return '';
+        return latestDrawWatchKey(
+          previousIssue: g.previousIssue,
+          previousResults: g.previousResults,
+          isDrawing: g.isDrawing,
+        );
+      }),
+    );
+    final snap = latestDrawSnapshot(ref.read(roomLotteryLiveProvider(roomId)), gameId);
+    final label = snap.issue.isEmpty
+        ? emptyLabel
+        : (compact ? compactIssueNo(snap.issue) : snap.issue);
+    return Text(label, style: style);
+  }
+}
+
+/// 最新开奖球：仅上期期号/球号变化时重建，不随倒计时 uiTick 刷新。
+class LiveLatestDrawBalls extends ConsumerWidget {
+  const LiveLatestDrawBalls({
+    super.key,
+    required this.roomId,
+    required this.gameId,
+    this.ballSize,
+    this.gap,
+  });
+
+  final String roomId;
+  final String gameId;
+  final double? ballSize;
+  final double? gap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(
+      roomLotteryLiveProvider(roomId).select((s) {
+        final g = s.gameById(gameId);
+        if (g == null) return '';
+        return latestDrawWatchKey(
+          previousIssue: g.previousIssue,
+          previousResults: g.previousResults,
+          isDrawing: g.isDrawing,
+        );
+      }),
+    );
+    final snap = latestDrawSnapshot(ref.read(roomLotteryLiveProvider(roomId)), gameId);
+    return LotteryBallRow(
+      numbers: snap.ranks,
+      ballSize: ballSize,
+      gap: gap,
+      placeholder: snap.placeholder,
+    );
+  }
+}
+
+/// 冠亚和文案：随最新开奖球同步更新。
+class LiveLatestDrawSumText extends ConsumerWidget {
+  const LiveLatestDrawSumText({
+    super.key,
+    required this.roomId,
+    required this.gameId,
+    this.prefix = '冠亚和',
+    this.style,
+  });
+
+  final String roomId;
+  final String gameId;
+  final String prefix;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(
+      roomLotteryLiveProvider(roomId).select((s) {
+        final g = s.gameById(gameId);
+        if (g == null) return '';
+        return latestDrawWatchKey(
+          previousIssue: g.previousIssue,
+          previousResults: g.previousResults,
+          isDrawing: g.isDrawing,
+        );
+      }),
+    );
+    final ranks = latestDrawSnapshot(
+      ref.read(roomLotteryLiveProvider(roomId)),
+      gameId,
+    ).ranks;
+    var sumText = '';
+    if (ranks.length >= 2) {
+      final sum = ranks[0] + ranks[1];
+      sumText = ' $sum${sum >= 12 ? '大' : '小'}${sum % 2 == 0 ? '双' : '单'}';
+    }
+    return Text(
+      '$prefix$sumText',
+      style: style ??
+          TextStyle(
+            fontSize: 11.sp,
+            color: const Color(0xFF7A7A7A),
+            fontWeight: FontWeight.w500,
+          ),
+    );
+  }
+}
+
+/// 房间级 uiTick 驱动倒计时数字，无独立 Timer.periodic。
+class LiveFlipCountdown extends ConsumerWidget {
+  const LiveFlipCountdown({
+    super.key,
+    required this.roomId,
+    required this.gameId,
+    this.tickEnabled = true,
+    this.digitColor = AppColors.countdownGreen,
+    this.bettingMode = false,
+  });
+
+  final String roomId;
+  final String gameId;
+  final bool tickEnabled;
+  final Color digitColor;
+  /// true = 显示距封盘（总秒数 - 10）
+  final bool bettingMode;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (tickEnabled) {
+      ref.watch(roomLotteryLiveProvider(roomId).select((s) => s.uiTick));
+    }
+    final notifier = ref.read(roomLotteryLiveProvider(roomId).notifier);
+    var sec = notifier.countdownFor(gameId);
+    if (bettingMode) {
+      sec = LotteryPeriodHelper.bettingCountdownSeconds(
+        LotteryGameModel(
+          id: gameId,
+          name: '',
+          currentIssue: '',
+          countdownSeconds: sec,
+        ),
+      );
+    }
+    return FlipCountdown(seconds: sec, digitColor: digitColor);
+  }
+}
+
+/// 聊天/大厅期态条：元数据走 Riverpod select，倒计时数字走 uiTick。
+class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
+  const LiveLotteryPeriodCountdownRow({
+    super.key,
+    required this.roomId,
+    required this.gameId,
+    this.tickEnabled = true,
+    this.issuePrefix,
+    this.showIssue = true,
+    this.issueStyle,
+    this.labelStyle,
+    this.sealedStyle,
+    this.drawingStyle,
+  });
+
+  final String roomId;
+  final String gameId;
+  final bool tickEnabled;
+  final String? issuePrefix;
+  final bool showIssue;
+  final TextStyle? issueStyle;
+  final TextStyle? labelStyle;
+  final TextStyle? sealedStyle;
+  final TextStyle? drawingStyle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (tickEnabled) {
+      ref.watch(roomLotteryLiveProvider(roomId).select((s) => s.uiTick));
+    }
+    final notifier = ref.read(roomLotteryLiveProvider(roomId).notifier);
+    final game = notifier.displayGameFor(gameId);
+    if (game == null) return const SizedBox.shrink();
+    final issueLabel = compactIssueNo(game.currentIssue);
+
+    return LotteryPeriodCountdownRow(
+      game: game,
+      issuePrefix: issuePrefix ?? issueLabel,
+      showIssue: showIssue,
+      compactCountdown: true,
+      issueStyle: issueStyle,
+      labelStyle: labelStyle,
+      sealedStyle: sealedStyle,
+      drawingStyle: drawingStyle,
+    );
+  }
+}
+
+/// 大厅彩种卡片倒计时区：聊天遮罩打开时可关闭 tick，避免后台 rebuild。
+class LiveHallGameCountdown extends ConsumerWidget {
+  const LiveHallGameCountdown({
+    super.key,
+    required this.roomId,
+    required this.gameId,
+    this.tickEnabled = true,
+  });
+
+  final String roomId;
+  final String gameId;
+  final bool tickEnabled;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (tickEnabled) {
+      ref.watch(roomLotteryLiveProvider(roomId).select((s) => s.uiTick));
+    }
+    final notifier = ref.read(roomLotteryLiveProvider(roomId).notifier);
+    final game = notifier.displayGameFor(gameId);
+    if (game == null) return const SizedBox.shrink();
+    final phase = LotteryPeriodHelper.phaseOf(game);
+
+    return switch (phase) {
+      LotteryDisplayPhase.drawing => SizedBox(
+          height: 18.h,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '开奖中',
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: AppColors.danger,
+                fontWeight: FontWeight.w600,
+                height: 1,
+              ),
+            ),
+          ),
+        ),
+      LotteryDisplayPhase.sealed => SizedBox(
+          height: 18.h,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '封盘中',
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
+                ),
+              ),
+              SizedBox(width: 8.w),
+              FlipCountdown(seconds: game.countdownSeconds, compact: true),
+            ],
+          ),
+        ),
+      LotteryDisplayPhase.betting => SizedBox(
+          height: 18.h,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('距封盘', style: TextStyle(fontSize: 12.sp, height: 1)),
+              SizedBox(width: 8.w),
+              FlipCountdown(
+                seconds: LotteryPeriodHelper.bettingCountdownSeconds(game),
+                compact: true,
+              ),
+            ],
+          ),
+        ),
+    };
+  }
+}
