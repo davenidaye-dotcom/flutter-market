@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +14,12 @@ import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../providers/auth_session_provider.dart';
+
+/// 文档种子账号（01_账户体系说明 / 各端接口文档）
+const _kSeedPassword = 'Pass1234';
+const _kPlayerSeed = 'player01';
+const _kOwnerSeed = 'owner01';
+const _kAgentSeed = 'abcd658';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -29,7 +36,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   bool _remember = false;
   bool _loading = false;
 
-  /// 登录入口模式：玩家 / 房主（同页切换）
+  /// 登录入口模式：玩家 / 经营端（房主+代理 portal）
   bool _hostMode = false;
 
   @override
@@ -41,22 +48,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.dispose();
   }
 
-  void _fillPlayerTest() {
-    setState(() => _hostMode = false);
-    _usernameCtrl.text = 'player001';
-    _passwordCtrl.text = 'Pass1234';
-  }
-
-  void _fillHostTest() {
-    setState(() => _hostMode = true);
-    _usernameCtrl.text = 'abcd658';
-    _passwordCtrl.text = 'Pass1234';
-  }
-
-  void _fillMemberTest() {
-    setState(() => _hostMode = true);
-    _usernameCtrl.text = 'member001';
-    _passwordCtrl.text = 'Pass1234';
+  void _fill(String username, {required bool hostMode}) {
+    setState(() => _hostMode = hostMode);
+    _usernameCtrl.text = username;
+    _passwordCtrl.text = _kSeedPassword;
   }
 
   Future<void> _login() async {
@@ -82,8 +77,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               ? RoutePaths.hostLottery(user?.roomId ?? '1001')
               : RoutePaths.home;
       FocusManager.instance.primaryFocus?.unfocus();
-      await Future<void>.delayed(Duration.zero);
-      if (!context.mounted) return;
+      SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+      // 等键盘收起再跳转，避免 IME viewport 风暴把进房页打卡死
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      if (!mounted) return;
       context.go(dest);
     } catch (e) {
       AppToast.error(e.toString());
@@ -101,131 +98,143 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         child: SafeArea(
           child: Stack(
             children: [
-              SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 28.w),
-                child: Column(
-                  children: [
-                    SizedBox(height: 48.h),
-                    const AppLogoHeader(),
-                    SizedBox(height: 32.h),
-                    AuthCard(
-                      tabText: _hostMode ? '房主登录' : '玩家登录',
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(horizontal: 28.w),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
                       child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          _LoginField(
-                            icon: Icons.person_outline,
-                            hint: '请输入用户名',
-                            controller: _usernameCtrl,
-                            focusNode: _usernameFocus,
-                            textInputAction: TextInputAction.next,
-                            onSubmitted: (_) => _passwordFocus.requestFocus(),
-                          ),
-                          SizedBox(height: 8.h),
-                          _LoginField(
-                            icon: Icons.lock_outline,
-                            hint: '请输入密码',
-                            controller: _passwordCtrl,
-                            focusNode: _passwordFocus,
-                            obscure: true,
-                            textInputAction: TextInputAction.done,
-                            onSubmitted: (_) => _login(),
-                          ),
-                          SizedBox(height: 8.h),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: GestureDetector(
-                              onTap: () => setState(() => _remember = !_remember),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    width: 16.w,
-                                    height: 16.w,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      border: Border.all(color: AppColors.primaryLight, width: 1.5),
-                                      color: _remember ? AppColors.primaryLight : Colors.transparent,
-                                    ),
-                                    child: _remember
-                                        ? Icon(Icons.check, size: 10.sp, color: Colors.white)
-                                        : null,
-                                  ),
-                                  SizedBox(width: 6.w),
-                                  Text(
-                                    '记住密码',
-                                    style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          if (EnvConfig.isDebug) ...[
-                            SizedBox(height: 12.h),
-                            if (!_hostMode)
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton(
-                                  onPressed: _loading ? null : _fillPlayerTest,
-                                  child: const Text('填入 player001'),
-                                ),
-                              )
-                            else
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: _loading ? null : _fillHostTest,
-                                      child: const Text('填入 abcd658'),
-                                    ),
-                                  ),
-                                  SizedBox(width: 8.w),
-                                  Expanded(
-                                    child: OutlinedButton(
-                                      onPressed: _loading ? null : _fillMemberTest,
-                                      child: const Text('填入 member001'),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                          ],
                           SizedBox(height: 24.h),
-                          GlossyButton(text: '立即登录', onPressed: _login, loading: _loading),
-                          if (EnvConfig.isDebug) ...[
-                            SizedBox(height: 12.h),
-                            Text(
-                              _hostMode
-                                  ? '代理：abcd658 / Pass1234\n代理会员：member001 / Pass1234'
-                                  : '玩家：player001 / Pass1234',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 11.sp, color: AppColors.textHint, height: 1.4),
-                            ),
-                          ],
+                          const AppLogoHeader(),
                           SizedBox(height: 28.h),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              if (_hostMode)
-                                _footerAction(Icons.person_outline, '玩家', () {
-                                  setState(() => _hostMode = false);
-                                })
-                              else
-                                _footerAction(Icons.person, '房主', () {
-                                  setState(() => _hostMode = true);
-                                }),
-                              if (!_hostMode)
-                                _footerAction(
-                                  Icons.person_add_alt_1,
-                                  '注册',
-                                  () => context.push(RoutePaths.register),
+                          AuthCard(
+                            tabText: _hostMode ? '房主/代理登录' : '玩家登录',
+                            child: Column(
+                              children: [
+                                _LoginField(
+                                  icon: Icons.person_outline,
+                                  hint: '请输入用户名',
+                                  controller: _usernameCtrl,
+                                  focusNode: _usernameFocus,
+                                  textInputAction: TextInputAction.next,
+                                  onSubmitted: (_) => _passwordFocus.requestFocus(),
                                 ),
-                            ],
+                                SizedBox(height: 8.h),
+                                _LoginField(
+                                  icon: Icons.lock_outline,
+                                  hint: '请输入密码',
+                                  controller: _passwordCtrl,
+                                  focusNode: _passwordFocus,
+                                  obscure: true,
+                                  textInputAction: TextInputAction.done,
+                                  onSubmitted: (_) => _login(),
+                                ),
+                                SizedBox(height: 8.h),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: GestureDetector(
+                                    onTap: () => setState(() => _remember = !_remember),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Container(
+                                          width: 16.w,
+                                          height: 16.w,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(color: AppColors.primaryLight, width: 1.5),
+                                            color: _remember ? AppColors.primaryLight : Colors.transparent,
+                                          ),
+                                          child: _remember
+                                              ? Icon(Icons.check, size: 10.sp, color: Colors.white)
+                                              : null,
+                                        ),
+                                        SizedBox(width: 6.w),
+                                        Text(
+                                          '记住密码',
+                                          style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                if (EnvConfig.isDebug) ...[
+                                  SizedBox(height: 12.h),
+                                  if (!_hostMode)
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: OutlinedButton(
+                                        onPressed: _loading
+                                            ? null
+                                            : () => _fill(_kPlayerSeed, hostMode: false),
+                                        child: const Text('填入 player01'),
+                                      ),
+                                    )
+                                  else
+                                    Wrap(
+                                      spacing: 8.w,
+                                      runSpacing: 8.h,
+                                      children: [
+                                        OutlinedButton(
+                                          onPressed: _loading
+                                              ? null
+                                              : () => _fill(_kOwnerSeed, hostMode: true),
+                                          child: const Text('owner01'),
+                                        ),
+                                        OutlinedButton(
+                                          onPressed: _loading
+                                              ? null
+                                              : () => _fill(_kAgentSeed, hostMode: true),
+                                          child: const Text('abcd658'),
+                                        ),
+                                      ],
+                                    ),
+                                ],
+                                SizedBox(height: 24.h),
+                                GlossyButton(text: '立即登录', onPressed: _login, loading: _loading),
+                                if (EnvConfig.isDebug) ...[
+                                  SizedBox(height: 12.h),
+                                  Text(
+                                    _hostMode
+                                        ? '房主：owner01 / Pass1234\n'
+                                            '代理：abcd658 / Pass1234'
+                                        : '玩家：player01 / Pass1234',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(fontSize: 11.sp, color: AppColors.textHint, height: 1.4),
+                                  ),
+                                ],
+                                SizedBox(height: 28.h),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    if (_hostMode)
+                                      _footerAction(Icons.person_outline, '玩家', () {
+                                        setState(() => _hostMode = false);
+                                      })
+                                    else
+                                      _footerAction(Icons.person, '房主', () {
+                                        setState(() => _hostMode = true);
+                                      }),
+                                    if (!_hostMode)
+                                      _footerAction(
+                                        Icons.person_add_alt_1,
+                                        '注册',
+                                        () => context.push(RoutePaths.register),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
+                          SizedBox(height: 48.h),
                         ],
                       ),
                     ),
-                    SizedBox(height: 48.h),
-                  ],
-                ),
+                  );
+                },
               ),
               Positioned(
                 right: 16.w,

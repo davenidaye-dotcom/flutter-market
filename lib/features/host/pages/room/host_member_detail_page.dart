@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
@@ -22,7 +23,10 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
   HostMember? _member;
   final _remark = TextEditingController();
   final _rebateCtrl = TextEditingController();
+  final _rebateFocus = FocusNode();
+  final _remarkFocus = FocusNode();
   bool _loading = true;
+  bool _statusBusy = false;
 
   @override
   void initState() {
@@ -34,29 +38,46 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
   void dispose() {
     _remark.dispose();
     _rebateCtrl.dispose();
+    _rebateFocus.dispose();
+    _remarkFocus.dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    try {
-      final data = await ref.read(ownerRepositoryProvider).getMembers(
-            keyword: widget.memberId,
-            pageSize: 50,
-          );
-      final rows = hostRowsOf(data);
-      HostMember? found;
-      for (final r in rows) {
-        final m = hostMemberFromMap(r);
-        if (m.id == widget.memberId || m.userId == widget.memberId) {
-          found = m;
-          _rebateCtrl.text = '${r['rebate'] ?? r['rebateRatio'] ?? ''}';
-          break;
-        }
+  void _dismissKeyboard() {
+    _rebateFocus.unfocus();
+    _remarkFocus.unfocus();
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
+  }
+
+  HostMember? _findMember(List<Map<String, dynamic>> rows) {
+    for (final r in rows) {
+      final m = hostMemberFromMap(r);
+      if (m.id == widget.memberId || m.userId == widget.memberId) {
+        final rebate = r['rebateRatio'] ?? r['rebate'];
+        if (rebate != null) _rebateCtrl.text = '$rebate';
+        return m;
       }
-      found ??= rows.isNotEmpty
-          ? hostMemberFromMap(rows.first)
-          : HostMember(widget.memberId, '\u672a\u77e5', '-', widget.memberId, '-', 0);
+    }
+    return null;
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    // 状态变更后勿整页换成转圈：会拆掉仍挂着 IME 的输入框，模拟器易卡死
+    if (!silent && mounted) {
+      setState(() => _loading = true);
+    }
+    try {
+      final data = await ref.read(ownerRepositoryProvider).getMembers(pageSize: 100);
+      var found = _findMember(hostRowsOf(data));
+      if (found == null) {
+        final byKw = await ref.read(ownerRepositoryProvider).getMembers(
+              keyword: widget.memberId,
+              pageSize: 50,
+            );
+        found = _findMember(hostRowsOf(byKw));
+      }
+      found ??= HostMember(widget.memberId, '未知', '-', widget.memberId, '-', 0);
       if (!mounted) return;
       setState(() {
         _member = found;
@@ -65,34 +86,69 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _member = HostMember(widget.memberId, '\u672a\u77e5', '-', widget.memberId, '-', 0);
+        _member ??= HostMember(widget.memberId, '未知', '-', widget.memberId, '-', 0);
         _loading = false;
       });
-      AppToast.error(e.toString());
+      if (!silent) AppToast.error(e.toString());
     }
   }
 
   Future<void> _setStatus(String status, String tip) async {
+    if (_statusBusy) return;
+    _dismissKeyboard();
+    final cur = (_member?.status ?? 'NORMAL').toUpperCase();
+    if (cur == status.toUpperCase()) {
+      AppToast.info('当前已是$tip');
+      return;
+    }
     final ok = await hostConfirm(context, title: tip, message: tip, danger: true);
     if (!ok || !mounted) return;
+    _dismissKeyboard();
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (!mounted) return;
+
+    _statusBusy = true;
     try {
       await ref.read(ownerRepositoryProvider).updateMemberStatus(widget.memberId, status);
-      AppToast.success('\u5df2\u63d0\u4ea4');
-      await _load();
+      if (!mounted) return;
+      final m = _member;
+      if (m != null) {
+        setState(() {
+          _member = HostMember(
+            m.id,
+            m.nickname,
+            m.username,
+            m.userId,
+            m.roleLabel,
+            m.points,
+            online: m.online,
+            isMood: m.isMood,
+            isTrial: m.isTrial,
+            disabled: status.toUpperCase() != 'NORMAL',
+            isAgent: m.isAgent,
+            status: status.toUpperCase(),
+          );
+        });
+      }
+      AppToast.success('已提交');
+      await _load(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
+    } finally {
+      _statusBusy = false;
     }
   }
 
   Future<void> _saveRebate() async {
+    _dismissKeyboard();
     final v = num.tryParse(_rebateCtrl.text.trim());
     if (v == null) {
-      AppToast.info('\u8bf7\u8f93\u5165\u53cd\u6c34\u6bd4\u4f8b');
+      AppToast.info('请输入反水比例');
       return;
     }
     try {
       await ref.read(ownerRepositoryProvider).updateMemberRebate(widget.memberId, v);
-      AppToast.success('\u5df2\u4fdd\u5b58');
+      AppToast.success('已保存');
     } catch (e) {
       AppToast.error(e.toString());
     }
@@ -101,81 +157,141 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
   @override
   Widget build(BuildContext context) {
     final member = _member;
+    final status = (member?.status ?? 'NORMAL').toUpperCase();
+    final statusColor = switch (status) {
+      'FROZEN' || 'DISABLED' || 'BAN_ENTER' => AppColors.danger,
+      _ => AppColors.navBlue,
+    };
     return HostSubPageScaffold(
-      title: '\u6210\u5458\u8be6\u60c5',
+      title: '成员详情',
       body: _loading || member == null
           ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
-              children: [
-                HostWhiteCard(
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 28.r,
-                        backgroundColor: const Color(0xFFBDE0FE),
-                        child: Text(
-                          member.nickname.isNotEmpty ? member.nickname.characters.first : '?',
-                          style: TextStyle(fontSize: 18.sp, color: AppColors.navBlue),
+          : GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: _dismissKeyboard,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
+                children: [
+                  HostWhiteCard(
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 28.r,
+                          backgroundColor: const Color(0xFFBDE0FE),
+                          child: Text(
+                            member.nickname.isNotEmpty ? member.nickname.characters.first : '?',
+                            style: TextStyle(fontSize: 18.sp, color: AppColors.navBlue),
+                          ),
                         ),
-                      ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(member.nickname, style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.w600)),
-                            Text(
-                              '${member.username} \u00b7 ${member.userId}',
-                              style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                            ),
-                            Text(member.roleLabel, style: TextStyle(fontSize: 12.sp, color: AppColors.navBlue)),
-                          ],
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(member.nickname, style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.w600)),
+                              Text(
+                                '${member.username} · ${member.userId}',
+                                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                              ),
+                              Text(member.roleLabel, style: TextStyle(fontSize: 12.sp, color: AppColors.navBlue)),
+                              Text(
+                                '状态：${member.statusLabel}',
+                                style: TextStyle(fontSize: 12.sp, color: statusColor, fontWeight: FontWeight.w600),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Text('${member.points}', style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
-                SizedBox(height: 10.h),
-                HostWhiteCard(
-                  child: EmulatorSafeTextField(
-                    controller: _remark,
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      hintText: '\u623f\u95f4\u5907\u6ce8\uff08\u4ec5\u672c\u623f\u95f4\u53ef\u89c1\uff09',
-                      hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
+                        Text('${member.points}', style: TextStyle(fontSize: 20.sp, fontWeight: FontWeight.bold)),
+                      ],
                     ),
                   ),
-                ),
-                SizedBox(height: 10.h),
-                HostWhiteCard(
-                  child: Row(
-                    children: [
-                      Text('\u7279\u6b8a\u53cd\u6c34%', style: TextStyle(fontSize: 14.sp)),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: EmulatorSafeTextField(
-                          controller: _rebateCtrl,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
-                        ),
+                  SizedBox(height: 10.h),
+                  HostWhiteCard(
+                    child: EmulatorSafeTextField(
+                      controller: _remark,
+                      focusNode: _remarkFocus,
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        hintText: '房间备注（仅本房间可见）',
+                        hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
                       ),
-                      TextButton(onPressed: _saveRebate, child: const Text('\u4fdd\u5b58')),
-                    ],
+                    ),
                   ),
-                ),
-                SizedBox(height: 10.h),
-                _action('\u7981\u7528', () => _setStatus('DISABLED', '\u7981\u7528\u6210\u5458'), danger: true),
-                _action('\u51bb\u7ed3', () => _setStatus('FROZEN', '\u51bb\u7ed3\u6210\u5458'), danger: true),
-                _action('\u6062\u590d\u6b63\u5e38', () => _setStatus('NORMAL', '\u6062\u590d\u6b63\u5e38')),
-                _action('\u7981\u6b62\u8fdb\u623f', () => _setStatus('BAN_ENTER', '\u52a0\u5165\u9ed1\u540d\u5355'), danger: true),
-              ],
+                  SizedBox(height: 10.h),
+                  HostWhiteCard(
+                    child: Row(
+                      children: [
+                        Text('特殊反水%', style: TextStyle(fontSize: 14.sp)),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: EmulatorSafeTextField(
+                            controller: _rebateCtrl,
+                            focusNode: _rebateFocus,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                          ),
+                        ),
+                        TextButton(onPressed: _saveRebate, child: const Text('保存')),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 10.h),
+                  _statusAction(
+                    code: 'DISABLED',
+                    activeLabel: '已禁用',
+                    idleLabel: '禁用',
+                    tip: '禁用成员',
+                    current: status,
+                  ),
+                  _statusAction(
+                    code: 'FROZEN',
+                    activeLabel: '已冻结',
+                    idleLabel: '冻结',
+                    tip: '冻结成员',
+                    current: status,
+                  ),
+                  _statusAction(
+                    code: 'NORMAL',
+                    activeLabel: '当前正常',
+                    idleLabel: '恢复正常',
+                    tip: '恢复正常',
+                    current: status,
+                    danger: false,
+                  ),
+                  _statusAction(
+                    code: 'BAN_ENTER',
+                    activeLabel: '已禁止进房',
+                    idleLabel: '禁止进房',
+                    tip: '加入黑名单',
+                    current: status,
+                  ),
+                ],
+              ),
             ),
     );
   }
 
-  Widget _action(String label, VoidCallback onTap, {bool danger = false}) {
+  Widget _statusAction({
+    required String code,
+    required String activeLabel,
+    required String idleLabel,
+    required String tip,
+    required String current,
+    bool danger = true,
+  }) {
+    final active = current == code;
+    return _action(
+      active ? activeLabel : idleLabel,
+      active || _statusBusy ? null : () => _setStatus(code, tip),
+      danger: danger && !active,
+      muted: active,
+    );
+  }
+
+  Widget _action(String label, VoidCallback? onTap, {bool danger = false, bool muted = false}) {
+    final color = muted
+        ? AppColors.textHint
+        : (danger ? AppColors.danger : AppColors.textPrimary);
     return Padding(
       padding: EdgeInsets.only(bottom: 8.h),
       child: HostWhiteCard(
@@ -187,11 +303,12 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                 label,
                 style: TextStyle(
                   fontSize: 15.sp,
-                  color: danger ? AppColors.danger : AppColors.textPrimary,
+                  color: color,
+                  fontWeight: muted ? FontWeight.w600 : FontWeight.w400,
                 ),
               ),
             ),
-            Icon(Icons.chevron_right, color: AppColors.textHint, size: 18.sp),
+            if (!muted) Icon(Icons.chevron_right, color: AppColors.textHint, size: 18.sp),
           ],
         ),
       ),

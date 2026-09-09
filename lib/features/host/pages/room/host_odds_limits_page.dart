@@ -68,8 +68,8 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
     await _loadOdds();
   }
 
-  Future<void> _loadOdds() async {
-    setState(() => _loading = true);
+  Future<void> _loadOdds({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _loading = true);
     try {
       final data = await ref
           .read(ownerRepositoryProvider)
@@ -136,7 +136,7 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
       });
       setState(() => _dirty = false);
       AppToast.success('\u8d54\u7387\u8bbe\u7f6e\u5df2\u4fdd\u5b58');
-      await _loadOdds();
+      await _loadOdds(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
     }

@@ -36,9 +36,22 @@ class AuthRepository {
     if (token == null || token.isEmpty) {
       throw const ApiException(message: '\u767b\u5f55\u5931\u8d25\uff1a\u65e0 Token');
     }
+
+    final accountType = map['accountType']?.toString();
+    if (!AppRoleX.isAppLoginAllowedType(accountType)) {
+      await SessionStore.instance.clear();
+      throw const ApiException(message: '\u8d26\u53f7\u5bc6\u7801\u9519\u8bef');
+    }
+
     await SessionStore.instance.setToken(token);
 
-    final user = UserModel.fromLoginPayload(map, fallbackUsername: username.trim());
+    late final UserModel user;
+    try {
+      user = UserModel.fromLoginPayload(map, fallbackUsername: username.trim());
+    } on FormatException {
+      await SessionStore.instance.clear();
+      throw const ApiException(message: '\u8d26\u53f7\u5bc6\u7801\u9519\u8bef');
+    }
 
     // 玩家登录后先回首页手动进房，清掉上次会话残留的房间上下文。
     if (expectedRole == AppRole.player) {
@@ -80,11 +93,12 @@ class AuthRepository {
   Future<void> changePassword({
     required String oldPassword,
     required String newPassword,
+    required String confirmPassword,
   }) async {
     await _client.post('/auth/password/change', data: {
       'oldPassword': oldPassword,
       'newPassword': newPassword,
-      'confirmPassword': newPassword,
+      'confirmPassword': confirmPassword,
     });
   }
 

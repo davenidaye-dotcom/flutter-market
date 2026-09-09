@@ -50,20 +50,19 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
     }
   }
 
-  String _v(String k) {
-    if (_data[k] != null) return hostNumStr(_data[k], fraction: 2);
+  String _v(String k, {int fraction = 2}) {
     final s = _data['summary'];
-    if (s is Map && s[k] != null) return hostNumStr(s[k], fraction: 2);
-    return '0.00';
+    if (s is Map && s[k] != null) return hostNumStr(s[k], fraction: fraction);
+    return fraction == 0 ? '0' : '0.00';
   }
 
   @override
   Widget build(BuildContext context) {
     final metrics = [
-      ('\u6210\u529f', _v('successAmount')),
-      ('\u5931\u8d25', _v('failAmount')),
-      ('\u6d41\u6c34', _v('turnover')),
-      ('\u7b14\u6570', _v('orderCount')),
+      ('笔数', _v('orderCount', fraction: 0)),
+      ('下注', _v('betAmount')),
+      ('输赢', _v('winLoss')),
+      ('退水', _v('rebate')),
     ];
     return HostSubPageScaffold(
       title: '\u98de\u5355\u62a5\u8868',

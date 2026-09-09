@@ -137,14 +137,20 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage>
                                     const Divider(height: 1, color: AppColors.divider),
                                 itemBuilder: (_, i) {
                                   final r = _rows[i];
-                                  final issue =
-                                      '${r['issueNo'] ?? r['issue_no'] ?? ''}';
+                                  final issue = '${r['issueNo'] ?? ''}';
                                   final play =
-                                      '${r['playName'] ?? r['play_name'] ?? r['playCode'] ?? r['play_code'] ?? r['content'] ?? ''}';
-                                  final amount = _n(r['amount'] ?? r['betAmount']);
-                                  final status =
-                                      '${r['status'] ?? r['result'] ?? ''}';
+                                      '${r['playName'] ?? r['playCode'] ?? ''}';
+                                  final amount = _n(r['amount']);
+                                  final status = '${r['status'] ?? ''}';
                                   final result = betStatusLabel(status);
+                                  final flight = '${r['flightStatus'] ?? ''}';
+                                  final flightLabel = switch (flight.toUpperCase()) {
+                                    'SUCCESS' => '飞单成功',
+                                    'FAILED' => '飞单失败',
+                                    'NONE' => '',
+                                    '' => '',
+                                    _ => flight,
+                                  };
                                   final ranks = parseDrawRanks(
                                     pickDrawRanks(r),
                                   );
@@ -204,16 +210,24 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage>
                                         ),
                                       ],
                                     ),
-                                    subtitle: ranks.isEmpty &&
-                                            status.toUpperCase() != 'PENDING'
-                                        ? Text(
-                                            '待同步开奖号码',
-                                            style: TextStyle(
-                                              fontSize: 10.sp,
-                                              color: AppColors.textHint,
-                                            ),
-                                          )
-                                        : null,
+                                    subtitle: () {
+                                      final parts = <String>[
+                                        if (flightLabel.isNotEmpty) flightLabel,
+                                        if (ranks.isEmpty &&
+                                            status.toUpperCase() != 'PENDING')
+                                          '待同步开奖号码',
+                                      ];
+                                      if (parts.isEmpty) return null;
+                                      return Text(
+                                        parts.join(' · '),
+                                        style: TextStyle(
+                                          fontSize: 10.sp,
+                                          color: flight.toUpperCase() == 'FAILED'
+                                              ? AppColors.textHint
+                                              : AppColors.textSecondary,
+                                        ),
+                                      );
+                                    }(),
                                   );
                                 },
                               ),

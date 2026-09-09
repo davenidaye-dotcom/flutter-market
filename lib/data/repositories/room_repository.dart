@@ -35,6 +35,7 @@ class RoomRepository {
       hasEnterPassword: map['hasEnterPassword'] == true ||
           map['needEnterPassword'] == true,
       status: map['status']?.toString(),
+      betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
     );
   }
 
@@ -53,12 +54,17 @@ class RoomRepository {
     final map = Map<String, dynamic>.from(data);
     final code = map['roomCode']?.toString() ?? roomCode;
     final roomId = map['roomId']?.toString();
-    await SessionStore.instance.setRoom(roomId: roomId, roomCode: code);
+    await SessionStore.instance.setRoom(
+      roomId: roomId,
+      roomCode: code,
+      betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
+    );
     return RoomModel(
       id: code,
       name: map['roomName']?.toString() ?? '',
       thumbnailUrl: map['coverUrl']?.toString(),
       numericId: roomId,
+      betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
     );
   }
 

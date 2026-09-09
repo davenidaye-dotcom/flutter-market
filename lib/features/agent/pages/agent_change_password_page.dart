@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
@@ -8,7 +10,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../widgets/agent_ui.dart';
 
-/// 密码修改 — 竞品「修改密码.png」
+/// 密码修改 — POST /auth/password/change（代理/代理会员）
 class AgentChangePasswordPage extends ConsumerStatefulWidget {
   const AgentChangePasswordPage({super.key, required this.roomId});
 
@@ -22,6 +24,7 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
   final _oldCtrl = TextEditingController();
   final _newCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  bool _loading = false;
 
   @override
   void dispose() {
@@ -32,31 +35,41 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
   }
 
   Future<void> _submit() async {
+    if (_loading) return;
     if (_oldCtrl.text.isEmpty || _newCtrl.text.isEmpty || _confirmCtrl.text.isEmpty) {
       AppToast.info('请填写完整');
+      return;
+    }
+    if (_newCtrl.text.length < 6 || _newCtrl.text.length > 64) {
+      AppToast.info('新密码需为6-64位');
       return;
     }
     if (_newCtrl.text != _confirmCtrl.text) {
       AppToast.error('两次新密码不一致');
       return;
     }
+    setState(() => _loading = true);
     try {
       await ref.read(authRepositoryProvider).changePassword(
             oldPassword: _oldCtrl.text,
             newPassword: _newCtrl.text,
+            confirmPassword: _confirmCtrl.text,
           );
-      AppToast.success('密码已修改');
-      _oldCtrl.clear();
-      _newCtrl.clear();
-      _confirmCtrl.clear();
+      // 后端改密成功后会使 Token 失效
+      await ref.read(authSessionProvider.notifier).logout();
+      if (!mounted) return;
+      AppToast.success('密码已修改，请重新登录');
+      context.go(RoutePaths.login);
     } catch (e) {
       AppToast.error(e.toString());
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final username = ref.watch(authSessionProvider.select((s) => s.user?.username ?? 'abcd658'));
+    final username = ref.watch(authSessionProvider.select((s) => s.user?.username ?? '—'));
 
     return AgentPageFrame(
       title: '',
@@ -76,7 +89,7 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
             _field('确认密码', '请确认密码', _confirmCtrl, obscure: true),
             SizedBox(height: 32.h),
             GestureDetector(
-              onTap: _submit,
+              onTap: _loading ? null : _submit,
               child: Container(
                 width: double.infinity,
                 height: 44.h,
@@ -85,7 +98,13 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
                   color: const Color(0xFF66A3B0),
                   borderRadius: BorderRadius.circular(4.r),
                 ),
-                child: Text('确定', style: TextStyle(fontSize: 16.sp, color: Colors.white)),
+                child: _loading
+                    ? SizedBox(
+                        width: 22.w,
+                        height: 22.w,
+                        child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : Text('确定', style: TextStyle(fontSize: 16.sp, color: Colors.white)),
               ),
             ),
           ],

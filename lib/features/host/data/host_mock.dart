@@ -13,6 +13,7 @@ class _Member {
     this.isTrial = false,
     this.disabled = false,
     this.isAgent = false,
+    this.status = 'NORMAL',
   });
 
   final String id;
@@ -26,6 +27,24 @@ class _Member {
   final bool isTrial;
   final bool disabled;
   final bool isAgent;
+  /// NORMAL / FROZEN / BAN_ENTER / DISABLED
+  final String status;
+
+  String get statusLabel {
+    switch (status.toUpperCase()) {
+      case 'FROZEN':
+        return '已冻结';
+      case 'BAN_ENTER':
+        return '禁止进房';
+      case 'DISABLED':
+        return '已禁用';
+      case 'NORMAL':
+      case '':
+        return '正常';
+      default:
+        return status;
+    }
+  }
 }
 
 typedef HostMember = _Member;
@@ -119,6 +138,7 @@ HostMember hostMemberFromMap(Map<String, dynamic> m) {
     isTrial: isTrial,
     disabled: disabled,
     isAgent: isAgent,
+    status: status.isEmpty ? 'NORMAL' : status,
   );
 }
 

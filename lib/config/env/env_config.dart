@@ -17,7 +17,7 @@ enum AppEnvironment {
   }
 }
 
-/// Environment config
+/// Environment config（业务 API/WS 可由 OSS 引导覆盖，包内不长期依赖写死源站）
 class EnvConfig {
   EnvConfig._();
 
@@ -25,20 +25,43 @@ class EnvConfig {
 
   static final AppEnvironment environment = AppEnvironment.fromKey(_envKey);
 
-  /// HTTP API prefix (no trailing slash). Paths are like /auth/member/login
-  static String get apiBaseUrl => switch (environment) {
-        // Local/dev defaults to same test host until dedicated gateway exists
+  /// OSS/CDN 下发或缓存覆盖；未就绪时用 [builtinApiBaseUrl]
+  static String? _apiBaseUrlOverride;
+  static String? _wsBaseUrlOverride;
+
+  static String get builtinApiBaseUrl => switch (environment) {
         AppEnvironment.dev => 'http://207.148.105.182/api/v1',
         AppEnvironment.test => 'http://207.148.105.182/api/v1',
         AppEnvironment.pro => 'http://207.148.105.182/api/v1',
       };
 
-  /// WebSocket prefix (no trailing slash). Paths like /member?token=
-  static String get wsBaseUrl => switch (environment) {
+  static String get builtinWsBaseUrl => switch (environment) {
         AppEnvironment.dev => 'ws://207.148.105.182/ws/v1',
         AppEnvironment.test => 'ws://207.148.105.182/ws/v1',
         AppEnvironment.pro => 'ws://207.148.105.182/ws/v1',
       };
+
+  /// HTTP API prefix (no trailing slash). Paths are like /auth/member/login
+  static String get apiBaseUrl =>
+      (_apiBaseUrlOverride?.trim().isNotEmpty ?? false)
+          ? _apiBaseUrlOverride!.trim().replaceAll(RegExp(r'/+$'), '')
+          : builtinApiBaseUrl;
+
+  /// WebSocket prefix (no trailing slash). Paths like /member?token=
+  static String get wsBaseUrl =>
+      (_wsBaseUrlOverride?.trim().isNotEmpty ?? false)
+          ? _wsBaseUrlOverride!.trim().replaceAll(RegExp(r'/+$'), '')
+          : builtinWsBaseUrl;
+
+  static void applyEndpoint({required String apiBaseUrl, required String wsBaseUrl}) {
+    _apiBaseUrlOverride = apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    _wsBaseUrlOverride = wsBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+  }
+
+  static void clearEndpointOverride() {
+    _apiBaseUrlOverride = null;
+    _wsBaseUrlOverride = null;
+  }
 
   static const clientId = 'flyroom';
 

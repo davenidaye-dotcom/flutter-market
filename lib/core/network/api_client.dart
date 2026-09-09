@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import '../../config/env/env_config.dart';
 import 'api_exception.dart';
 import 'session_store.dart';
+import '../security/api_request_signer.dart';
 
 /// HTTP client for FlyRoom `/api/v1`
 class ApiClient {
@@ -29,6 +30,7 @@ class ApiClient {
             options.headers['X-Room-Id'] = roomId;
           }
           options.headers['clientid'] = EnvConfig.clientId;
+          ApiRequestSigner.attach(options);
           handler.next(options);
         },
       ),
@@ -39,6 +41,11 @@ class ApiClient {
   late final Dio _dio;
 
   Dio get dio => _dio;
+
+  /// OSS 引导拿到新地址后刷新 Dio baseUrl
+  void syncBaseUrl() {
+    _dio.options.baseUrl = EnvConfig.apiBaseUrl;
+  }
 
   Future<dynamic> get(
     String path, {

@@ -5,11 +5,14 @@ import 'package:go_router/go_router.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/red_count_badge.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../providers/host_pending_audit_provider.dart';
 import 'fly/fly_hub_page.dart';
 import 'host_shell_page.dart';
 import 'reports/rebate_report_page.dart';
@@ -48,6 +51,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
         _dash = data;
         _loading = false;
       });
+      await ref.read(hostPendingAuditProvider.notifier).refresh();
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -56,37 +60,57 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
   }
 
   Future<void> _sendRedpack() async {
-    final titleCtrl = TextEditingController(text: '\u7ea2\u5305');
+    final titleCtrl = TextEditingController(text: '红包');
     final totalCtrl = TextEditingController(text: '100');
     final countCtrl = TextEditingController(text: '10');
-    final ok = await showDialog<bool>(
+    final ok = await showEmulatorSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('\u53d1\u7ea2\u5305'),
+        title: const Text('发红包'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            EmulatorSafeTextField(controller: titleCtrl, decoration: const InputDecoration(labelText: 'title')),
-            EmulatorSafeTextField(controller: totalCtrl, decoration: const InputDecoration(labelText: 'totalAmount'), keyboardType: TextInputType.number),
-            EmulatorSafeTextField(controller: countCtrl, decoration: const InputDecoration(labelText: 'count'), keyboardType: TextInputType.number),
+            EmulatorSafeTextField(
+              controller: titleCtrl,
+              decoration: const InputDecoration(labelText: '标题'),
+            ),
+            EmulatorSafeTextField(
+              controller: totalCtrl,
+              decoration: const InputDecoration(labelText: '总金额'),
+              keyboardType: TextInputType.number,
+            ),
+            EmulatorSafeTextField(
+              controller: countCtrl,
+              decoration: const InputDecoration(labelText: '个数'),
+              keyboardType: TextInputType.number,
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+          TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('确定')),
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      titleCtrl.dispose();
+      totalCtrl.dispose();
+      countCtrl.dispose();
+      return;
+    }
     try {
       await ref.read(ownerRepositoryProvider).createRedpack({
         'title': titleCtrl.text.trim(),
         'totalAmount': num.tryParse(totalCtrl.text) ?? 0,
         'count': int.tryParse(countCtrl.text) ?? 1,
       });
-      AppToast.success('\u7ea2\u5305\u5df2\u53d1\u9001');
+      AppToast.success('红包已发送');
     } catch (e) {
       AppToast.error(e.toString());
+    } finally {
+      titleCtrl.dispose();
+      totalCtrl.dispose();
+      countCtrl.dispose();
     }
   }
 
@@ -101,6 +125,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
   Widget build(BuildContext context) {
     super.build(context);
     final roomId = widget.roomId;
+    final pending = ref.watch(hostPendingAuditProvider);
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(
@@ -155,30 +180,48 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceAround,
                             children: [
-                              _circleAction(Icons.arrow_upward, '\u7533\u8bf7\u4e0a\u5206', () {
-                                final shell = StatefulNavigationShell.maybeOf(context);
-                                if (shell != null) {
-                                  shell.goBranch(4);
-                                  return;
-                                }
-                                context.go(RoutePaths.hostAudit(roomId));
-                              }),
-                              _circleAction(Icons.arrow_downward, '\u7533\u8bf7\u4e0b\u5206', () {
-                                final shell = StatefulNavigationShell.maybeOf(context);
-                                if (shell != null) {
-                                  shell.goBranch(4);
-                                  return;
-                                }
-                                context.go(RoutePaths.hostAudit(roomId));
-                              }),
-                              _circleAction(Icons.person_add_alt_1, '\u8fdb\u623f\u5ba1\u6838', () {
-                                final shell = StatefulNavigationShell.maybeOf(context);
-                                if (shell != null) {
-                                  shell.goBranch(4);
-                                  return;
-                                }
-                                context.go(RoutePaths.hostAudit(roomId));
-                              }),
+                              _circleAction(
+                                Icons.arrow_upward,
+                                '申请上分',
+                                () {
+                                  final shell =
+                                      StatefulNavigationShell.maybeOf(context);
+                                  if (shell != null) {
+                                    shell.goBranch(4);
+                                    return;
+                                  }
+                                  context.go(RoutePaths.hostAudit(roomId));
+                                },
+                                badge: pending.up,
+                              ),
+                              _circleAction(
+                                Icons.arrow_downward,
+                                '申请下分',
+                                () {
+                                  final shell =
+                                      StatefulNavigationShell.maybeOf(context);
+                                  if (shell != null) {
+                                    shell.goBranch(4);
+                                    return;
+                                  }
+                                  context.go(RoutePaths.hostAudit(roomId));
+                                },
+                                badge: pending.down,
+                              ),
+                              _circleAction(
+                                Icons.person_add_alt_1,
+                                '进房审核',
+                                () {
+                                  final shell =
+                                      StatefulNavigationShell.maybeOf(context);
+                                  if (shell != null) {
+                                    shell.goBranch(4);
+                                    return;
+                                  }
+                                  context.go(RoutePaths.hostAudit(roomId));
+                                },
+                                badge: pending.enter,
+                              ),
                             ],
                           ),
                         ],
@@ -251,19 +294,35 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     );
   }
 
-  Widget _circleAction(IconData icon, String label, VoidCallback onTap) {
+  Widget _circleAction(
+    IconData icon,
+    String label,
+    VoidCallback onTap, {
+    int badge = 0,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Column(
         children: [
-          Container(
-            width: 48.w,
-            height: 48.w,
-            decoration: const BoxDecoration(color: AppColors.navBlue, shape: BoxShape.circle),
-            child: Icon(icon, color: Colors.white, size: 24.sp),
+          BadgedIcon(
+            count: badge,
+            right: -2,
+            top: -2,
+            child: Container(
+              width: 48.w,
+              height: 48.w,
+              decoration: const BoxDecoration(
+                color: AppColors.navBlue,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: Colors.white, size: 24.sp),
+            ),
           ),
           SizedBox(height: 6.h),
-          Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textPrimary)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 12.sp, color: AppColors.textPrimary),
+          ),
         ],
       ),
     );

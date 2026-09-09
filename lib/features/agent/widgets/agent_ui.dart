@@ -9,12 +9,24 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 
-/// Cached agent header balances from lottery/info PROFILE
+/// 顶栏余额：GET /agent/credits/account
+/// 文档字段：header.displayId / header.balance / header.subordinateBalance
+///           + available / totalCredit / occupied
 final agentHeaderProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  final data = await ref.read(agentRepositoryProvider).getLotteryInfo(scene: 'PROFILE');
-  final header = data['header'];
-  if (header is Map) return Map<String, dynamic>.from(header);
-  return {};
+  final account = await ref.read(agentRepositoryProvider).getCreditAccount();
+  final header = account['header'] is Map
+      ? Map<String, dynamic>.from(account['header'] as Map)
+      : <String, dynamic>{};
+  // 严格按 V1.3：顶栏读 header.*；额度读顶层 available/totalCredit/occupied
+  final available = account['available'];
+  return {
+    'displayId': header['displayId']?.toString() ?? '',
+    'balance': header['balance'] ?? 0,
+    'subordinateBalance': header['subordinateBalance'] ?? 0,
+    'totalCredit': account['totalCredit'],
+    'occupied': account['occupied'],
+    'available': available,
+  };
 });
 
 /// Game tab options from lottery/info PROFILE
@@ -214,6 +226,8 @@ class AgentTopBar extends ConsumerWidget {
     final header = headerAsync.valueOrNull ?? {};
     final balance = _fmt(header['balance']);
     final sub = _fmt(header['subordinateBalance']);
+    final headerDisplayId = header['displayId']?.toString().trim() ?? '';
+    final shownId = headerDisplayId.isNotEmpty ? headerDisplayId : id;
 
     return Container(
       decoration: const BoxDecoration(
@@ -239,7 +253,7 @@ class AgentTopBar extends ConsumerWidget {
           ),
           Expanded(
             child: Text(
-              'ID: ${header['displayId'] ?? id}',
+              'ID: $shownId',
               style: TextStyle(fontSize: 14.sp, color: Colors.red, fontWeight: FontWeight.w600),
             ),
           ),

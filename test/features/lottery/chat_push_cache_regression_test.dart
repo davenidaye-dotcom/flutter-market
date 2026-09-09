@@ -123,6 +123,49 @@ void main() {
       );
     });
 
+    test('syncDrawsFromApi 丢弃开奖窗口之前的本地历史下注', () {
+      cache.pushOnce(
+        roomId: roomId,
+        dedupeKey: 'bet-chat-$gameId-old',
+        gameId: gameId,
+        message: ChatMessageModel(
+          id: 'bet-chat-$gameId-old',
+          sender: '我',
+          content: '大/10',
+          time: '19:00',
+          issueNo: '34143975',
+        ),
+      );
+      cache.pushOnce(
+        roomId: roomId,
+        dedupeKey: 'bet-chat-$gameId-keep',
+        gameId: gameId,
+        message: ChatMessageModel(
+          id: 'bet-chat-$gameId-keep',
+          sender: '我',
+          content: '小/20',
+          time: '20:00',
+          issueNo: '34145492',
+        ),
+      );
+
+      cache.syncDrawsFromApi(
+        roomId: roomId,
+        gameId: gameId,
+        draws: [
+          drawCard(gameId, '34145491', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+          drawCard(gameId, '34145492', [9, 10, 5, 6, 3, 8, 4, 7, 1, 2]),
+        ],
+      );
+
+      final bets = cache
+          .bufferedForGame(roomId, gameId)
+          .where((m) => m.id.startsWith('bet-chat-'))
+          .toList();
+      expect(bets.any((m) => m.content == '大/10'), isFalse);
+      expect(bets.any((m) => m.content == '小/20'), isTrue);
+    });
+
     test('emitLive 不写 buffer，但时间线能展示实时封盘', () {
       final msg = sealWarn(gameId, '4731');
       expect(

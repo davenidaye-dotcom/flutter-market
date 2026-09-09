@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
@@ -29,13 +29,46 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
   Map<String, dynamic> _summary = {};
 
   static const _types = [
-    '\u5168\u90e8',
-    '\u4e0a\u5206',
-    '\u4e0b\u5206',
-    '\u7ed9\u4e0b\u7ea7\u4e0a\u5206',
-    '\u7ed9\u4e0b\u7ea7\u4e0b\u5206',
+    '全部',
+    '上分',
+    '下分',
+    '飞单占用',
+    '占用释放',
+    '结算赢',
+    '结算输',
+    '调整',
   ];
-  static const _typeKeys = ['ALL', 'UP', 'DOWN', 'SUB_UP', 'SUB_DOWN'];
+  static const _typeKeys = [
+    'ALL',
+    'UP',
+    'DOWN',
+    'FLIGHT_OCCUPY',
+    'FLIGHT_RELEASE',
+    'FLIGHT_SETTLE_WIN',
+    'FLIGHT_SETTLE_LOSS',
+    'ADJUST',
+  ];
+
+  String _changeTypeLabel(String? raw) {
+    switch (raw?.toUpperCase()) {
+      case 'UP':
+        return '上分';
+      case 'DOWN':
+        return '下分';
+      case 'FLIGHT_OCCUPY':
+        return '飞单占用';
+      case 'FLIGHT_RELEASE':
+        return '占用释放';
+      case 'FLIGHT_SETTLE_WIN':
+        return '结算赢';
+      case 'FLIGHT_SETTLE_LOSS':
+        return '结算输';
+      case 'ADJUST':
+        return '调整';
+      default:
+        return raw?.isNotEmpty == true ? raw! : '—';
+    }
+  }
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -89,7 +122,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
           data['pageSize'] is num ? (data['pageSize'] as num).toInt() : 20;
       final summary = data['summary'] is Map
           ? Map<String, dynamic>.from(data['summary'] as Map)
-          : Map<String, dynamic>.from(data);
+          : <String, dynamic>{};
       setState(() {
         _rows = rows;
         _total = total;
@@ -129,12 +162,12 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '\u7ed9\u4e0b\u7ea7\u4e0a\u5206:${_summary['subUp'] ?? _summary['toSubordinateUp'] ?? 0}',
+                        '给下级上分:${_summary['creditToSubUp'] ?? 0}',
                         style: TextStyle(fontSize: 13.sp),
                       ),
                       SizedBox(height: 4.h),
                       Text(
-                        '\u7ed9\u4e0b\u7ea7\u4e0b\u5206:${_summary['subDown'] ?? _summary['toSubordinateDown'] ?? 0}',
+                        '给下级下分:${_summary['creditToSubDown'] ?? 0}',
                         style: TextStyle(fontSize: 13.sp),
                       ),
                     ],
@@ -145,12 +178,12 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '\u4e0a\u7ea7\u4e0a\u5206:${_summary['parentUp'] ?? _summary['fromParentUp'] ?? 0}',
+                        '上级上分:${_summary['creditFromParentUp'] ?? 0}',
                         style: TextStyle(fontSize: 13.sp, color: Colors.red),
                       ),
                       SizedBox(height: 4.h),
                       Text(
-                        '\u4e0a\u7ea7\u4e0b\u5206:${_summary['parentDown'] ?? _summary['fromParentDown'] ?? 0}',
+                        '上级下分:${_summary['creditFromParentDown'] ?? 0}',
                         style: TextStyle(fontSize: 13.sp, color: Colors.red),
                       ),
                     ],
@@ -289,11 +322,11 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
                                     return ListTile(
                                       dense: true,
                                       title: Text(
-                                        '${r['changeType'] ?? ''} ${r['amount'] ?? r['points'] ?? ''}',
+                                        '${_changeTypeLabel('${r['changeType'] ?? ''}')}  ${r['amount'] ?? ''}',
                                         style: TextStyle(fontSize: 13.sp),
                                       ),
                                       subtitle: Text(
-                                        '${r['createdAt'] ?? r['createTime'] ?? ''}',
+                                        '总额后:${r['totalAfter'] ?? '—'}  占用后:${r['occupiedAfter'] ?? '—'}  ${r['createdAt'] ?? ''}',
                                         style: TextStyle(fontSize: 11.sp),
                                       ),
                                     );

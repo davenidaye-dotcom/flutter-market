@@ -7,7 +7,7 @@ import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// Op logs — GET /owner/room/op-logs
+/// Op logs — GET /owner/room/op-logs?action=
 class HostOperationLogsPage extends ConsumerStatefulWidget {
   const HostOperationLogsPage({super.key, required this.roomId});
   final String roomId;
@@ -17,25 +17,49 @@ class HostOperationLogsPage extends ConsumerStatefulWidget {
       _HostOperationLogsPageState();
 }
 
+class _Filter {
+  const _Filter(this.label, {this.action});
+  final String label;
+  /// 传给接口的 action：单码 / 逗号多码 / 前缀*
+  final String? action;
+}
+
 class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   int _filter = 0;
 
-  static const _filters = [
-    '\u5168\u90e8',
-    '\u7528\u6237\u7ba1\u7406',
-    '\u79ef\u5206',
-    '\u5ba1\u6838',
-    '\u4ee3\u7406',
-    '\u8d54\u7387\u4e0e\u9650\u989d',
-    '\u53cd\u6c34',
-    '\u5f69\u79cd',
-    '\u516c\u544a',
-    '\u6c14\u6c1b\u53f7',
-    '\u623f\u95f4\u8bbe\u7f6e',
-    '\u534f\u7ba1',
+  /// 与后端 writeOpLog action 对齐；无对应埋点的分类筛完为空属正常
+  static const _filters = <_Filter>[
+    _Filter('全部'),
+    _Filter('用户管理', action: 'MEMBER_STATUS,MEMBER_REBATE'),
+    _Filter('积分', action: 'APPLICATION*'),
+    _Filter('审核', action: 'APPLICATION*'),
+    _Filter('代理', action: 'FEIPAN_BIND,FEIPAN_UNBIND,FEIPAN_SWITCH'),
+    _Filter('赔率与限额', action: 'ODDS,FEIPAN_ODDS'),
+    _Filter('反水', action: 'REBATE,MEMBER_REBATE'),
+    _Filter('彩种', action: 'GAME_SETTINGS'),
+    _Filter('公告', action: 'ANNOUNCEMENT'),
+    _Filter('气氛号', action: 'REDPACK'),
+    _Filter('房间设置', action: 'ROOM_NAME,ENTER_PASSWORD'),
+    _Filter('协管', action: 'ASSISTANT*'),
   ];
+
+  static String actionLabel(String? action) {
+    final a = (action ?? '').toUpperCase();
+    if (a.startsWith('APPLICATION_')) return '审核';
+    return switch (a) {
+      'MEMBER_STATUS' || 'MEMBER_REBATE' => '用户管理',
+      'FEIPAN_BIND' || 'FEIPAN_UNBIND' || 'FEIPAN_SWITCH' => '代理',
+      'ODDS' || 'FEIPAN_ODDS' => '赔率与限额',
+      'REBATE' => '反水',
+      'GAME_SETTINGS' => '彩种',
+      'ANNOUNCEMENT' => '公告',
+      'REDPACK' => '气氛号',
+      'ROOM_NAME' || 'ENTER_PASSWORD' => '房间设置',
+      _ => a.isEmpty ? '-' : a,
+    };
+  }
 
   @override
   void initState() {
@@ -46,7 +70,11 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getOpLogs(pageSize: 100);
+      final f = _filters[_filter.clamp(0, _filters.length - 1)];
+      final data = await ref.read(ownerRepositoryProvider).getOpLogs(
+            action: f.action,
+            pageSize: 100,
+          );
       if (!mounted) return;
       setState(() {
         _rows = hostRowsOf(data);
@@ -59,20 +87,10 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
     }
   }
 
-  List<Map<String, dynamic>> get _filtered {
-    if (_filter == 0) return _rows;
-    final key = _filters[_filter];
-    return _rows.where((r) {
-      final cat = (r['category'] ?? r['type'] ?? r['module'] ?? '').toString();
-      return cat.contains(key) || key.contains(cat);
-    }).toList();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final list = _filtered;
     return HostSubPageScaffold(
-      title: '\u64cd\u4f5c\u65e5\u5fd7',
+      title: '操作日志',
       body: Column(
         children: [
           SizedBox(
@@ -85,7 +103,11 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
               itemBuilder: (_, i) {
                 final active = i == _filter;
                 return GestureDetector(
-                  onTap: () => setState(() => _filter = i),
+                  onTap: () {
+                    if (_filter == i) return;
+                    setState(() => _filter = i);
+                    _load();
+                  },
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 10.w),
                     alignment: Alignment.center,
@@ -94,7 +116,7 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
                       borderRadius: BorderRadius.circular(14.r),
                     ),
                     child: Text(
-                      _filters[i],
+                      _filters[i].label,
                       style: TextStyle(
                         fontSize: 12.sp,
                         color: active ? Colors.white : AppColors.navBlue,
@@ -108,39 +130,33 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : list.isEmpty
+                : _rows.isEmpty
                     ? Center(
                         child: Text(
-                          '\u6682\u65e0\u6570\u636e',
+                          '暂无数据',
                           style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
                         ),
                       )
                     : ListView.separated(
                         padding: EdgeInsets.all(16.w),
-                        itemCount: list.length,
+                        itemCount: _rows.length,
                         separatorBuilder: (_, _) => SizedBox(height: 8.h),
                         itemBuilder: (_, i) {
-                          final r = list[i];
+                          final r = _rows[i];
+                          final action = (r['action'] ?? '').toString();
                           return HostWhiteCard(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  (r['summary'] ?? r['content'] ?? r['action'] ?? '').toString(),
+                                  (r['content'] ?? r['summary'] ?? '').toString(),
                                   style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  '${r['category'] ?? r['type'] ?? ''} · ${r['operator'] ?? r['operatorName'] ?? ''} · ${r['createdAt'] ?? r['time'] ?? ''}',
+                                  '${actionLabel(action)} · ${r['operatorName'] ?? r['operator'] ?? ''} · ${r['createdAt'] ?? r['time'] ?? ''}',
                                   style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                                 ),
-                                if ((r['detail'] ?? r['remark'] ?? '').toString().isNotEmpty) ...[
-                                  SizedBox(height: 4.h),
-                                  Text(
-                                    '${r['detail'] ?? r['remark']}',
-                                    style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                                  ),
-                                ],
                               ],
                             ),
                           );

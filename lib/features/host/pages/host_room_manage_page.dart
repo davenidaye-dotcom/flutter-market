@@ -1,13 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../profile/pages/change_password_page.dart';
-import '../data/host_mock.dart';
+import '../../lottery/providers/lottery_live_provider.dart';
 import 'host_shell_page.dart';
 import 'room/host_agents_page.dart';
 import 'room/host_announcements_page.dart';
@@ -56,17 +59,18 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     Future.microtask(_load);
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  /// [fromPull] 为 true 时不要把 ListView 换成转圈，否则 RefreshIndicator 会卡死
+  Future<void> _load({bool fromPull = false}) async {
+    if (!fromPull && mounted) setState(() => _loading = true);
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final room = await repo.getRoom();
-      final settings = await repo.getGamesSettings();
-      var list = hostRowsOf(settings);
+      var list = await repo.getGamesSettings();
       if (list.isEmpty) list = await repo.getGames();
       if (!mounted) return;
       setState(() {
         _room = room;
+        _betConfirm = room['betConfirm'] == true || room['betConfirm'] == 1;
         _games = list
             .map((g) => (
                   (g['gameType'] ?? g['type'] ?? '').toString(),
@@ -87,13 +91,13 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
 
   Future<void> _toggleGame(int i, bool v) async {
     if (!v) {
-      final ok = await showDialog<bool>(
+      final ok = await showEmulatorSafeDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           content: const Text('\u786e\u5b9a\u5173\u95ed\u8be5\u5f69\u79cd\u5417\uff1f'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('\u53d6\u6d88')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('\u786e\u5b9a')),
+            TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('\u53d6\u6d88')),
+            TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('\u786e\u5b9a')),
           ],
         ),
       );
@@ -104,16 +108,34 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     setState(() => _games = next);
     try {
       await ref.read(ownerRepositoryProvider).updateGamesSettings({
-        'games': next
+        'items': next
             .map((g) => {
                   'gameType': g.$1.isEmpty ? g.$2 : g.$1,
                   'enabled': g.$3,
                 })
             .toList(),
       });
+      // 本端立刻刷新目录；会员端靠 WS afterCommit 推送
+      unawaited(
+        ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .reloadGamesCatalog(),
+      );
     } catch (e) {
       AppToast.error(e.toString());
       await _load();
+    }
+  }
+
+  Future<void> _toggleBetConfirm(bool v) async {
+    final prev = _betConfirm;
+    setState(() => _betConfirm = v);
+    try {
+      await ref.read(ownerRepositoryProvider).updateRoomFlags(betConfirm: v);
+      AppToast.success(v ? '已开启下注确认' : '已关闭下注确认');
+    } catch (e) {
+      if (mounted) setState(() => _betConfirm = prev);
+      AppToast.error(e.toString());
     }
   }
 
@@ -151,8 +173,8 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
               ),
               Expanded(
                 child: RefreshIndicator(
-                  onRefresh: _load,
-                  child: _loading
+                  onRefresh: () => _load(fromPull: true),
+                  child: _loading && _room.isEmpty
                       ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: const [
@@ -233,7 +255,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                               _switchTile(
                                 '\u4e0b\u6ce8\u786e\u8ba4',
                                 _betConfirm,
-                                (v) => setState(() => _betConfirm = v),
+                                _toggleBetConfirm,
                               ),
                               const Divider(
                                   height: 1, color: AppColors.divider),

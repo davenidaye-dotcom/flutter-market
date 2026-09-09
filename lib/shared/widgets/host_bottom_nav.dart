@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
+import 'red_count_badge.dart';
 
 class HostBottomNavItem {
   const HostBottomNavItem({required this.icon, required this.label});
@@ -19,6 +20,7 @@ class HostBottomNavBar extends StatelessWidget {
 
   final int currentIndex;
   final ValueChanged<int> onTap;
+  /// 待审核总数：个人中心 + 审核列表两个 Tab 都显示
   final int auditBadge;
 
   static const items = [
@@ -47,36 +49,16 @@ class HostBottomNavBar extends StatelessWidget {
               final item = items[i];
               final active = currentIndex == i;
               final color = active ? const Color(0xFF2F7FD1) : const Color(0xFF3A8AD8);
+              final showBadge = auditBadge > 0 && (i == 2 || i == 3);
               return Expanded(
                 child: InkWell(
                   onTap: () => onTap(i),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Icon(item.icon, color: color, size: 24.sp),
-                          if (i == 3 && auditBadge > 0)
-                            Positioned(
-                              right: -8.w,
-                              top: -4.h,
-                              child: Container(
-                                padding: EdgeInsets.symmetric(horizontal: 4.w),
-                                constraints: BoxConstraints(minWidth: 14.w),
-                                height: 14.w,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: AppColors.danger,
-                                  borderRadius: BorderRadius.circular(8.r),
-                                ),
-                                child: Text(
-                                  auditBadge > 99 ? '99+' : '$auditBadge',
-                                  style: TextStyle(fontSize: 9.sp, color: Colors.white),
-                                ),
-                              ),
-                            ),
-                        ],
+                      BadgedIcon(
+                        count: showBadge ? auditBadge : 0,
+                        child: Icon(item.icon, color: color, size: 24.sp),
                       ),
                       SizedBox(height: 2.h),
                       Text(

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'emulator_safe_dialog.dart';
 import 'emulator_safe_text_field.dart';
 
 Future<String?> showTextInputDialog({
@@ -10,9 +11,8 @@ Future<String?> showTextInputDialog({
   TextInputType? keyboardType,
   bool digitsOnly = false,
 }) {
-  return showDialog<String?>(
+  return showEmulatorSafeDialog<String?>(
     context: context,
-    useRootNavigator: true,
     barrierDismissible: true,
     builder: (ctx) => _TextInputDialog(
       title: title,
@@ -64,6 +64,8 @@ class _TextInputDialogState extends State<_TextInputDialog> {
 
   void _submit() {
     final text = _ctrl.text.trim();
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     Navigator.pop(context, text.isEmpty ? null : text);
   }
 
@@ -74,7 +76,6 @@ class _TextInputDialogState extends State<_TextInputDialog> {
 
   @override
   Widget build(BuildContext context) {
-    // 弹窗内用真实 viewInsets，绕过 StableScreenMetrics 对键盘的屏蔽
     final mq = MediaQueryData.fromView(View.of(context));
     return MediaQuery(
       data: mq,
@@ -91,7 +92,7 @@ class _TextInputDialogState extends State<_TextInputDialog> {
           decoration: InputDecoration(hintText: widget.hint),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: safeDialogPop(context), child: const Text('取消')),
           TextButton(onPressed: _submit, child: const Text('确定')),
         ],
       ),

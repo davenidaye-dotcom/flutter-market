@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../core/network/session_store.dart';
 import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/providers.dart';
@@ -14,6 +15,7 @@ import '../../../shared/widgets/lottery_ball.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../providers/lottery_live_provider.dart';
+import '../widgets/bet_confirm_dialog.dart';
 import '../widgets/live_period_widgets.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
@@ -46,9 +48,11 @@ class _MarketBetPageState extends ConsumerState<MarketBetPage> {
   void initState() {
     super.initState();
     if (!widget.embedded) {
-      Future.microtask(
-        () => ref.read(roomLotteryLiveProvider(widget.roomId).notifier).ensureLoaded(),
-      );
+      Future.microtask(() async {
+        final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+        await live.ensureLoaded();
+        await live.refreshWallet();
+      });
     }
   }
 
@@ -214,9 +218,23 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       return;
     }
     if (_submitLocked || widget.betGuard.isBusy || _submitting.value) return;
+    final command = selected.map((e) => '$e/$_unit').join(' ');
+    final live = ref.read(roomLotteryLiveProvider(widget.roomId));
+    final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
+    if (needConfirm) {
+      final game = ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .displayGameFor(widget.gameId);
+      final ok = await showBetConfirmDialog(
+        context: context,
+        command: command,
+        issueNo: game?.currentIssue,
+        amountText: '${selected.length * _unit}',
+      );
+      if (!ok || !mounted) return;
+    }
     _submitLocked = true;
     _submitting.value = true;
-    final command = selected.map((e) => '$e/$_unit').join(' ');
     try {
       final machineItems = <Map<String, dynamic>>[];
       for (final key in selected) {

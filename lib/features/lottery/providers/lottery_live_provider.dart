@@ -34,6 +34,7 @@ class RoomLotteryLiveState {
     this.drawCacheEpoch = 0,
     this.uiTick = 0,
     this.interactionPaused = false,
+    this.betConfirm = false,
   });
 
   final List<LotteryGameModel> games;
@@ -50,6 +51,8 @@ class RoomLotteryLiveState {
   final int uiTick;
   /// 聊天/键盘交互中：暂停 ticker、磁盘落盘
   final bool interactionPaused;
+  /// 房主「下注确认」开关
+  final bool betConfirm;
 
   LotteryGameModel? gameById(String id) {
     for (final g in games) {
@@ -71,6 +74,7 @@ class RoomLotteryLiveState {
     int? drawCacheEpoch,
     int? uiTick,
     bool? interactionPaused,
+    bool? betConfirm,
   }) {
     return RoomLotteryLiveState(
       games: games ?? this.games,
@@ -84,6 +88,7 @@ class RoomLotteryLiveState {
       drawCacheEpoch: drawCacheEpoch ?? this.drawCacheEpoch,
       uiTick: uiTick ?? this.uiTick,
       interactionPaused: interactionPaused ?? this.interactionPaused,
+      betConfirm: betConfirm ?? this.betConfirm,
     );
   }
 }
@@ -106,6 +111,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   bool _wsIsHost = false;
   int _wsConnectGen = 0;
   Future<void>? _wsConnectInflight;
+  final Set<String> _wsSubscribedTopics = {};
   final _chatPushController = StreamController<LotteryChatPush>.broadcast();
   bool _drawHistoryPreloaded = false;
   Future<void>? _drawHistoryPreload;
@@ -123,6 +129,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   Set<String>? _periodSyncPending;
   /// 进聊天页装载中：禁止封盘抢先上屏。
   final Set<String> _chatBootstrapping = {};
+  /// 防 SETTLE_RESULT 重复乐观加分（多实例/重推）
+  final Set<String> _settleOptimisticApplied = {};
 
   Stream<LotteryChatPush> get chatPushes => _chatPushController.stream;
 
@@ -190,6 +198,18 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       if (DateTime.now().isAfter(deadline)) break;
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
+  }
+
+  void _completePeriodSync() {
+    _periodSyncPending = null;
+    final c = _periodSyncCompleter;
+    if (c != null && !c.isCompleted) c.complete();
+    _periodSyncCompleter = null;
+  }
+
+  Future<void> _finishPeriodLiveSyncInBackground() async {
+    await awaitPeriodLiveSync();
+    _completePeriodSync();
   }
 
   bool isGameWsSynced(String gameId) => _engine.isGameWsSynced(gameId);
@@ -447,12 +467,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       }
       await refreshDrawHistoryRows(gameId);
       if (!forceNetwork && isChatTimelineWarm(gameId)) return;
-      final isHost = _ref.read(authSessionProvider).isHostSide;
-      if (!isHost) {
-        await loadAllChatMessagesFromServer();
-      } else {
-        await loadChatMessagesFromServer(gameId);
-      }
+      // 按当前彩种拉；勿在切彩时全房间重拉拖主线程
+      await loadChatMessagesFromServer(gameId);
     } finally {
       _chatBootstrapping.remove(gameId);
     }
@@ -595,19 +611,21 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
       final now = DateTime.now();
       if (warm) {
-        _engine.mergeHttpSnapshot(games, now);
+        _engine.syncCatalog(games, now);
         if (!state.ready) {
-          state = RoomLotteryLiveState(
-            games: _engine.games,
-            ready: true,
-          );
+          // 保留已有积分等字段，勿 new State 清零
+          state = state.copyWith(games: _engine.games, ready: true, clearLoadError: true);
         } else {
           _publishGames();
         }
         _ensureTickerRunning();
         if (!_wsConnected) {
           unawaited(_loadMetaAndWs(isHost: isHost, games: games));
+        } else if (!isHost) {
+          // WS 已连时仍刷新钱包，避免顶栏积分过期
+          unawaited(refreshWallet());
         }
+        _syncWsSubscriptions();
         return;
       }
 
@@ -617,21 +635,20 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           .where((id) => id.isNotEmpty)
           .toSet();
       _periodSyncCompleter = Completer<void>();
+      // 钱包/公告/仪表盘/WS 首 tick 全部后台；HTTP 彩种一到就 ready，避免登录后一直转圈
       unawaited(_loadMetaAndWs(isHost: isHost, games: games));
-      if (!_ref.read(regressionSkipLiveWsProvider)) {
-        await awaitPeriodLiveSync();
-      } else {
-        final c = _periodSyncCompleter;
-        if (c != null && !c.isCompleted) c.complete();
-      }
-      _periodSyncPending = null;
-      _periodSyncCompleter = null;
       if (!mounted) return;
-      state = RoomLotteryLiveState(
+      state = state.copyWith(
         games: _engine.games,
         ready: true,
+        clearLoadError: true,
       );
       _ensureTickerRunning();
+      if (!_ref.read(regressionSkipLiveWsProvider)) {
+        unawaited(_finishPeriodLiveSyncInBackground());
+      } else {
+        _completePeriodSync();
+      }
       if (games.any((g) => g.previousResults.isEmpty)) {
         _scheduleRefreshGamesFromServer();
       }
@@ -663,6 +680,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     var turnover = state.turnover;
     var winLoss = state.winLoss;
     var rebate = state.rebate;
+    var betConfirm = state.betConfirm;
 
     if (isHost) {
       try {
@@ -683,16 +701,28 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         turnover = _toInt(dash['turnover']);
         winLoss = _toInt(dash['todayProfitLoss']);
       } catch (_) {}
+      try {
+        final room = await _ref.read(ownerRepositoryProvider).getRoom();
+        betConfirm = room['betConfirm'] == true || room['betConfirm'] == 1;
+      } catch (_) {}
     } else {
-      unawaited(_loadWalletSummary().then((w) {
-        if (!mounted) return;
-        state = state.copyWith(
-          points: w.$1,
-          turnover: w.$2,
-          winLoss: w.$3,
-          rebate: w.$4,
-        );
-      }));
+      // 必须 await：若 unawaited 先写回积分，随后再用初始 0 的 copyWith 会覆盖掉真实余额
+      final w = await _loadWalletSummary();
+      points = w.$1;
+      turnover = w.$2;
+      winLoss = w.$3;
+      rebate = w.$4;
+      try {
+        final ann = await _ref.read(memberRepositoryProvider).getRoomAnnouncement();
+        final c = ann['content']?.toString();
+        if (c != null && c.isNotEmpty) announcement = c;
+        if (ann.containsKey('betConfirm')) {
+          betConfirm = ann['betConfirm'] == true || ann['betConfirm'] == 1;
+          SessionStore.instance.betConfirm = betConfirm;
+        }
+      } catch (_) {
+        betConfirm = SessionStore.instance.betConfirm;
+      }
     }
 
     if (!mounted) return;
@@ -702,6 +732,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       turnover: turnover,
       winLoss: winLoss,
       rebate: rebate,
+      betConfirm: betConfirm,
     );
   }
 
@@ -752,9 +783,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       final games = await _ref
           .read(lotteryRepositoryProvider)
           .getGames(roomId, asOwner: isHost);
-      if (!mounted || games.isEmpty) return;
+      if (!mounted) return;
       final now = DateTime.now();
-      _engine.mergeHttpSnapshot(games, now);
+      // 必须 syncCatalog：关则移除、开则加回（merge 不会删）
+      _engine.syncCatalog(games, now);
       for (final g in games) {
         final cd = _engine.countdownFor(g.id, now);
         if (cd <= 0 && g.countdownSeconds > 0) {
@@ -762,13 +794,22 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         }
       }
       _publishGames();
-      _syncWsSubscriptions();
+      // 全部关掉后再开启：games 从空变非空时可能 WS 已断，需重连才能订新彩种
+      if (!_wsConnected && state.games.isNotEmpty) {
+        unawaited(_reconnectIfNeeded());
+      } else {
+        _syncWsSubscriptions();
+      }
       _ensureTickerRunning();
       for (final g in games) {
         scheduleReconcileChatDraws(g.id);
+        unawaited(ensureGameTimelinePreloaded(g.id));
       }
     } catch (_) {}
   }
+
+  /// 彩种开关变更后立刻重拉目录（房主保存 / WS 推送）
+  Future<void> reloadGamesCatalog() => _refreshGamesFromServer();
 
   void _publishGames() {
     if (!mounted) return;
@@ -915,14 +956,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsReconnectAttempt = 0;
       _wsReconnectTimer?.cancel();
       _wsReconnectTimer = null;
+      _wsSubscribedTopics.clear();
 
-      final roomNumeric = SessionStore.instance.roomId ?? roomId;
-      for (final g in games) {
-        client.subscribe('room:$roomNumeric:game:${g.id}');
-      }
-      if (isHost) {
-        client.subscribe('room:$roomNumeric:sys');
-      }
       _wsSub = client.events.listen(_onWsEvent);
       _syncWsSubscriptions();
       if (isReconnect) {
@@ -949,6 +984,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _wsConnected = false;
     _wsSub?.cancel();
     _wsSub = null;
+    _wsSubscribedTopics.clear();
     final dead = _ws;
     _ws = null;
     if (dead != null) {
@@ -978,20 +1014,35 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   void _syncWsSubscriptions() {
     final client = _ws;
-    if (!_wsConnected || client == null || state.games.isEmpty) return;
+    if (!_wsConnected || client == null) return;
     final roomNumeric = SessionStore.instance.roomId ?? roomId;
-    for (final g in state.games) {
-      client.subscribe('room:$roomNumeric:game:${g.id}');
+    final desired = <String>{
+      'room:$roomNumeric:sys',
+      for (final g in state.games)
+        if (g.id.isNotEmpty) 'room:$roomNumeric:game:${g.id}',
+    };
+    for (final t in _wsSubscribedTopics.difference(desired)) {
+      client.unsubscribe(t);
     }
-    if (_wsIsHost) {
-      client.subscribe('room:$roomNumeric:sys');
+    for (final t in desired.difference(_wsSubscribedTopics)) {
+      client.subscribe(t);
     }
+    _wsSubscribedTopics
+      ..clear()
+      ..addAll(desired);
   }
 
   void _onWsEvent(Map<String, dynamic> event) {
     if (!mounted) return;
     final payload = _wsPayload(event);
     final type = (payload['event'] ?? payload['type'] ?? '').toString().toUpperCase();
+
+    // 房间级：彩种开关变更 → 立刻重拉大厅目录
+    if (type == 'ROOM_GAMES_CHANGED') {
+      unawaited(reloadGamesCatalog());
+      return;
+    }
+
     final gameType = _gameTypeFromEvent(event, payload);
     if (gameType == null || gameType.isEmpty) return;
 
@@ -1059,6 +1110,56 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         _scheduleRefreshGamesFromServer(immediate: true);
       }
       return;
+    }
+
+    if (type == 'SETTLE_RESULT') {
+      _onSettleResult(gameType, payload);
+      return;
+    }
+  }
+
+  void _onSettleResult(String gameType, Map<String, dynamic> payload) {
+    final myIdStr = _ref.read(authSessionProvider).user?.id ?? '';
+    final myId = int.tryParse(myIdStr);
+    final issue = payload['issueNo']?.toString() ?? '';
+    final accounts = payload['accounts'];
+    final truncated = payload['accountsTruncated'] == true;
+    var touched = false;
+    final optKey = '$gameType|$issue|$myIdStr';
+    final alreadyOptimistic = _settleOptimisticApplied.contains(optKey);
+    if (!alreadyOptimistic && myId != null && accounts is List) {
+      for (final raw in accounts) {
+        if (raw is! Map) continue;
+        final aid = raw['accountId'];
+        final id = aid is num ? aid.toInt() : int.tryParse('$aid');
+        if (id != myId) continue;
+        final winLoss = _toInt(raw['winLoss']);
+        final winAmount = _toInt(raw['winAmount']);
+        if (winAmount != 0) {
+          state = state.copyWith(points: state.points + winAmount);
+        }
+        if (winLoss != 0) {
+          state = state.copyWith(winLoss: state.winLoss + winLoss);
+        }
+        touched = true;
+        _settleOptimisticApplied.add(optKey);
+        if (_settleOptimisticApplied.length > 64) {
+          _settleOptimisticApplied.remove(_settleOptimisticApplied.first);
+        }
+        break;
+      }
+    }
+    // 账本异步落库：立刻刷可能读到旧余额；短延迟 + 二次对齐
+    unawaited(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+      if (!mounted) return;
+      await refreshWallet();
+      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
+      await refreshWallet();
+    }());
+    if (touched || truncated || alreadyOptimistic) {
+      _bumpUiTick();
     }
   }
 

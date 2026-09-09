@@ -49,11 +49,15 @@ class _WalletPageState extends ConsumerState<WalletPage>
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool fromPull = false}) async {
+    if (!fromPull && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else if (mounted) {
+      setState(() => _error = null);
+    }
     try {
       final s = await ref.read(walletRepositoryProvider).getSummary(widget.roomId);
       if (!mounted) return;
@@ -124,7 +128,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
               SizedBox(height: 12.h),
               Expanded(
                 child: RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: () => _load(fromPull: true),
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.symmetric(horizontal: 20.w),

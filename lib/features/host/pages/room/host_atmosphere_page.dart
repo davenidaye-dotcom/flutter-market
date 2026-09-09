@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
-import '../../data/host_mock.dart';
+import '../../../lottery/providers/lottery_live_provider.dart';
 import '../../widgets/host_ui.dart';
 
 /// Atmosphere uses room games settings as game switches (no dedicated atmosphere API in docs).
@@ -32,9 +34,7 @@ class _HostAtmospherePageState extends ConsumerState<HostAtmospherePage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      var list = hostRowsOf(
-        await ref.read(ownerRepositoryProvider).getGamesSettings(),
-      );
+      var list = await ref.read(ownerRepositoryProvider).getGamesSettings();
       if (list.isEmpty) {
         list = await ref.read(ownerRepositoryProvider).getGames();
       }
@@ -61,15 +61,20 @@ class _HostAtmospherePageState extends ConsumerState<HostAtmospherePage> {
       await ref.read(ownerRepositoryProvider).updateGamesSettings({
         'atmosphereEnabled': _roomEnabled,
         'atmosphereJoinCount': _joinCount.round(),
-        'games': _gameSwitches
+        'items': _gameSwitches
             .map((g) => {
                   'gameType': g.$1.isEmpty ? g.$2 : g.$1,
                   'enabled': _roomEnabled && g.$3,
                 })
             .toList(),
       });
+      unawaited(
+        ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .reloadGamesCatalog(),
+      );
       setState(() => _dirty = false);
-      AppToast.success('\u6c14\u6c1b\u53f7\u8bbe\u7f6e\u5df2\u4fdd\u5b58');
+      AppToast.success('气氛号设置已保存');
     } catch (e) {
       AppToast.error(e.toString());
     }

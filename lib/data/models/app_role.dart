@@ -34,8 +34,6 @@ extension AppRoleX on AppRole {
     switch (raw?.toUpperCase()) {
       case 'AGENT':
       case 'ROOM_AGENT':
-      case 'AGENT_MEMBER':
-      case 'AGENT_DELEGATE':
         return AppRole.agent;
       case 'OWNER':
       case 'HOST':
@@ -47,8 +45,20 @@ extension AppRoleX on AppRole {
       case 'CO_HOST':
         return AppRole.hostAssistant;
       case 'PLAYER':
+        return AppRole.player;
+      case 'AGENT_MEMBER':
+      case 'AGENT_DELEGATE':
+      case 'EXPERIENCE':
+        // App 不允许；勿映射成 player 以免误进玩家壳
+        throw FormatException('APP_ROLE_DENIED:$raw');
       default:
         return AppRole.player;
     }
+  }
+
+  /// 与后端 APP_LOGIN_TYPES 一致
+  static bool isAppLoginAllowedType(String? accountType) {
+    final t = accountType?.toUpperCase();
+    return t == 'PLAYER' || t == 'OWNER' || t == 'AGENT';
   }
 }

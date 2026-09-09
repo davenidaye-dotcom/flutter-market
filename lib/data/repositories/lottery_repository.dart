@@ -54,7 +54,7 @@ class LotteryRepository {
         isDrawing: enabled && seconds <= 0,
         openAtEpochMs: openAtEpochMs,
       );
-    }).where((g) => g.id.isNotEmpty).toList();
+    }).where((g) => g.id.isNotEmpty && g.status != LotteryStatus.closed).toList();
   }
 
   Future<List<ChatMessageModel>> getChatMessages({

@@ -135,6 +135,13 @@ final class LotteryPeriodEngine {
     }
   }
 
+  /// 按服务端启用彩种对齐目录：合并期态，并移除已关闭彩种。
+  void syncCatalog(List<LotteryGameModel> list, DateTime now) {
+    final enabledIds = list.map((g) => g.id).where((id) => id.isNotEmpty).toSet();
+    _slots.removeWhere((id, _) => !enabledIds.contains(id));
+    mergeHttpSnapshot(list, now);
+  }
+
   void _recoverStuckCountdown(
     _GameSlot slot,
     LotteryGameModel g,
@@ -214,13 +221,12 @@ final class LotteryPeriodEngine {
     List<int> lastRanks = const [],
     DateTime? now,
   }) {
+    // 已从大厅目录移除的彩种：忽略 WS，禁止 putIfAbsent 把关掉的玩法加回来
+    final existing = _slots[gameId];
+    if (existing == null) return PeriodTickResult.none;
+
     final clock = now ?? DateTime.now();
-    final slot = _slots.putIfAbsent(
-      gameId,
-      () => _GameSlot(
-        LotteryGameModel(id: gameId, name: gameId, currentIssue: issue),
-      ),
-    );
+    final slot = existing;
 
     final first = !slot.wsSynced;
     if (first) slot.wsSynced = true;
@@ -279,13 +285,9 @@ final class LotteryPeriodEngine {
     DateTime? now,
   }) {
     if (issue.isEmpty || ranks.isEmpty) return PeriodTickResult.none;
+    final slot = _slots[gameId];
+    if (slot == null) return PeriodTickResult.none;
     final clock = now ?? DateTime.now();
-    final slot = _slots.putIfAbsent(
-      gameId,
-      () => _GameSlot(
-        LotteryGameModel(id: gameId, name: gameId, currentIssue: ''),
-      ),
-    );
     if (!slot.wsSynced) slot.wsSynced = true;
 
     final draws = _ingestDraw(gameId, slot, issue, ranks, clock);

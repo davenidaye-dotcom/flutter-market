@@ -14,6 +14,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/gradient_background.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -89,7 +90,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (!mounted) return;
       if (pending != null && pending.isNotEmpty) {
         final status = (pending['status'] ?? 'PENDING').toString();
-        await showDialog<void>(
+        await showEmulatorSafeDialog<void>(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('进房审核中'),
@@ -98,7 +99,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               '当前申请状态：$status\n请等待房主审核通过后再进入。',
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('知道了')),
+              TextButton(onPressed: safeDialogPop(ctx), child: const Text('知道了')),
             ],
           ),
         );
@@ -109,7 +110,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
 
     final remarkCtrl = TextEditingController();
-    final submit = await showDialog<bool>(
+    final submit = await showEmulatorSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('申请进入房间'),
@@ -126,8 +127,8 @@ class _HomePageState extends ConsumerState<HomePage> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('提交申请')),
+          TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('提交申请')),
         ],
       ),
     );

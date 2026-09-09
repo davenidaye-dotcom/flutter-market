@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
@@ -75,6 +76,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
   Future<void> _showCreate() async {
     final userCtrl = TextEditingController();
     final passCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     var type = 'AGENT_MEMBER';
     const accountTypeLabels = {
@@ -82,7 +84,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
       'AGENT': '代理',
       'AGENT_DELEGATE': '协管',
     };
-    final ok = await showDialog<bool>(
+    final ok = await showEmulatorSafeDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
@@ -101,6 +103,11 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                   decoration: const InputDecoration(labelText: '密码'),
                 ),
                 EmulatorSafeTextField(
+                  controller: confirmCtrl,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: '确认密码'),
+                ),
+                EmulatorSafeTextField(
                   controller: nameCtrl,
                   decoration: const InputDecoration(labelText: '显示名称'),
                 ),
@@ -117,21 +124,38 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
+            TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('确定')),
           ],
         ),
       ),
     );
+    final username = userCtrl.text.trim();
+    final password = passCtrl.text;
+    final confirmPassword = confirmCtrl.text;
+    final displayName = nameCtrl.text.trim();
+    userCtrl.dispose();
+    passCtrl.dispose();
+    confirmCtrl.dispose();
+    nameCtrl.dispose();
     if (ok != true) return;
+    if (username.isEmpty || password.isEmpty) {
+      AppToast.error('用户名和密码不能为空');
+      return;
+    }
+    if (password != confirmPassword) {
+      AppToast.error('新密码与确认密码不一致');
+      return;
+    }
     try {
       await ref.read(agentRepositoryProvider).createAccount(
-            username: userCtrl.text.trim(),
-            password: passCtrl.text,
-            accountType: type,
-            displayName: nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
+            username: username,
+            password: password,
+            confirmPassword: confirmPassword,
+            type: type,
+            displayName: displayName.isEmpty ? null : displayName,
           );
-      AppToast.success('\u521b\u5efa\u6210\u529f');
+      AppToast.success('创建成功');
       _page = 1;
       await _load();
     } catch (e) {

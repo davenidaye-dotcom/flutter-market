@@ -129,9 +129,12 @@ String? extractIssue(ChatMessageModel message) {
 int _issueSortKey(ChatMessageModel message) {
   final issue = extractIssue(message);
   if (issue == null || issue.isEmpty) return 1 << 30;
+  // 时间线排序用全号，避免 %10000 跨天回绕把旧下注排到最新开奖后面
+  final full = int.tryParse(issue.trim());
+  if (full != null && full > 0) return full;
   final key = issueCompareKey(issue);
   if (key > 0) return key;
-  return int.tryParse(issue) ?? issue.hashCode;
+  return issue.hashCode;
 }
 
 int _phaseOrder(ChatMessageModel message) {

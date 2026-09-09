@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -15,7 +16,7 @@ class PersonalSettingsPage extends ConsumerWidget {
 
   Future<void> _editNickname(BuildContext context, WidgetRef ref, UserModel user) async {
     final ctrl = TextEditingController(text: user.nickname);
-    final ok = await showDialog<bool>(
+    final ok = await showEmulatorSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('\u4fee\u6539\u6635\u79f0', style: TextStyle(fontSize: 16.sp)),
@@ -25,13 +26,17 @@ class PersonalSettingsPage extends ConsumerWidget {
           decoration: const InputDecoration(hintText: 'nickname'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('OK')),
+          TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('OK')),
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true) {
+      ctrl.dispose();
+      return;
+    }
     final nick = ctrl.text.trim();
+    ctrl.dispose();
     if (nick.isEmpty) return;
     try {
       await ref.read(memberRepositoryProvider).updateNickname(nick);

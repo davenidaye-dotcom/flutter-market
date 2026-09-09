@@ -37,8 +37,8 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _loading = true);
     try {
       final data = await ref.read(ownerRepositoryProvider).getRoom();
       if (!mounted) return;
@@ -66,7 +66,7 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
             .updateRoomPassword(_pwdCtrl.text);
       }
       AppToast.success('\u4fdd\u5b58\u6210\u529f');
-      await _load();
+      await _load(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
     } finally {

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../widgets/host_ui.dart';
@@ -64,8 +65,9 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
     Future.microtask(_load);
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool fromPull = false, bool silent = false}) async {
+    // 下拉/创建后勿拆掉列表（RefreshIndicator / 模拟器 IME 场景）
+    if (!fromPull && !silent && mounted) setState(() => _loading = true);
     try {
       final list = await ref.read(ownerRepositoryProvider).getAssistants();
       if (!mounted) return;
@@ -106,7 +108,7 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
     final userCtrl = TextEditingController();
     final pwdCtrl = TextEditingController(text: 'Pass1234');
     final selected = <String>{'成员', '审核'};
-    final ok = await showDialog<bool>(
+    final ok = await showEmulatorSafeDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
@@ -150,8 +152,8 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
+            TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('确定')),
           ],
         ),
       ),
@@ -181,7 +183,7 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
       pwdCtrl.dispose();
       if (!mounted) return;
       AppToast.success('协管已创建');
-      await _load();
+      await _load(silent: true);
     } catch (e) {
       nameCtrl.dispose();
       userCtrl.dispose();
@@ -204,7 +206,7 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
             status: 'DISABLED',
           );
       AppToast.success('已停用');
-      await _load();
+      await _load(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
     }
@@ -221,7 +223,7 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
     try {
       await ref.read(ownerRepositoryProvider).deleteAssistant(a.delegationId);
       AppToast.success('已删除');
-      await _load();
+      await _load(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
     }
@@ -236,8 +238,8 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
         child: Text('创建', style: TextStyle(fontSize: 14.sp, color: AppColors.navBlue)),
       ),
       body: RefreshIndicator(
-        onRefresh: _load,
-        child: _loading
+        onRefresh: () => _load(fromPull: true),
+        child: _loading && _assistants.isEmpty
             ? ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [

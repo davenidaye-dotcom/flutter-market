@@ -7,6 +7,7 @@ class RoomModel {
     this.enterMode,
     this.hasEnterPassword = false,
     this.status,
+    this.betConfirm = false,
   });
 
   /// Room code used in routes (e.g. 679010)
@@ -22,6 +23,9 @@ class RoomModel {
 
   final bool hasEnterPassword;
   final String? status;
+
+  /// 房主开启「下注确认」后，玩家下注前需二次确认
+  final bool betConfirm;
 
   bool get requiresEnterAudit {
     final m = (enterMode ?? '').toUpperCase();
@@ -41,6 +45,7 @@ class RoomModel {
             (json['enterPasswordHash'] != null &&
                 '${json['enterPasswordHash']}'.isNotEmpty),
         status: json['status']?.toString(),
+        betConfirm: json['betConfirm'] == true || json['betConfirm'] == 1,
       );
 }
 

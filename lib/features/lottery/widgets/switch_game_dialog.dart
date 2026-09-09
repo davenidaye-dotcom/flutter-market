@@ -2,22 +2,38 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/models/lottery_game_model.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 
 /// 切换彩种弹窗 — 对应原型「切换项目详情」
+///
+/// 必须等退场动画跑完再返回：聊天页在 Overlay+Offstage 里，若弹窗未卸完就切彩种，
+/// 旧页 TickerMode 关掉会导致弹窗消失「卡一下」。
 Future<LotteryGameModel?> showSwitchGameDialog({
   required BuildContext context,
   required List<LotteryGameModel> games,
   required String currentGameId,
-}) {
-  return showDialog<LotteryGameModel>(
+}) async {
+  await dismissSoftKeyboard();
+  if (!context.mounted) return null;
+
+  final navigator = Navigator.of(context, rootNavigator: false);
+  final route = DialogRoute<LotteryGameModel>(
     context: context,
-    useRootNavigator: false,
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
     barrierColor: Colors.black.withValues(alpha: 0.35),
     builder: (_) => SwitchGameDialog(
       games: games,
       currentGameId: currentGameId,
     ),
   );
+
+  final result = await navigator.push<LotteryGameModel>(route);
+  await route.completed;
+  if (context.mounted) {
+    await dismissSoftKeyboard();
+  }
+  return result;
 }
 
 class SwitchGameDialog extends StatelessWidget {

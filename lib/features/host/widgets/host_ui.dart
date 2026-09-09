@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -159,15 +160,15 @@ Future<bool> hostConfirm(
   String cancelText = '取消',
   bool danger = false,
 }) async {
-  final result = await showDialog<bool>(
+  final result = await showEmulatorSafeDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(title, style: TextStyle(fontSize: 16.sp)),
       content: Text(message, style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(cancelText)),
+        TextButton(onPressed: safeDialogPop(ctx, false), child: Text(cancelText)),
         TextButton(
-          onPressed: () => Navigator.pop(ctx, true),
+          onPressed: safeDialogPop(ctx, true),
           child: Text(confirmText, style: TextStyle(color: danger ? AppColors.danger : AppColors.navBlue)),
         ),
       ],

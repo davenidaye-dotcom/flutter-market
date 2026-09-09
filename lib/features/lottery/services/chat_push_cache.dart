@@ -489,6 +489,23 @@ class ChatPushCache {
         kept.add(entry);
         continue;
       }
+      // 用户下注仅本地缓存：开奖窗口已前移时丢弃更旧期号，避免重启后沉底
+      if (entry.push.gameId == gameId &&
+          isUserBetChatMessage(entry.push.message)) {
+        final issue = extractIssue(entry.push.message);
+        if (issue == null || issue.isEmpty) {
+          keys.remove(entry.dedupeKey);
+          continue;
+        }
+        final issueKey = issueCompareKey(issue);
+        // 比 API 最旧开奖还早 → 过期；无有效期号 key 也丢
+        if (issueKey <= 0 || issueKey < minApiKey) {
+          keys.remove(entry.dedupeKey);
+          continue;
+        }
+        kept.add(entry);
+        continue;
+      }
       kept.add(entry);
     }
 

@@ -57,6 +57,8 @@ String betStatusLabel(String status) {
       return 'WIN';
     case 'LOSE':
       return 'LOSE';
+    case 'SETTLING':
+      return '结算中';
     case 'PENDING':
       return '待开';
     case 'CANCEL':

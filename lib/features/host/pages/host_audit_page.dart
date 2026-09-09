@@ -7,10 +7,11 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../data/host_mock.dart';
+import '../providers/host_pending_audit_provider.dart';
 import '../widgets/host_ui.dart';
 import 'host_shell_page.dart';
 
-/// \u5ba1\u6838\u5217\u8868 \u2014 1:1 \u7ade\u54c1\u300c\u7533\u8bf7\u8bb0\u5f55.jpg\u300d
+/// 审核列表 — 1:1 竞品「申请记录」
 class HostAuditPage extends ConsumerStatefulWidget {
   const HostAuditPage({super.key, required this.roomId});
 
@@ -21,8 +22,8 @@ class HostAuditPage extends ConsumerStatefulWidget {
 }
 
 class _HostAuditPageState extends ConsumerState<HostAuditPage> {
-  int _day = 0; // \u4eca\u5929 / \u6628\u5929
-  int _status = 1; // \u5168\u90e8 / \u672a\u5ba1\u6838 / \u5df2\u901a\u8fc7 / \u5df2\u62d2\u7edd
+  int _day = 0; // 今天 / 昨天
+  int _status = 1; // 全部 / 未审核 / 已通过 / 已拒绝
   List<HostAuditItem> _items = [];
   bool _loading = true;
   bool _acting = false;
@@ -36,8 +37,8 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool fromPull = false}) async {
+    if (!fromPull && mounted) setState(() => _loading = true);
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final day = _dayKeys[_day.clamp(0, 1)];
@@ -58,6 +59,8 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
         _items = merged;
         _loading = false;
       });
+      // 同步底部 Tab / 标题角标
+      await ref.read(hostPendingAuditProvider.notifier).refresh();
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -72,14 +75,22 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
       final repo = ref.read(ownerRepositoryProvider);
       if (approve) {
         await repo.approveApplication(item.id);
-        AppToast.success('\u5df2\u901a\u8fc7');
+        AppToast.success('已通过');
       } else {
         await repo.rejectApplication(item.id);
-        AppToast.info('\u5df2\u62d2\u7edd');
+        AppToast.info('已拒绝');
       }
-      await _load();
+      // 先减角标 + 本地去掉待审项，再拉列表对齐
+      if (item.status.toUpperCase() == 'PENDING') {
+        ref.read(hostPendingAuditProvider.notifier).onReviewed(item.type);
+      }
+      if (mounted && _status == 1) {
+        setState(() => _items.removeWhere((e) => e.id == item.id));
+      }
+      await _load(fromPull: true);
     } catch (e) {
       AppToast.error(e.toString());
+      await ref.read(hostPendingAuditProvider.notifier).refresh();
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -93,7 +104,7 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
           child: Column(
             children: [
               PageAppBar(
-                title: '\u7533\u8bf7\u8bb0\u5f55',
+                title: '申请记录',
                 onBack: () => goHostLottery(context, widget.roomId),
               ),
               Padding(
@@ -102,12 +113,12 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                   children: [
                     Row(
                       children: [
-                        _chip('\u4eca\u5929', _day == 0, () {
+                        _chip('今天', _day == 0, () {
                           setState(() => _day = 0);
                           _load();
                         }),
                         SizedBox(width: 8.w),
-                        _chip('\u6628\u5929', _day == 1, () {
+                        _chip('昨天', _day == 1, () {
                           setState(() => _day = 1);
                           _load();
                         }),
@@ -116,22 +127,22 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                     SizedBox(height: 8.h),
                     Row(
                       children: [
-                        _chip('\u5168\u90e8', _status == 0, () {
+                        _chip('全部', _status == 0, () {
                           setState(() => _status = 0);
                           _load();
                         }),
                         SizedBox(width: 8.w),
-                        _chip('\u672a\u5ba1\u6838', _status == 1, () {
+                        _chip('未审核', _status == 1, () {
                           setState(() => _status = 1);
                           _load();
                         }),
                         SizedBox(width: 8.w),
-                        _chip('\u5df2\u901a\u8fc7', _status == 2, () {
+                        _chip('已通过', _status == 2, () {
                           setState(() => _status = 2);
                           _load();
                         }),
                         SizedBox(width: 8.w),
-                        _chip('\u5df2\u62d2\u7edd', _status == 3, () {
+                        _chip('已拒绝', _status == 3, () {
                           setState(() => _status = 3);
                           _load();
                         }),
@@ -151,8 +162,8 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                       borderRadius: BorderRadius.circular(16.r),
                     ),
                     child: RefreshIndicator(
-                      onRefresh: _load,
-                      child: _loading
+                      onRefresh: () => _load(fromPull: true),
+                      child: _loading && _items.isEmpty
                           ? ListView(
                               physics: const AlwaysScrollableScrollPhysics(),
                               children: const [
@@ -168,7 +179,10 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                                     Center(
                                       child: Text(
                                         '暂无数据',
-                                        style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                                        style: TextStyle(
+                                          fontSize: 14.sp,
+                                          color: AppColors.textHint,
+                                        ),
                                       ),
                                     ),
                                   ],
@@ -177,7 +191,8 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                                   physics: const AlwaysScrollableScrollPhysics(),
                                   padding: EdgeInsets.all(12.w),
                                   itemCount: _items.length,
-                                  separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                                  separatorBuilder: (_, _) =>
+                                      SizedBox(height: 8.h),
                                   itemBuilder: (_, i) => _card(_items[i]),
                                 ),
                     ),
@@ -203,7 +218,10 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
         ),
         child: Text(
           label,
-          style: TextStyle(fontSize: 13.sp, color: active ? Colors.white : AppColors.textSecondary),
+          style: TextStyle(
+            fontSize: 13.sp,
+            color: active ? Colors.white : AppColors.textSecondary,
+          ),
         ),
       ),
     );
@@ -222,9 +240,15 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
         children: [
           Row(
             children: [
-              Text(item.nickname, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600)),
+              Text(
+                item.nickname,
+                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
+              ),
               const Spacer(),
-              Text(item.time, style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+              Text(
+                item.time,
+                style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+              ),
             ],
           ),
           SizedBox(height: 6.h),
@@ -235,16 +259,18 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
               children: [
                 Expanded(
                   child: HostPrimaryButton(
-                    label: '\u901a\u8fc7',
-                    onPressed: _acting ? null : () => _decide(item, approve: true),
+                    label: '通过',
+                    onPressed:
+                        _acting ? null : () => _decide(item, approve: true),
                   ),
                 ),
                 SizedBox(width: 8.w),
                 Expanded(
                   child: HostPrimaryButton(
-                    label: '\u62d2\u7edd',
+                    label: '拒绝',
                     color: AppColors.danger,
-                    onPressed: _acting ? null : () => _decide(item, approve: false),
+                    onPressed:
+                        _acting ? null : () => _decide(item, approve: false),
                   ),
                 ),
               ],

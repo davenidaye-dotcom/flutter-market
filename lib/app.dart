@@ -16,8 +16,6 @@ class LetouApp extends ConsumerStatefulWidget {
 }
 
 class _LetouAppState extends ConsumerState<LetouApp> {
-  static bool _screenUtilReady = false;
-
   @override
   void initState() {
     super.initState();
@@ -29,32 +27,33 @@ class _LetouAppState extends ConsumerState<LetouApp> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_screenUtilReady) {
-      ScreenUtil.init(
-        context,
-        designSize: const Size(375, 812),
-        minTextAdapt: true,
-      );
-      _screenUtilReady = true;
-    }
-
     final router = ref.watch(routerProvider);
-    return MaterialApp.router(
-      title: EnvConfig.environment.appName,
-      debugShowCheckedModeBanner: EnvConfig.isDebug,
-      theme: AppTheme.light,
-      routerConfig: router,
-      locale: const Locale('zh', 'CN'),
-      supportedLocales: const [
-        Locale('zh', 'CN'),
-        Locale('en', 'US'),
-      ],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      builder: EasyLoading.init(),
+    // 必须用 ScreenUtilInit：在 MaterialApp 内拿真实 MediaQuery。
+    // 旧写法在 MaterialApp 外 init 一次，真机长屏会缩放错，登录卡片挤在顶部。
+    return ScreenUtilInit(
+      designSize: const Size(375, 812),
+      minTextAdapt: true,
+      splitScreenMode: true,
+      ensureScreenSize: true,
+      builder: (context, child) {
+        return MaterialApp.router(
+          title: EnvConfig.environment.appName,
+          debugShowCheckedModeBanner: EnvConfig.isDebug,
+          theme: AppTheme.light,
+          routerConfig: router,
+          locale: const Locale('zh', 'CN'),
+          supportedLocales: const [
+            Locale('zh', 'CN'),
+            Locale('en', 'US'),
+          ],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          builder: EasyLoading.init(),
+        );
+      },
     );
   }
 }

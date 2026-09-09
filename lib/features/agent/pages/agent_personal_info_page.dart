@@ -48,9 +48,18 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
       if (!mounted) return;
       final games = _asMapList(data['games']);
       final items = _asMapList(data['items']);
-      final header = data['header'] is Map
+      // PROFILE 响应自带 header.displayId（代理接口文档 §2）
+      final lotteryHeader = data['header'] is Map
           ? Map<String, dynamic>.from(data['header'] as Map)
           : <String, dynamic>{};
+      String displayId = lotteryHeader['displayId']?.toString() ?? '';
+      if (displayId.isEmpty) {
+        final credit = await ref.read(agentRepositoryProvider).getCreditAccount();
+        final creditHeader = credit['header'] is Map
+            ? Map<String, dynamic>.from(credit['header'] as Map)
+            : <String, dynamic>{};
+        displayId = creditHeader['displayId']?.toString() ?? '';
+      }
       final type = data['type']?.toString();
       var idx = _gameIndex;
       if (games.isNotEmpty && type != null && type.isNotEmpty) {
@@ -60,7 +69,7 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
       setState(() {
         _games = games;
         _items = items;
-        _displayId = header['displayId']?.toString() ?? _displayId;
+        _displayId = displayId.isNotEmpty ? displayId : _displayId;
         _gameIndex = idx.clamp(0, games.isEmpty ? 0 : games.length - 1);
         _loading = false;
       });

@@ -53,6 +53,13 @@ class OwnerRepository {
     await _client.put('/owner/room/name', data: {'roomName': roomName});
   }
 
+  /// 房间运行时开关（Redis）；读在 GET /owner/room 的 betConfirm
+  Future<void> updateRoomFlags({bool? betConfirm}) async {
+    await _client.put('/owner/room/flags', data: {
+      if (betConfirm != null) 'betConfirm': betConfirm,
+    });
+  }
+
   Future<Map<String, dynamic>> getAnnouncement() async {
     final data = await _client.get('/owner/room/announcement');
     return _asMap(data);
@@ -127,25 +134,42 @@ class OwnerRepository {
   Future<Map<String, dynamic>> getOpLogs({
     String? startDate,
     String? endDate,
+    String? keyword,
+    String? action,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/room/op-logs', query: {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      if (action != null && action.isNotEmpty) 'action': action,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
     return _asMap(data);
   }
 
-  Future<Map<String, dynamic>> getGamesSettings() async {
+  Future<List<Map<String, dynamic>>> getGamesSettings() async {
     final data = await _client.get('/owner/room/games/settings');
-    return _asMap(data);
+    if (data is List) return _asMapList(data);
+    if (data is Map) {
+      for (final key in ['rows', 'list', 'records', 'items', 'games']) {
+        final v = data[key];
+        if (v is List) return _asMapList(v);
+      }
+    }
+    return const [];
   }
 
   Future<void> updateGamesSettings(Map<String, dynamic> body) async {
-    await _client.put('/owner/room/games/settings', data: body);
+    // 后端主字段 items；同时带 games 兼容旧调用
+    final games = body['items'] ?? body['games'];
+    await _client.put('/owner/room/games/settings', data: {
+      ...body,
+      if (games != null) 'items': games,
+      if (games != null) 'games': games,
+    });
   }
 
   // --- manage ---
@@ -285,10 +309,22 @@ class OwnerRepository {
     await _client.post('/owner/feipan/unbind');
   }
 
-  Future<Map<String, dynamic>> getFeipanCredit({String? gameType}) async {
-    final data = await _client.get('/owner/feipan/credit', query: {
-      if (gameType != null) 'gameType': gameType,
+  /// 飞单总开关 / 彩种开关。`gameType`+`gameEnabled` 可按彩种；仅 `flightEnabled` 为全局。
+  Future<void> updateFeipanFlightSwitch({
+    bool? flightEnabled,
+    String? gameType,
+    bool? gameEnabled,
+  }) async {
+    await _client.put('/owner/feipan/flight-switch', data: {
+      if (flightEnabled != null) 'flightEnabled': flightEnabled,
+      if (gameType != null && gameType.isNotEmpty) 'gameType': gameType,
+      if (gameEnabled != null) 'gameEnabled': gameEnabled,
     });
+  }
+
+  /// 所绑代理会员额度账户（totalCredit / occupied / available）
+  Future<Map<String, dynamic>> getFeipanCredit() async {
+    final data = await _client.get('/owner/feipan/credit');
     return _asMap(data);
   }
 

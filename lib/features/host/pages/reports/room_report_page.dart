@@ -90,23 +90,46 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage> with DateRangeP
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : GridView.builder(
-                    padding: EdgeInsets.symmetric(horizontal: 16.w),
+                    padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       mainAxisSpacing: 10.h,
                       crossAxisSpacing: 10.w,
-                      childAspectRatio: 2.2,
+                      // 固定行高，避免 aspectRatio + ScreenUtil 把卡片压矮溢出
+                      mainAxisExtent: 92.h,
                     ),
                     itemCount: metrics.length,
                     itemBuilder: (_, i) {
                       final m = metrics[i];
                       return HostWhiteCard(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 12.w,
+                          vertical: 10.h,
+                        ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            Text(m.$1, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+                            Text(
+                              m.$1,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
                             SizedBox(height: 6.h),
-                            Text(m.$2, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700)),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                m.$2,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  fontSize: 18.sp,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                       );

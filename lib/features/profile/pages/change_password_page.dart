@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/glossy_button.dart';
@@ -35,8 +37,8 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       AppToast.info('请完整填写密码信息');
       return;
     }
-    if (_newCtrl.text.length < 6 || _newCtrl.text.length > 16) {
-      AppToast.info('新密码需为6-16位');
+    if (_newCtrl.text.length < 6 || _newCtrl.text.length > 64) {
+      AppToast.info('新密码需为6-64位');
       return;
     }
     if (_newCtrl.text != _confirmCtrl.text) {
@@ -44,16 +46,18 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       return;
     }
 
-    // TODO: 后期可在此接入顶象二次验证
     setState(() => _loading = true);
     try {
       await ref.read(authRepositoryProvider).changePassword(
             oldPassword: _oldCtrl.text,
             newPassword: _newCtrl.text,
+            confirmPassword: _confirmCtrl.text,
           );
+      // 后端改密成功后会使 Token 失效，需重新登录
+      await ref.read(authSessionProvider.notifier).logout();
       if (!mounted) return;
-      AppToast.success('修改成功');
-      appSafePop(context);
+      AppToast.success('修改成功，请重新登录');
+      context.go(RoutePaths.login);
     } catch (e) {
       AppToast.error(e.toString());
     } finally {

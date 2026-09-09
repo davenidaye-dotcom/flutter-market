@@ -17,6 +17,7 @@ class AgentReportQueryPage extends ConsumerStatefulWidget {
 class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   int _quick = 0;
   int _gameIndex = 0;
+  int _sourceIndex = 0;
   bool _showGamePicker = false;
   bool _loading = false;
   String? _error;
@@ -25,6 +26,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   Map<String, dynamic> _summary = {};
   List<Map<String, dynamic>> _rows = [];
   List<Map<String, String>> _gameOptions = [];
+
+  static const _sourceLabels = ['全部来源', 'Web直属', '房主飞单'];
+  static const _sourceKeys = ['ALL', 'WEB_DIRECT', 'OWNER_FLIGHT'];
 
   String get _gameLabel => _gameIndex == 0
       ? '全部游戏'
@@ -37,6 +41,8 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     final t = _gameOptions[_gameIndex - 1]['type'];
     return (t == null || t.isEmpty) ? null : t;
   }
+
+  String get _selectedSource => _sourceKeys[_sourceIndex];
 
   String _fmt(DateTime d) => DateRangeFilter.format(d);
 
@@ -91,16 +97,22 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool fromPull = false}) async {
+    // 下拉刷新勿把表格 ListView 换成转圈，否则 RefreshIndicator 卡死
+    if (!fromPull && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else if (mounted) {
+      setState(() => _error = null);
+    }
     try {
       final data = await ref.read(agentRepositoryProvider).getReports(
             startDate: _fmt(_start),
             endDate: _fmt(_end),
             type: _selectedType,
+            source: _selectedSource,
           );
       if (!mounted) return;
       final summary = data['summary'] is Map
@@ -131,11 +143,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       AgentPageFrame(
         title: '报表查询',
         titleOnBar: true,
-        onRefresh: _load,
+        onRefresh: () => _load(fromPull: true),
         child: Column(children: [
           Expanded(
             child: RefreshIndicator(
-              onRefresh: _load,
+              onRefresh: () => _load(fromPull: true),
               child: AgentBorderBox(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -175,6 +187,41 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                         ),
                       ),
                       SizedBox(width: 8.w),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            final i = await showModalBottomSheet<int>(
+                              context: context,
+                              backgroundColor: Colors.white,
+                              builder: (ctx) => SafeArea(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (var j = 0; j < _sourceLabels.length; j++)
+                                      ListTile(
+                                        title: Text(_sourceLabels[j]),
+                                        onTap: () => Navigator.pop(ctx, j),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                            if (i != null) setState(() => _sourceIndex = i);
+                          },
+                          child: Container(
+                            height: 36.h,
+                            padding: EdgeInsets.symmetric(horizontal: 10.w),
+                            decoration: BoxDecoration(border: Border.all(color: const Color(0xFFAAAAAA))),
+                            child: Row(children: [
+                              Expanded(
+                                child: Text(_sourceLabels[_sourceIndex], style: TextStyle(fontSize: 13.sp)),
+                              ),
+                              Icon(Icons.arrow_drop_down, size: 20.sp),
+                            ]),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
                       AgentTealButton(
                         label: '查询',
                         onTap: () {
@@ -189,30 +236,49 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                     Expanded(
                       child: Container(
                         decoration: BoxDecoration(border: Border.all(color: const Color(0xFFCCCCCC))),
-                        child: _loading
-                            ? const Center(child: CircularProgressIndicator())
-                            : _error != null
-                                ? Center(
-                                    child: GestureDetector(
-                                      onTap: _load,
-                                      child: Text(
-                                        '加载失败，点击重试',
-                                        style: TextStyle(fontSize: 14.sp, color: AppColors.danger),
+                        child: _loading && _rows.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: const [
+                                  SizedBox(height: 120),
+                                  Center(child: CircularProgressIndicator()),
+                                ],
+                              )
+                            : _error != null && _rows.isEmpty
+                                ? ListView(
+                                    physics: const AlwaysScrollableScrollPhysics(),
+                                    children: [
+                                      SizedBox(height: 120.h),
+                                      Center(
+                                        child: GestureDetector(
+                                          onTap: _load,
+                                          child: Text(
+                                            '加载失败，点击重试',
+                                            style: TextStyle(fontSize: 14.sp, color: AppColors.danger),
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   )
                                 : _rows.isEmpty
-                                    ? Center(
-                                        child: Text(
-                                          '暂无数据',
-                                          style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                                        ),
+                                    ? ListView(
+                                        physics: const AlwaysScrollableScrollPhysics(),
+                                        children: [
+                                          SizedBox(height: 120.h),
+                                          Center(
+                                            child: Text(
+                                              '暂无数据',
+                                              style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                                            ),
+                                          ),
+                                        ],
                                       )
                                     : Column(
                                         children: [
                                           _tableHeader(),
                                           Expanded(
                                             child: ListView.builder(
+                                              physics: const AlwaysScrollableScrollPhysics(),
                                               itemCount: _rows.length,
                                               itemBuilder: (_, i) => _tableRow(_rows[i], i),
                                             ),
@@ -277,18 +343,41 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       padding: EdgeInsets.symmetric(vertical: 8.h),
       child: Row(
         children: [
-          _headerCell('日期', flex: 3),
-          _headerCell('游戏', flex: 3),
-          _headerCell('下注', flex: 2),
-          _headerCell('有效', flex: 2),
-          _headerCell('盈亏', flex: 2),
+          _headerCell('来源', flex: 2),
+          _headerCell('期号', flex: 2),
+          _headerCell('玩法', flex: 3),
+          _headerCell('金额', flex: 2),
+          _headerCell('状态', flex: 2),
         ],
       ),
     );
   }
 
+  String _sourceLabel(String? s) {
+    switch (s?.toUpperCase()) {
+      case 'WEB_DIRECT':
+        return 'Web';
+      case 'OWNER_FLIGHT':
+        return '飞单';
+      default:
+        return s?.isNotEmpty == true ? s! : '—';
+    }
+  }
+
+  String _bizStatusLabel(String? s) {
+    switch (s?.toUpperCase()) {
+      case 'PENDING':
+        return '未结';
+      case 'SETTLED':
+        return '已结';
+      case 'CANCELLED':
+        return '取消';
+      default:
+        return s?.isNotEmpty == true ? s! : '—';
+    }
+  }
+
   Widget _tableRow(Map<String, dynamic> row, int index) {
-    final wl = (row['winLoss'] as num?)?.toDouble() ?? 0;
     return Container(
       decoration: BoxDecoration(
         color: index.isOdd ? const Color(0xFFFAFAFA) : Colors.white,
@@ -297,15 +386,14 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       padding: EdgeInsets.symmetric(vertical: 8.h),
       child: Row(
         children: [
-          _bodyCell(row['statDate']?.toString() ?? '—', flex: 3),
-          _bodyCell(row['typeName']?.toString() ?? row['type']?.toString() ?? '—', flex: 3),
-          _bodyCell(_numStr(row['betAmount']), flex: 2),
-          _bodyCell(_numStr(row['validAmount']), flex: 2),
+          _bodyCell(_sourceLabel(row['source']?.toString()), flex: 2),
+          _bodyCell(row['issueNo']?.toString() ?? '—', flex: 2),
           _bodyCell(
-            _numStr(row['winLoss']),
-            flex: 2,
-            color: wl > 0 ? Colors.green : (wl < 0 ? Colors.red : null),
+            row['playName']?.toString() ?? row['playCode']?.toString() ?? '—',
+            flex: 3,
           ),
+          _bodyCell(_numStr(row['amount']), flex: 2),
+          _bodyCell(_bizStatusLabel(row['status']?.toString()), flex: 2),
         ],
       ),
     );

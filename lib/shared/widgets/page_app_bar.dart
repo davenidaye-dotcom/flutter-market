@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../config/theme/app_colors.dart';
+import 'stable_screen_metrics.dart';
 
 /// 全局 Loading 提示。
 /// 在 ShellCover / 聊天 Overlay 内走本地层（保证可见）；否则走 EasyLoading。
@@ -121,6 +123,9 @@ class _AppToastScopeState extends State<AppToastScope> implements _AppToastLayer
 
 /// 安全返回：无栈可弹时不抛异常（避免闪退）
 void appSafePop(BuildContext context) {
+  // 先强制藏键盘，再关盖层，避免 IME viewport 风暴卡死
+  FocusManager.instance.primaryFocus?.unfocus();
+  SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
   final nav = Navigator.of(context);
   if (nav.canPop()) {
     nav.pop();
@@ -154,11 +159,21 @@ class ShellCoverCloser extends InheritedWidget {
 /// 全屏盖住底部 Tab：用 Overlay，禁止 go_router / 根 Navigator（二者会卸 Shell）
 final List<OverlayEntry> _shellCoverEntries = <OverlayEntry>[];
 
-void dismissAllShellCovers() {
-  for (final e in List<OverlayEntry>.from(_shellCoverEntries)) {
-    e.remove();
+void _safeRemoveOverlayEntry(OverlayEntry entry) {
+  if (!entry.mounted) return;
+  try {
+    entry.remove();
+  } catch (_) {
+    // 键盘收起/热重载时可能已被拆除，忽略
   }
+}
+
+void dismissAllShellCovers() {
+  final entries = List<OverlayEntry>.from(_shellCoverEntries);
   _shellCoverEntries.clear();
+  for (final e in entries) {
+    _safeRemoveOverlayEntry(e);
+  }
 }
 
 /// 压入当前 Navigator（聊天 Overlay / ShellCover 内栈），不另开 root Overlay
@@ -181,22 +196,36 @@ Future<void> pushHostPage(BuildContext context, Widget page) {
 Future<void> pushShellCover(BuildContext context, Widget page) {
   final overlay = Overlay.of(context, rootOverlay: true);
   late OverlayEntry entry;
+  var closed = false;
 
   void close() {
-    entry.remove();
+    if (closed) return;
+    closed = true;
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     _shellCoverEntries.remove(entry);
+    // 等 IME 收起一两帧再拆 Overlay，避免 viewport metrics 风暴卡死
+    Future<void>.delayed(const Duration(milliseconds: 80), () {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _safeRemoveOverlayEntry(entry);
+      });
+      // 若当前无帧调度（已卡死边缘），再兜底一帧
+      WidgetsBinding.instance.scheduleFrame();
+    });
   }
 
   entry = OverlayEntry(
-    builder: (_) => Material(
-      color: const Color(0xFFF5F5F5),
-      child: AppToastScope(
-        child: ShellCoverCloser(
-          close: close,
-          child: HeroControllerScope.none(
-            child: Navigator(
-              onGenerateRoute: (_) => MaterialPageRoute<void>(
-                builder: (_) => page,
+    builder: (ctx) => StableScreenMetrics(
+      child: Material(
+        color: const Color(0xFFF5F5F5),
+        child: AppToastScope(
+          child: ShellCoverCloser(
+            close: close,
+            child: HeroControllerScope.none(
+              child: Navigator(
+                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                  builder: (_) => page,
+                ),
               ),
             ),
           ),
@@ -253,7 +282,12 @@ class PageAppBar extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(width: 44.w, child: trailing),
+            SizedBox(
+              width: 56.w,
+              child: trailing == null
+                  ? null
+                  : Align(alignment: Alignment.centerRight, child: trailing),
+            ),
           ],
         ),
       ),

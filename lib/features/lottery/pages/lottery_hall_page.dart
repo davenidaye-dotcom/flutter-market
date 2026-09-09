@@ -33,6 +33,15 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
   final List<String> _chatLru = [];
   String? _activeChatGameId;
 
+  @override
+  void initState() {
+    super.initState();
+    // 房主壳此前未预拉；大厅自身兜底 ensureLoaded，避免 ready 一直 false
+    Future.microtask(() {
+      ref.read(roomLotteryLiveProvider(widget.roomId).notifier).ensureLoaded();
+    });
+  }
+
   bool get _chatVisible => _activeChatGameId != null;
 
   void _hideChat() {
@@ -67,18 +76,25 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
 
   void _openChat(String gameId) {
     final prev = _activeChatGameId;
-    if (prev != null && prev != gameId) {
+    if (prev == gameId) return;
+    if (prev != null) {
       _chatOverlays[prev]?.markNeedsBuild();
     }
 
-    ref.read(roomLotteryLiveProvider(widget.roomId).notifier).pauseForInteraction();
+    // 仅从大厅进聊天时暂停 ticker/落盘；保活彩种间切换勿重复 pause（计数堆高会永久停表）
+    if (prev == null) {
+      ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .pauseForInteraction();
+    }
     _activeChatGameId = gameId;
     _touchChatLru(gameId);
 
     final existing = _chatOverlays[gameId];
     if (existing != null) {
       existing.markNeedsBuild();
-      if (mounted) setState(() {});
+      // 已在聊天里切彩种：只刷 Overlay，大厅 setState 会拖垮整页
+      if (prev == null && mounted) setState(() {});
       return;
     }
 
@@ -133,6 +149,24 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
     super.dispose();
   }
 
+  void _evictClosedChatOverlays(List<String> gameIds) {
+    final removed = _chatOverlays.keys
+        .where((id) => !gameIds.contains(id))
+        .toList(growable: false);
+    if (removed.isEmpty) return;
+    for (final id in removed) {
+      _chatOverlays.remove(id)?.remove();
+      _chatLru.remove(id);
+      if (_activeChatGameId == id) {
+        _activeChatGameId = null;
+        ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .resumeFromInteraction();
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -149,6 +183,16 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
     final gameIds = gameIdsKey.isEmpty
         ? const <String>[]
         : gameIdsKey.split('|');
+
+    ref.listen<String>(
+      liveProvider.select(
+        (s) => s.games.map((g) => g.id).where((id) => id.isNotEmpty).join('|'),
+      ),
+      (prev, next) {
+        final ids = next.isEmpty ? const <String>[] : next.split('|');
+        _evictClosedChatOverlays(ids);
+      },
+    );
 
     return Container(
       decoration: const BoxDecoration(

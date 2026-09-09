@@ -7,7 +7,8 @@ import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// Feipan op logs
+/// Feipan op logs — GET /owner/feipan/op-logs
+/// 字段同房间操作日志：createdAt / operatorName / operatorId / content
 class FlyLogsPage extends ConsumerStatefulWidget {
   const FlyLogsPage({super.key, required this.roomId});
   final String roomId;
@@ -45,27 +46,34 @@ class _FlyLogsPageState extends ConsumerState<FlyLogsPage> {
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '\u98de\u76d8\u65e5\u5fd7',
+      title: '飞盘日志',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _rows.isEmpty
-              ? Center(child: Text('\u6682\u65e0\u6570\u636e', style: TextStyle(color: AppColors.textHint)))
+              ? Center(child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)))
               : ListView.separated(
                   padding: EdgeInsets.all(16.w),
                   itemCount: _rows.length,
                   separatorBuilder: (_, _) => SizedBox(height: 8.h),
                   itemBuilder: (_, i) {
                     final r = _rows[i];
+                    final content = '${r['content'] ?? ''}';
+                    final op = '${r['operatorName'] ?? ''}';
+                    final at = '${r['createdAt'] ?? ''}';
                     return HostWhiteCard(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            '${r['summary'] ?? r['content'] ?? r['action'] ?? ''}',
+                            content.isEmpty ? '—' : content,
                             style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
                           ),
+                          SizedBox(height: 4.h),
                           Text(
-                            '${r['createdAt'] ?? r['time'] ?? ''}',
+                            [
+                              if (op.isNotEmpty) op,
+                              if (at.isNotEmpty) at,
+                            ].join(' · '),
                             style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
                           ),
                         ],

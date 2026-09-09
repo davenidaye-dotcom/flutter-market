@@ -5,7 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:go_router/go_router.dart';
+import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../core/network/session_store.dart';
 import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
@@ -29,6 +32,7 @@ import '../utils/lottery_period_ui.dart';
 import '../utils/bet_play_codec.dart';
 import '../utils/bet_repeat_helper.dart';
 import '../widgets/bet_action_menu_panel.dart';
+import '../widgets/bet_confirm_dialog.dart';
 import '../widgets/bet_input_bar.dart';
 import '../widgets/bet_keypad_panel.dart';
 import '../widgets/bet_slip_panel.dart';
@@ -630,15 +634,14 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     final subGen = ++_chatSubGen;
     Future.microtask(() async {
       if (_disposed || subGen != _chatSubGen) return;
-      unawaited(
-        ref.read(roomLotteryLiveProvider(widget.roomId).notifier).ensureLoaded(),
-      );
+      final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+      await live.ensureLoaded();
+      if (_disposed || subGen != _chatSubGen) return;
+      // 进聊天页强制刷积分（总资产页有数、顶栏常为 0 的主因之一是 ready 后未再拉钱包）
+      unawaited(live.refreshWallet());
       if (_disposed || subGen != _chatSubGen) return;
       _chatPushSub?.cancel();
-      _chatPushSub = ref
-          .read(roomLotteryLiveProvider(widget.roomId).notifier)
-          .chatPushes
-          .listen((push) {
+      _chatPushSub = live.chatPushes.listen((push) {
         if (_disposed || !mounted || push.gameId != _gameId) return;
         if (push.message.type == ChatMessageType.resultCard) {
           // 有缺口先回补再刷 UI，杜绝 5317 跳 5320 的中间态闪屏
@@ -720,14 +723,21 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _messageIds.clear();
     _longDragonLoadedGameId = null;
     _longDragonRowsNotifier.value = null;
+    // 切彩种收起面板，避免旧盘口残留；不整页重建
+    _setPanel(_BottomPanel.none);
+    _topPanelNotifier.value = _TopPanel.none;
+    _historyExpandedNotifier.value = false;
+    _fabSelectedNotifier.value = null;
 
-    final hasBufferedDraws = ChatPushCache.instance
-        .hasDrawsForGame(widget.roomId, gameId);
-    if (hasBufferedDraws) {
+    final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+    final warm = live.isChatTimelineWarm(gameId);
+    final hasBufferedDraws =
+        ChatPushCache.instance.hasDrawsForGame(widget.roomId, gameId);
+    if (warm || hasBufferedDraws) {
       _messagesLoadingNotifier.value = false;
-      // 有缓存：一步换成新彩种时间线，后台静默对齐
+      // 有缓存/已暖：立刻换时间线；仅缺口时静默补网，避免强制全量重拉卡顿
       _syncMessagesFromCache(forceScroll: true, skipLiveMerge: true);
-      unawaited(_loadMessages(forceReload: true, silent: true));
+      unawaited(_loadMessages(forceReload: !warm, silent: true));
       return;
     }
 
@@ -817,17 +827,22 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       games: live.games,
       currentGameId: _gameId,
     );
-    if (selected == null || !mounted) return;
-    if (selected.id == _gameId) return;
+    if (!mounted) return;
+    // 先清 FAB 高亮，避免与切 Overlay 同帧叠重建
+    _fabSelectedNotifier.value = null;
+    if (selected == null || selected.id == _gameId) return;
 
-    // Overlay 模式：交给大厅切换保活页，避免本页改 gameId 与 overlay 错位
+    final targetId = selected.id;
     final switchViaHall = widget.onSwitchGame;
-    if (switchViaHall != null) {
-      switchViaHall(selected.id);
-      return;
-    }
-
-    _switchToGame(selected.id);
+    // 再等一帧：弹窗 route 已卸完，本帧布局稳定后再换保活页
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (switchViaHall != null) {
+        switchViaHall(targetId);
+        return;
+      }
+      _switchToGame(targetId);
+    });
   }
 
   void _insertText(String text) {
@@ -957,6 +972,23 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       return;
     }
     if (_submitLocked || _betGuard.isBusy || _betBusy.value) return;
+
+    final live = ref.read(roomLotteryLiveProvider(widget.roomId));
+    final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
+    if (needConfirm) {
+      final game = ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .displayGameFor(_gameId);
+      final issue = game?.currentIssue ?? '';
+      final ok = await showBetConfirmDialog(
+        context: context,
+        command: command,
+        issueNo: issue,
+        amountText: _guessBetAmountText(command),
+      );
+      if (!ok || !mounted) return;
+    }
+
     _submitLocked = true;
     _betBusy.value = true;
     try {
@@ -993,6 +1025,22 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       _submitLocked = false;
       if (mounted) _betBusy.value = false;
     }
+  }
+
+  String? _guessBetAmountText(String command) {
+    // 1/大/10  大/100  多个指令空格分隔时汇总数字段
+    final parts = command.split(RegExp(r'\s+'));
+    final amounts = <String>[];
+    for (final p in parts) {
+      final segs = p.split('/');
+      if (segs.length >= 2) {
+        final last = segs.last.trim();
+        if (num.tryParse(last) != null) amounts.add(last);
+      }
+    }
+    if (amounts.isEmpty) return null;
+    if (amounts.length == 1) return amounts.first;
+    return amounts.join('+');
   }
 
   Future<void> _claimRedpack() async {
@@ -1451,12 +1499,19 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                             _setPanel(_BottomPanel.none);
                           }
                           await _openSwitchGame();
-                          _fabSelectedNotifier.value = null;
                         },
                         onService: () {
                           _fabSelectedNotifier.value = 1;
                           if (_panel == _BottomPanel.quickBet) {
                             _setPanel(_BottomPanel.none);
+                          }
+                          final isHost =
+                              ref.read(authSessionProvider).isHostSide;
+                          if (isHost) {
+                            // 房主必须进经营端客服，不能走会员 /member/cs
+                            widget.onClose?.call();
+                            context.go(RoutePaths.hostService(widget.roomId));
+                            return;
                           }
                           pushLocalPage(
                             context,

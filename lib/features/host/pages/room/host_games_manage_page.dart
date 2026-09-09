@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
-import '../../data/host_mock.dart';
+import '../../../lottery/providers/lottery_live_provider.dart';
 import '../../widgets/host_ui.dart';
 
 /// Game on/off — GET/PUT /owner/room/games/settings
@@ -29,10 +31,8 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getGamesSettings();
-      var list = hostRowsOf(data);
+      var list = await ref.read(ownerRepositoryProvider).getGamesSettings();
       if (list.isEmpty) {
-        // Fallback: owner games list
         list = await ref.read(ownerRepositoryProvider).getGames();
       }
       if (!mounted) return;
@@ -51,8 +51,8 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
     if (!value) {
       final ok = await hostConfirm(
         context,
-        title: '\u5173\u95ed\u5f69\u79cd',
-        message: '\u786e\u5b9a\u5173\u95ed\u8be5\u5f69\u79cd\u5417\uff1f',
+        title: '关闭彩种',
+        message: '确定关闭该彩种吗？',
         danger: true,
       );
       if (!ok || !mounted) return;
@@ -63,14 +63,20 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
     setState(() => _games = next);
     try {
       await ref.read(ownerRepositoryProvider).updateGamesSettings({
-        'games': next
+        'items': next
             .map((g) => {
                   'gameType': g['gameType'] ?? g['type'],
-                  'enabled': g['enabled'] == true,
+                  'enabled': _asEnabledFlag(g['enabled']),
                 })
             .toList(),
       });
-      AppToast.success(value ? '\u5df2\u5f00\u542f' : '\u5df2\u5173\u95ed');
+      // 本端立刻刷新大厅（开/关都走这里）；会员端靠 WS ROOM_GAMES_CHANGED
+      unawaited(
+        ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .reloadGamesCatalog(),
+      );
+      AppToast.success(value ? '已开启' : '已关闭');
     } catch (e) {
       AppToast.error(e.toString());
       await _load();
@@ -80,13 +86,13 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '\u5f69\u79cd\u7ba1\u7406',
+      title: '彩种管理',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _games.isEmpty
               ? Center(
                   child: Text(
-                    '\u6682\u65e0\u6570\u636e',
+                    '暂无数据',
                     style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
                   ),
                 )
@@ -96,16 +102,23 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
                   separatorBuilder: (_, _) => SizedBox(height: 8.h),
                   itemBuilder: (_, i) {
                     final g = _games[i];
-                    final name = (g['gameName'] ?? g['typeName'] ?? g['gameType'] ?? g['type'] ?? '')
+                    final name = (g['gameName'] ??
+                            g['typeName'] ??
+                            g['gameType'] ??
+                            g['type'] ??
+                            '')
                         .toString();
-                    final enabled = g['enabled'] != false;
+                    final enabled = _asEnabledFlag(g['enabled']);
                     return HostWhiteCard(
                       child: Row(
                         children: [
                           Expanded(
                             child: Text(
                               name,
-                              style: TextStyle(fontSize: 15.sp, color: AppColors.textPrimary),
+                              style: TextStyle(
+                                fontSize: 15.sp,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ),
                           Switch(
@@ -120,4 +133,13 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
                 ),
     );
   }
+}
+
+bool _asEnabledFlag(dynamic v) {
+  // 缺省视为开启（与历史 `!= false` 一致）；显式 0/false 才关闭
+  if (v == null) return true;
+  if (v == true || v == 1) return true;
+  if (v == false || v == 0) return false;
+  final s = '$v'.trim().toLowerCase();
+  return s == 'true' || s == '1';
 }

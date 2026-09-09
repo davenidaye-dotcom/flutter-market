@@ -8,10 +8,12 @@ class SessionStore {
   static const _kToken = 'flyroom_access_token';
   static const _kRoomId = 'flyroom_room_id';
   static const _kRoomCode = 'flyroom_room_code';
+  static const _kBetConfirm = 'flyroom_bet_confirm';
 
   String? accessToken;
   String? roomId;
   String? roomCode;
+  bool betConfirm = false;
 
   bool get hasToken => accessToken != null && accessToken!.isNotEmpty;
 
@@ -20,6 +22,7 @@ class SessionStore {
     accessToken = prefs.getString(_kToken);
     roomId = prefs.getString(_kRoomId);
     roomCode = prefs.getString(_kRoomCode);
+    betConfirm = prefs.getBool(_kBetConfirm) ?? false;
   }
 
   Future<void> setToken(String? token) async {
@@ -32,9 +35,10 @@ class SessionStore {
     }
   }
 
-  Future<void> setRoom({String? roomId, String? roomCode}) async {
+  Future<void> setRoom({String? roomId, String? roomCode, bool? betConfirm}) async {
     this.roomId = roomId;
     this.roomCode = roomCode;
+    if (betConfirm != null) this.betConfirm = betConfirm;
     final prefs = await SharedPreferences.getInstance();
     if (roomId == null || roomId.isEmpty) {
       await prefs.remove(_kRoomId);
@@ -46,15 +50,20 @@ class SessionStore {
     } else {
       await prefs.setString(_kRoomCode, roomCode);
     }
+    if (betConfirm != null) {
+      await prefs.setBool(_kBetConfirm, betConfirm);
+    }
   }
 
   Future<void> clear() async {
     accessToken = null;
     roomId = null;
     roomCode = null;
+    betConfirm = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kToken);
     await prefs.remove(_kRoomId);
     await prefs.remove(_kRoomCode);
+    await prefs.remove(_kBetConfirm);
   }
 }

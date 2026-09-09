@@ -145,5 +145,36 @@ void main() {
       );
       expect(sealedMsg.time, '21:05');
     });
+
+    test('全号排序：跨天旧下注不会排到最新开奖后面', () {
+      const gameId = 'JS_SC';
+      // 旧期后四位 9999 > 新期 5492，若用 %10000 会把旧单排到最末
+      final oldBet = ChatMessageModel(
+        id: 'bet-chat-$gameId-old',
+        sender: '我',
+        content: '大/10',
+        time: '19:00',
+        issueNo: '34139999',
+      );
+      final messages = [
+        oldBet,
+        drawCard(gameId, '34145491', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        drawCard(gameId, '34145492', [9, 10, 5, 6, 3, 8, 4, 7, 1, 2]),
+      ];
+
+      final timeline = buildChatTimeline(
+        messages,
+        gameId: gameId,
+        syntheticSeals: false,
+      );
+
+      final oldIdx = timeline.indexWhere((m) => m.id == oldBet.id);
+      final drawIdx = timeline.indexWhere(
+        (m) => m.type == ChatMessageType.resultCard && extractIssue(m) == '34145492',
+      );
+      expect(oldIdx, greaterThanOrEqualTo(0));
+      expect(drawIdx, greaterThanOrEqualTo(0));
+      expect(oldIdx, lessThan(drawIdx), reason: '旧全号应在新开奖之前（时间线旧→新）');
+    });
   });
 }

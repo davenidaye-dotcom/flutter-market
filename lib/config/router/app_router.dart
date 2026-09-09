@@ -85,6 +85,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (loc == RoutePaths.home) return RoutePaths.hostLottery(roomId);
         // 仅拦截玩家彩种大厅入口；聊天/报表等 /room 子页放行（房主只读进房）
         if (loc == RoutePaths.roomLottery(roomId)) return RoutePaths.hostLottery(roomId);
+        // 房主点客服勿进会员客服（会报「请使用会员端登录」）
+        if (loc == RoutePaths.roomService(roomId)) {
+          return RoutePaths.hostService(roomId);
+        }
         if (loc.startsWith('/agent/')) return RoutePaths.hostLottery(roomId);
       }
       if (session.isAgentSide) {

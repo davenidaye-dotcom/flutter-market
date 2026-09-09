@@ -10,17 +10,13 @@ import '../../widgets/host_ui.dart';
 class _OddsRow {
   _OddsRow({
     required this.playCode,
-    required this.playType,
-    required this.agentOdds,
-    required this.hostOdds,
-    required this.minOdds,
+    required this.playName,
+    required this.odds,
   });
 
   final String playCode;
-  final String playType;
-  final double agentOdds;
-  double hostOdds;
-  final double minOdds;
+  final String playName;
+  double odds;
 }
 
 /// Feipan odds — GET/PUT /owner/feipan/odds
@@ -37,7 +33,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   bool _loading = true;
   final _step = 0.01;
   List<_OddsRow> _rows = [];
-  String _gameType = 'JS_SC';
+  final String _gameType = 'JS_SC';
 
   @override
   void initState() {
@@ -51,17 +47,14 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
       final data = await ref
           .read(ownerRepositoryProvider)
           .getFeipanOdds(gameType: _gameType);
-      final items = hostRowsOf(data.containsKey('items') ? data['items'] : data);
+      // 文档：data.items[] — playCode / playName / odds / periodLimit / minBet
+      final items = hostRowsOf(data['items']);
       final rows = items.map((m) {
-        final agent = (m['agentOdds'] ?? m['odds'] ?? 0);
-        final host = (m['hostOdds'] ?? m['odds'] ?? agent);
-        final min = (m['minOdds'] ?? 0);
+        final odds = (m['odds'] ?? 0);
         return _OddsRow(
           playCode: (m['playCode'] ?? '').toString(),
-          playType: (m['playName'] ?? m['playCode'] ?? '').toString(),
-          agentOdds: agent is num ? agent.toDouble() : double.tryParse('$agent') ?? 0,
-          hostOdds: host is num ? host.toDouble() : double.tryParse('$host') ?? 0,
-          minOdds: min is num ? min.toDouble() : double.tryParse('$min') ?? 0,
+          playName: (m['playName'] ?? m['playCode'] ?? '').toString(),
+          odds: odds is num ? odds.toDouble() : double.tryParse('$odds') ?? 0,
         );
       }).toList();
       if (!mounted) return;
@@ -80,8 +73,9 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   void _adjustAll(double delta) {
     setState(() {
       for (final row in _rows) {
-        final next = (row.hostOdds + delta).clamp(row.minOdds, row.agentOdds);
-        row.hostOdds = double.parse(next.toStringAsFixed(2));
+        // minBet 是单注最低金额，不是赔率下限
+        final next = (row.odds + delta).clamp(0.01, 9999.0);
+        row.odds = double.parse(next.toStringAsFixed(3));
       }
       _dirty = true;
     });
@@ -89,17 +83,19 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
 
   Future<void> _save() async {
     try {
+      // 仅覆盖 odds；minBet/periodLimit 不传则后端保留原值
       await ref.read(ownerRepositoryProvider).updateFeipanOdds({
         'gameType': _gameType,
         'items': _rows
             .map((r) => {
                   'playCode': r.playCode,
-                  'odds': r.hostOdds,
+                  'odds': r.odds,
                 })
             .toList(),
       });
+      if (!mounted) return;
       setState(() => _dirty = false);
-      AppToast.success('\u8d54\u7387\u5df2\u4fdd\u5b58');
+      AppToast.success('赔率已保存');
     } catch (e) {
       AppToast.error(e.toString());
     }
@@ -108,7 +104,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '\u98de\u5355\u8d54\u7387\u8bbe\u7f6e',
+      title: '飞单赔率设置',
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -117,7 +113,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                   padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
                   child: Row(
                     children: [
-                      Text(_dirty ? '\u672a\u4fdd\u5b58' : '', style: TextStyle(color: AppColors.danger, fontSize: 12.sp)),
+                      Text(_dirty ? '未保存' : '', style: TextStyle(color: AppColors.danger, fontSize: 12.sp)),
                       const Spacer(),
                       IconButton(onPressed: () => _adjustAll(_step), icon: const Icon(Icons.add)),
                       IconButton(onPressed: () => _adjustAll(-_step), icon: const Icon(Icons.remove)),
@@ -126,7 +122,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                 ),
                 Expanded(
                   child: _rows.isEmpty
-                      ? Center(child: Text('\u6682\u65e0\u6570\u636e', style: TextStyle(color: AppColors.textHint)))
+                      ? Center(child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)))
                       : ListView.separated(
                           padding: EdgeInsets.all(16.w),
                           itemCount: _rows.length,
@@ -136,8 +132,8 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                             return HostWhiteCard(
                               child: Row(
                                 children: [
-                                  Expanded(child: Text(r.playType)),
-                                  Text('${r.hostOdds}', style: TextStyle(fontWeight: FontWeight.w700)),
+                                  Expanded(child: Text(r.playName)),
+                                  Text('${r.odds}', style: TextStyle(fontWeight: FontWeight.w700)),
                                 ],
                               ),
                             );
@@ -148,7 +144,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
             ),
       bottomBar: Padding(
         padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 16.h),
-        child: HostPrimaryButton(label: '\u4fdd\u5b58', onPressed: _save),
+        child: HostPrimaryButton(label: '保存', onPressed: _save),
       ),
     );
   }
