@@ -30,6 +30,7 @@ class EnvConfig {
   static String? _wsBaseUrlOverride;
 
   static String get builtinApiBaseUrl => switch (environment) {
+        // 走 80 反代 → Java 9080；不要写成后台 Vue 的 8088/8098
         AppEnvironment.dev => 'http://207.148.105.182/api/v1',
         AppEnvironment.test => 'http://207.148.105.182/api/v1',
         AppEnvironment.pro => 'http://207.148.105.182/api/v1',
