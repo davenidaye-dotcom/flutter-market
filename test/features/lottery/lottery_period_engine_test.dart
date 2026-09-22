@@ -305,7 +305,7 @@ void main() {
     expect(betting.countdownSeconds, 60);
   });
 
-  test('countdown does not jump when ws advances issue while cd positive', () {
+  test('ws newer issue advances even while local countdown positive', () {
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
     engine.onPeriodTick(
       'JS_SC',
@@ -317,6 +317,32 @@ void main() {
     final t13 = t0.add(const Duration(seconds: 13));
     expect(engine.countdownFor('JS_SC', t13), 62);
 
+    final nextOpen = t13.add(const Duration(seconds: 290)).millisecondsSinceEpoch;
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136342',
+      seconds: 290,
+      openAtEpochMs: nextOpen,
+      lastIssue: '34136341',
+      lastRanks: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      now: t13,
+    );
+    final g = engine.displayGame('JS_SC', t13);
+    expect(g.currentIssue, '34136342');
+    expect(g.previousIssue, '34136341');
+    expect(g.countdownSeconds, greaterThan(280));
+  });
+
+  test('same openAt newer issue still advances issue label', () {
+    final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 75,
+      openAtEpochMs: openAt,
+      now: t0,
+    );
+    final t13 = t0.add(const Duration(seconds: 13));
     engine.onPeriodTick(
       'JS_SC',
       issue: '34136342',
@@ -324,12 +350,8 @@ void main() {
       openAtEpochMs: openAt,
       now: t13,
     );
+    expect(engine.displayGame('JS_SC', t13).currentIssue, '34136342');
     expect(engine.countdownFor('JS_SC', t13), 62);
-    expect(engine.displayGame('JS_SC', t13).currentIssue, '34136341');
-
-    final t14 = t0.add(const Duration(seconds: 14));
-    engine.onSecondTick(t14);
-    expect(engine.countdownFor('JS_SC', t14), 61);
   });
 
   test('repeated ws ticks with stale seconds never increase countdown', () {

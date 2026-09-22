@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -161,7 +162,7 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16.r),
                     ),
-                    child: RefreshIndicator(
+                    child: AppPullRefresh(
                       onRefresh: () => _load(fromPull: true),
                       child: _loading && _items.isEmpty
                           ? ListView(

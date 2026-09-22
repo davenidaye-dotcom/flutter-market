@@ -5,6 +5,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/wallet_model.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/input_dialog.dart';
@@ -127,7 +128,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
               ),
               SizedBox(height: 12.h),
               Expanded(
-                child: RefreshIndicator(
+                child: AppPullRefresh(
                   onRefresh: () => _load(fromPull: true),
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),

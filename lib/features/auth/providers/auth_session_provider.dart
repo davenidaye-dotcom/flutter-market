@@ -61,6 +61,12 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
     state = AuthSession(user: user.copyWith(nickname: nickname));
   }
 
+  void updateAvatar(String avatarUrl) {
+    final user = state.user;
+    if (user == null) return;
+    state = AuthSession(user: user.copyWith(avatarUrl: avatarUrl));
+  }
+
   Future<void> logout() async {
     await _ref.read(authRepositoryProvider).logout();
     state = const AuthSession();

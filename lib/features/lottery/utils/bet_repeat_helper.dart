@@ -109,6 +109,8 @@ bool isRepeatableBetContent(String raw) {
   if (text == '取消' || text == '重复' || text == '梭哈') return false;
   if (text.contains('封盘线') || text.contains('停止战斗')) return false;
   if (text.contains('距离封盘') || text.contains('中奖名单')) return false;
+  if (text.contains('中奖列表核对') || text.contains('中奖金额')) return false;
+  if (text.contains('竞猜列表核对') || text.contains('下注总金额')) return false;
   if (text.contains('已开奖')) return false;
   if (RegExp(r'第\d+期开奖').hasMatch(text)) return false;
   return true;

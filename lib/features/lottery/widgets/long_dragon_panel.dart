@@ -56,6 +56,8 @@ class LongDragonPanel extends StatelessWidget {
                       ),
                     )
                   : ListView.separated(
+                      padding: EdgeInsets.zero,
+                      primary: false,
                       itemCount: displayRows.length,
                       separatorBuilder: (_, _) =>
                           const Divider(height: 1, color: Color(0xFFEEEEEE)),

@@ -71,6 +71,123 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage>
     }
   }
 
+  void _openIssueDetail(String issue) {
+    final same = _rows.where((r) => '${r['issueNo'] ?? ''}' == issue).toList();
+    // 展开每单 items[]；无 items 时保留订单摘要行
+    final lines = <Map<String, dynamic>>[];
+    for (final r in same) {
+      final items = r['items'];
+      if (items is List && items.isNotEmpty) {
+        for (final raw in items) {
+          if (raw is! Map) continue;
+          lines.add({
+            'playName': raw['playName'] ?? raw['playCode'] ?? '',
+            'amount': raw['amount'] ?? raw['winAmount'],
+            'status': raw['status'] ?? r['status'],
+            'orderId': r['orderId'],
+          });
+        }
+      } else {
+        lines.add({
+          'playName': r['playName'] ?? r['playCode'] ?? '注单${r['itemCount'] ?? ''}',
+          'amount': r['totalAmount'] ?? r['amount'],
+          'status': r['status'],
+          'orderId': r['orderId'],
+        });
+      }
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '第$issue期注单',
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
+                ),
+                SizedBox(height: 8.h),
+                Text(
+                  '共 ${same.length} 笔 / ${lines.length} 条玩法',
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                ),
+                SizedBox(height: 8.h),
+                SizedBox(
+                  height: lines.length > 8 ? 360.h : null,
+                  child: ListView.separated(
+                    shrinkWrap: lines.length <= 8,
+                    itemCount: lines.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final r = lines[i];
+                      final play = '${r['playName'] ?? ''}';
+                      final status = '${r['status'] ?? ''}';
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(play.isEmpty ? '注单' : play),
+                        subtitle: Text('金额 ${_n(r['amount'])}'),
+                        trailing: Text(
+                          betStatusLabel(status),
+                          style: TextStyle(
+                            color: status.toUpperCase() == 'WIN'
+                                ? const Color(0xFFE53935)
+                                : AppColors.textSecondary,
+                          ),
+                        ),
+                        onTap: () async {
+                          final oid = '${r['orderId'] ?? ''}';
+                          if (oid.isEmpty) return;
+                          try {
+                            final detail = await ref
+                                .read(walletRepositoryProvider)
+                                .getBetDetail(oid);
+                            if (!ctx.mounted) return;
+                            final its = detail['items'];
+                            final detailLines = its is List
+                                ? its
+                                    .whereType<Map>()
+                                    .map((e) =>
+                                        '${e['playName'] ?? e['playCode']}  ${e['amount']}  ${betStatusLabel('${e['status'] ?? ''}')}')
+                                    .join('\n')
+                                : '';
+                            await showDialog<void>(
+                              context: ctx,
+                              builder: (dctx) => AlertDialog(
+                                title: Text('注单 $oid'),
+                                content: Text(
+                                  detailLines.isEmpty
+                                      ? '金额 ${_n(detail['totalAmount'])}  状态 ${betStatusLabel('${detail['status'] ?? ''}')}'
+                                      : detailLines,
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dctx),
+                                    child: const Text('关闭'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          } catch (e) {
+                            AppToast.error(e.toString());
+                          }
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppPageScaffold(
@@ -101,17 +218,18 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage>
                     children: [
                       Row(
                         children: [
-                          _stat('\u603b\u6ce8\u5355', _n(_summary['totalOrders'])),
-                          _stat('\u603b\u6ce8\u989d', _n(_summary['totalBetAmount'])),
-                          _stat('\u8fd4\u70b9\u5408\u8ba1', _n(_summary['totalRebate'])),
+                          _stat('总注单', _n(_summary['totalOrders'])),
+                          _stat('总注额', _n(_summary['totalBetAmount'])),
+                          _stat('返点合计', _n(_summary['totalRebate'])),
                         ],
                       ),
                       SizedBox(height: 14.h),
                       Row(
                         children: [
-                          _stat('\u7ea2\u5229\u5408\u8ba1', _n(_summary['totalBonus'])),
-                          _stat('\u6e38\u620f\u603b\u7ed3\u679c', _n(_summary['gameResult'])),
-                          _stat('\u73a9\u5bb6\u603b\u7ed3\u679c', _n(_summary['playerResult'])),
+                          _stat('派彩合计', _n(_summary['totalBonus'])),
+                          // 文档 2.2：当前实现主要填 totalOrders / totalBetAmount
+                          _stat('已结输赢', _n(_summary['totalWinLoss'] ?? _summary['winLoss'])),
+                          _stat('笔数', _n(_summary['totalOrders'])),
                         ],
                       ),
                     ],
@@ -158,6 +276,7 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage>
                                   final isWin = status.toUpperCase() == 'WIN';
                                   final isLose = status.toUpperCase() == 'LOSE';
                                   return BetLedgerRecordTile(
+                                    onTap: () => _openIssueDetail(issue),
                                     drawRanks: ranks,
                                     sumGy: sumGy,
                                     topLine: Row(

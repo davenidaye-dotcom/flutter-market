@@ -15,6 +15,73 @@ class HistoryDrawRow {
   final String summary;
 }
 
+/// 顶栏期号、开奖球、历史表头、下拉数据行共用同一套列宽。
+abstract final class HistoryDrawLayout {
+  static double hPad() => 10.w;
+  /// 4 位期号居中，和「期数」同一列。
+  static double issueW() => 52.w;
+  static double issueGap() => 4.w;
+  static double gyW() => 48.w;
+  static double dtW() => 58.w;
+  static double trailingW() => gyW() + dtW();
+  static double ballSize() => 18.w;
+
+  static TextStyle issueStyle() => TextStyle(
+        fontSize: 13.sp,
+        height: 1.1,
+        color: const Color(0xFF5A5A5A),
+        fontWeight: FontWeight.w600,
+      );
+
+  static TextStyle headerStyle() => TextStyle(
+        fontSize: 13.sp,
+        height: 1.1,
+        color: const Color(0xFF7A7A7A),
+        fontWeight: FontWeight.w600,
+      );
+
+  /// 历史表开奖球内数字相对球径
+  static double ballFontScale() => 0.72;
+}
+
+/// 期号 | 十个等宽槽 | 冠亚和 | 龙虎。顶栏和下拉必须用这一行，禁止各自算宽。
+class Pk10AlignRow extends StatelessWidget {
+  const Pk10AlignRow({
+    super.key,
+    required this.issue,
+    required this.middle,
+    required this.gy,
+    required this.dt,
+  });
+
+  final Widget issue;
+  final Widget middle;
+  final Widget gy;
+  final Widget dt;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: HistoryDrawLayout.issueW(),
+          child: Center(child: issue),
+        ),
+        SizedBox(width: HistoryDrawLayout.issueGap()),
+        Expanded(child: middle),
+        SizedBox(
+          width: HistoryDrawLayout.gyW(),
+          child: Center(child: gy),
+        ),
+        SizedBox(
+          width: HistoryDrawLayout.dtW(),
+          child: Center(child: dt),
+        ),
+      ],
+    );
+  }
+}
+
 /// 历史开奖展开面板 — 固定高度，与注单/长龙一致，可滚动
 class HistoryDrawPanel extends StatelessWidget {
   const HistoryDrawPanel({
@@ -36,6 +103,7 @@ class HistoryDrawPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final displayRows = rows.take(maxRows).toList();
+    final pad = HistoryDrawLayout.hPad();
 
     return Material(
       color: Colors.transparent,
@@ -55,16 +123,14 @@ class HistoryDrawPanel extends StatelessWidget {
         child: Column(
           children: [
             const _Header(),
-            Expanded(
-              child: _buildBody(displayRows),
-            ),
+            Expanded(child: _buildBody(displayRows, pad)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBody(List<HistoryDrawRow> displayRows) {
+  Widget _buildBody(List<HistoryDrawRow> displayRows, double pad) {
     if (loading && displayRows.isEmpty) {
       return const Center(
         child: SizedBox(
@@ -94,7 +160,7 @@ class HistoryDrawPanel extends StatelessWidget {
       );
     }
     return ListView.separated(
-      padding: EdgeInsets.fromLTRB(8.w, 2.h, 8.w, 8.h),
+      padding: EdgeInsets.fromLTRB(pad, 2.h, pad, 8.h),
       itemCount: displayRows.length,
       separatorBuilder: (_, _) => SizedBox(height: 2.h),
       itemBuilder: (_, i) => _DataRow(row: displayRows[i]),
@@ -105,59 +171,31 @@ class HistoryDrawPanel extends StatelessWidget {
 class _Header extends StatelessWidget {
   const _Header();
 
-  static const _muted = Color(0xFF7A7A7A);
+  static const _cn = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
 
   @override
   Widget build(BuildContext context) {
+    final pad = HistoryDrawLayout.hPad();
     return Container(
-      height: 34.h,
-      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      height: 32.h,
+      padding: EdgeInsets.symmetric(horizontal: pad),
       color: const Color(0xFFF5F5F5),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 40.w,
-            child: Text(
-              '期数',
-              style: TextStyle(fontSize: 11.sp, color: _muted, fontWeight: FontWeight.w500),
-            ),
-          ),
-          Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: List.generate(
-                10,
-                (i) => Text(
-                  _cnNum(i + 1),
-                  style: TextStyle(fontSize: 10.sp, color: _muted, fontWeight: FontWeight.w500),
+      child: Pk10AlignRow(
+        issue: Text('期数', style: HistoryDrawLayout.headerStyle(), textAlign: TextAlign.center),
+        middle: Row(
+          children: [
+            for (final label in _cn)
+              Expanded(
+                child: Center(
+                  child: Text(label, style: HistoryDrawLayout.headerStyle()),
                 ),
               ),
-            ),
-          ),
-          SizedBox(
-            width: 52.w,
-            child: Text(
-              '冠亚和',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10.sp, color: _muted, fontWeight: FontWeight.w500),
-            ),
-          ),
-          SizedBox(
-            width: 56.w,
-            child: Text(
-              '1-5龙虎',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 10.sp, color: _muted, fontWeight: FontWeight.w500),
-            ),
-          ),
-        ],
+          ],
+        ),
+        gy: Text('冠亚和', style: HistoryDrawLayout.headerStyle(), textAlign: TextAlign.center),
+        dt: Text('1-5龙虎', style: HistoryDrawLayout.headerStyle(), textAlign: TextAlign.center),
       ),
     );
-  }
-
-  String _cnNum(int n) {
-    const map = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
-    return map[n - 1];
   }
 }
 
@@ -166,7 +204,6 @@ class _DataRow extends StatelessWidget {
 
   final HistoryDrawRow row;
 
-  static const _strong = Color(0xFF6B6B6B);
   static const _dragonTiger = Color(0xFF7A7A7A);
 
   static String _issueTail(String issue) {
@@ -188,46 +225,43 @@ class _DataRow extends StatelessWidget {
         : '';
 
     return SizedBox(
-      height: 40.h,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 40.w,
-            child: Text(
-              _issueTail(row.issue),
-              style: TextStyle(fontSize: 11.sp, color: _strong, fontWeight: FontWeight.w500),
-            ),
+      height: 36.h,
+      child: Pk10AlignRow(
+        issue: Text(
+          _issueTail(row.issue),
+          style: HistoryDrawLayout.issueStyle(),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+        ),
+        middle: LotteryBallRow(
+          numbers: row.numbers,
+          ballSize: HistoryDrawLayout.ballSize(),
+          expandSlots: true,
+          fontScale: HistoryDrawLayout.ballFontScale(),
+        ),
+        gy: Text(
+          '$sum$size$oddEven',
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          style: TextStyle(
+            fontSize: 11.sp,
+            height: 1.1,
+            color: AppColors.danger,
+            fontWeight: FontWeight.w600,
           ),
-          Expanded(
-            child: LotteryBallRow(numbers: row.numbers, ballSize: 16.w),
+        ),
+        dt: Text(
+          dt,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 11.sp,
+            height: 1.1,
+            color: _dragonTiger,
+            fontWeight: FontWeight.w500,
           ),
-          SizedBox(
-            width: 52.w,
-            child: Text(
-              '$sum$size$oddEven',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10.sp,
-                color: AppColors.danger,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 56.w,
-            child: Text(
-              dt,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10.sp,
-                color: _dragonTiger,
-                fontWeight: FontWeight.w500,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

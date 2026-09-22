@@ -15,6 +15,10 @@ class MemberRepository {
     await _client.put('/member/profile/nickname', data: {'nickname': nickname});
   }
 
+  Future<void> updateAvatar(String avatarCode) async {
+    await _client.put('/member/profile/avatar', data: {'avatarUrl': avatarCode});
+  }
+
   Future<List<Map<String, dynamic>>> getRedpacks({String status = 'AVAILABLE'}) async {
     final data = await _client.get('/member/redpacks', query: {'status': status});
     return _asMapList(data);

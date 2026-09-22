@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -20,6 +21,7 @@ import '../widgets/live_period_widgets.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
 import '../utils/bet_play_codec.dart';
+import '../utils/bet_repeat_helper.dart';
 
 /// 盘口下注详情 — 快捷 / 两面 / 1-10名 / 冠亚和
 /// [embedded] 为 true 时作为聊天页遮罩层，不含独立 Scaffold/顶栏
@@ -104,7 +106,7 @@ class _MarketBetBody extends ConsumerStatefulWidget {
 
 class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   int _tab = 0;
-  int _quickRank = 0;
+  final Set<int> _quickRanks = {0};
   int _amountPreset = 0;
   final _amountPresetNotifier = ValueNotifier(0);
   final _amountCtrl = TextEditingController();
@@ -163,6 +165,18 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
 
   double get _unit => double.tryParse(_amountCtrl.text.trim()) ?? 0;
 
+  /// 指令金额：后端要求正整数，禁止 double 插值出 `5.0`
+  String? get _unitToken {
+    final raw = _amountCtrl.text.trim();
+    if (!RegExp(r'^[1-9]\d*$').hasMatch(raw)) return null;
+    return raw;
+  }
+
+  String _intAmountText(num n) {
+    if (n == n.roundToDouble()) return '${n.round()}';
+    return n.toString();
+  }
+
   void _toggle(String key) {
     if (!widget.canBet || _submitting.value) return;
     final now = DateTime.now();
@@ -178,6 +192,108 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     _selectedNotifier.value = next;
   }
 
+  void _rememberBet(String command) {
+    final accountId = ref.read(authSessionProvider).user?.id ?? '';
+    unawaited(
+      BetRepeatStore.save(
+        roomId: widget.roomId,
+        gameId: widget.gameId,
+        accountId: accountId,
+        command: command,
+      ),
+    );
+  }
+
+  /// 按上一笔成功注单再下。开了下注确认则先展示指令。
+  Future<void> _repeatLast() async {
+    if (!widget.canBet) return;
+    if (_submitLocked || widget.betGuard.isBusy || _submitting.value) return;
+    final accountId = ref.read(authSessionProvider).user?.id ?? '';
+    final command = await BetRepeatStore.read(
+      roomId: widget.roomId,
+      gameId: widget.gameId,
+      accountId: accountId,
+    );
+    if (!mounted) return;
+    if (command == null || command.trim().isEmpty) {
+      AppToast.info('暂无可重投注单');
+      return;
+    }
+    final text = command.trim();
+    final live = ref.read(roomLotteryLiveProvider(widget.roomId));
+    final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
+    if (needConfirm) {
+      final game = ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .displayGameFor(widget.gameId);
+      final ok = await showBetConfirmDialog(
+        context: context,
+        command: text,
+        issueNo: game?.currentIssue,
+        amountText: _amountOfStored(text),
+      );
+      if (!ok || !mounted) return;
+    }
+    final items = _itemsFromStored(text);
+    _submitLocked = true;
+    _submitting.value = true;
+    try {
+      final done = await widget.betGuard.run((requestId) async {
+        return ref.read(lotteryRepositoryProvider).submitBet(
+              roomId: widget.roomId,
+              gameId: widget.gameId,
+              command: text,
+              items: items,
+              requestId: requestId,
+            );
+      });
+      if (done == null || !mounted) return;
+      unawaited(
+        ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
+      );
+      if (!mounted) return;
+      widget.onBetSuccess?.call(text, done);
+      AppToast.success('重投成功');
+    } catch (e) {
+      AppToast.error(e.toString());
+    } finally {
+      _submitLocked = false;
+      if (mounted) _submitting.value = false;
+    }
+  }
+
+  /// `冠军/1/5 亚军/3/10` → 机器 items；聊天指令解析不了则只发 command。
+  List<Map<String, dynamic>>? _itemsFromStored(String command) {
+    final tokens = command.split(RegExp(r'\s+')).where((e) => e.isNotEmpty);
+    final items = <Map<String, dynamic>>[];
+    for (final token in tokens) {
+      final parts = token.split('/');
+      if (parts.length < 3) return null;
+      final amount = num.tryParse(parts.last);
+      if (amount == null || amount <= 0) return null;
+      final uiKey = parts.sublist(0, parts.length - 1).join('/');
+      final code = uiKeyToPlayCode(uiKey);
+      if (code == null) return null;
+      items.add({'playCode': code, 'amount': amount});
+    }
+    return items.isEmpty ? null : items;
+  }
+
+  String? _amountOfStored(String command) {
+    var sum = 0.0;
+    var any = false;
+    for (final token in command.split(RegExp(r'\s+'))) {
+      final parts = token.split('/');
+      if (parts.isEmpty) continue;
+      final n = double.tryParse(parts.last);
+      if (n == null) continue;
+      sum += n;
+      any = true;
+    }
+    if (!any) return null;
+    return sum.toStringAsFixed(sum == sum.roundToDouble() ? 0 : 1);
+  }
+
   void _reset() {
     _selectedNotifier.value = <String>{};
     _amountPreset = 0;
@@ -187,14 +303,46 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   void _bumpLayout() => _layoutNotifier.value++;
 
   void _setTab(int i) {
-    _tab = i;
-    _selectedNotifier.value = <String>{};
+    if (_tab == i) return;
+    setState(() {
+      _tab = i;
+      _selectedNotifier.value = <String>{};
+    });
     _bumpLayout();
   }
 
-  void _setQuickRank(int i) {
-    _quickRank = i;
+  void _toggleQuickRank(int i) {
+    if (_quickRanks.contains(i)) {
+      if (_quickRanks.length == 1) return;
+      _quickRanks.remove(i);
+    } else {
+      _quickRanks.add(i);
+    }
     _bumpLayout();
+  }
+
+  /// 当前勾选的名次一起加减这个号码。已全选则取消，否则补上。
+  void _toggleQuickNumber(int number) {
+    if (!widget.canBet || _submitting.value || _quickRanks.isEmpty) return;
+    final ranks = [for (final i in _quickRanks) _ranks[i]];
+    final next = Set<String>.from(_selectedNotifier.value);
+    final allOn = ranks.every((rank) => next.contains('$rank/$number'));
+    for (final rank in ranks) {
+      final key = '$rank/$number';
+      if (allOn) {
+        next.remove(key);
+      } else {
+        next.add(key);
+      }
+    }
+    _selectedNotifier.value = next;
+  }
+
+  bool _quickNumberOn(Set<String> selected, int number) {
+    if (_quickRanks.isEmpty) return false;
+    return _quickRanks.every(
+      (i) => selected.contains('${_ranks[i]}/$number'),
+    );
   }
 
   void _toggleCollapse(String key) {
@@ -213,12 +361,14 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       AppToast.info('请选择玩法');
       return;
     }
-    if (_unit <= 0) {
-      AppToast.info('请输入下注金额');
+    final unitToken = _unitToken;
+    if (unitToken == null) {
+      AppToast.info('下注金额必须是正整数');
       return;
     }
+    final unit = int.parse(unitToken);
     if (_submitLocked || widget.betGuard.isBusy || _submitting.value) return;
-    final command = selected.map((e) => '$e/$_unit').join(' ');
+    final command = selected.map((e) => '$e/$unitToken').join(' ');
     final live = ref.read(roomLotteryLiveProvider(widget.roomId));
     final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
     if (needConfirm) {
@@ -229,7 +379,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         context: context,
         command: command,
         issueNo: game?.currentIssue,
-        amountText: '${selected.length * _unit}',
+        amountText: _intAmountText(selected.length * unit),
       );
       if (!ok || !mounted) return;
     }
@@ -243,13 +393,14 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
           AppToast.error('玩法无法识别: $key');
           return;
         }
-        machineItems.add({'playCode': code, 'amount': _unit});
+        machineItems.add({'playCode': code, 'amount': unit});
       }
       final done = await widget.betGuard.run((requestId) async {
         return ref.read(lotteryRepositoryProvider).submitBet(
               roomId: widget.roomId,
               gameId: widget.gameId,
-              command: '',
+              // 带可读 command，后端才能广播给同房其他人
+              command: command,
               items: machineItems,
               requestId: requestId,
             );
@@ -260,6 +411,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       );
       if (!mounted) return;
       widget.onBetSuccess?.call(command, done);
+      _rememberBet(command);
       AppToast.success('下注成功');
       _reset();
     } catch (e) {
@@ -317,9 +469,17 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
                 _amountPreset = i;
                 _amountPresetNotifier.value = i;
                 _amountCtrl.text = '${_presets[i]}';
+                _amountCtrl.selection = TextSelection.collapsed(offset: _amountCtrl.text.length);
               },
-              onAmountChanged: (_) {},
+              onAmountChanged: (text) {
+                final n = int.tryParse(text.trim());
+                final idx = n == null ? -1 : _presets.indexOf(n);
+                if (_amountPreset == idx) return;
+                _amountPreset = idx;
+                _amountPresetNotifier.value = idx;
+              },
               onBet: _submit,
+              onRepeat: _repeatLast,
               onReset: () {
                 if (_submitting.value || widget.betGuard.isBusy) return;
                 _reset();
@@ -345,7 +505,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   Widget _buildQuick(Set<String> selected) {
     return ListView.builder(
       padding: EdgeInsets.all(8.w),
-      itemCount: 1 + (_quickRank < _ranks.length ? 5 : 0),
+      itemCount: 6,
       itemBuilder: (_, index) {
         if (index == 0) {
           return Wrap(
@@ -355,14 +515,13 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               for (var i = 0; i < _ranks.length; i++)
                 _RankChip(
                   label: _ranks[i],
-                  active: _quickRank == i,
-                  onTap: () => _setQuickRank(i),
+                  active: _quickRanks.contains(i),
+                  onTap: () => _toggleQuickRank(i),
                 ),
             ],
           );
         }
         final pairIndex = index - 1;
-        final rank = _ranks[_quickRank];
         final a = pairIndex * 2 + 1;
         final b = pairIndex * 2 + 2;
         return Padding(
@@ -373,8 +532,8 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
                 child: _BallOddsCell(
                   number: a,
                   odds: '9.995',
-                  selected: selected.contains('$rank/$a'),
-                  onTap: () => _toggle('$rank/$a'),
+                  selected: _quickNumberOn(selected, a),
+                  onTap: () => _toggleQuickNumber(a),
                 ),
               ),
               SizedBox(width: 6.w),
@@ -382,8 +541,8 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
                 child: _BallOddsCell(
                   number: b,
                   odds: '9.995',
-                  selected: selected.contains('$rank/$b'),
-                  onTap: () => _toggle('$rank/$b'),
+                  selected: _quickNumberOn(selected, b),
+                  onTap: () => _toggleQuickNumber(b),
                 ),
               ),
             ],
@@ -900,6 +1059,7 @@ class _BottomBar extends StatelessWidget {
     required this.onPreset,
     required this.onAmountChanged,
     required this.onBet,
+    required this.onRepeat,
     required this.onReset,
     required this.submittingListenable,
     this.enabled = true,
@@ -913,6 +1073,7 @@ class _BottomBar extends StatelessWidget {
   final ValueChanged<int> onPreset;
   final ValueChanged<String> onAmountChanged;
   final VoidCallback onBet;
+  final VoidCallback onRepeat;
   final VoidCallback onReset;
   final ValueListenable<bool> submittingListenable;
   final bool enabled;
@@ -961,12 +1122,13 @@ class _BottomBar extends StatelessWidget {
                 ValueListenableBuilder<TextEditingValue>(
                   valueListenable: amountCtrl,
                   builder: (_, value, _) {
-                    final unit = double.tryParse(value.text.trim()) ?? 0;
+                    final unit = int.tryParse(value.text.trim()) ??
+                        (double.tryParse(value.text.trim())?.round() ?? 0);
                     final liveTotal = unit * count;
                     return Row(
                       children: [
                         Text(
-                          '下注总额: ${liveTotal.toStringAsFixed(1)}',
+                          '下注总额: $liveTotal',
                           style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                         ),
                         const Spacer(),
@@ -987,9 +1149,12 @@ class _BottomBar extends StatelessWidget {
                         child: EmulatorSafeTextField(
                           controller: amountCtrl,
                           enabled: canInteract,
-                          readOnly: true,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
                           onChanged: onAmountChanged,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
                           style: TextStyle(fontSize: 14.sp, color: canInteract ? AppColors.textPrimary : AppColors.textHint),
                           decoration: InputDecoration(
                             hintText: enabled ? '请输入下注金额' : '房主不可下注',
@@ -1034,6 +1199,20 @@ class _BottomBar extends StatelessWidget {
                                 ),
                               )
                             : Text('下注', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    GestureDetector(
+                      onTap: canInteract ? onRepeat : null,
+                      child: Container(
+                        height: 40.h,
+                        padding: EdgeInsets.symmetric(horizontal: 12.w),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: canInteract ? const Color(0xFF43A047) : AppColors.textHint,
+                          borderRadius: BorderRadius.circular(4.r),
+                        ),
+                        child: Text('重投', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
                       ),
                     ),
                     SizedBox(width: 8.w),

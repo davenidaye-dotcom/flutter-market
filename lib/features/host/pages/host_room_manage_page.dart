@@ -5,12 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/widgets/emulator_safe_dialog.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../profile/pages/change_password_page.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../widgets/host_ui.dart';
 import 'host_shell_page.dart';
 import 'room/host_agents_page.dart';
 import 'room/host_announcements_page.dart';
@@ -18,6 +19,7 @@ import 'room/host_basic_settings_page.dart';
 import 'room/host_games_manage_page.dart';
 import 'room/host_members_page.dart';
 import 'room/host_odds_limits_page.dart';
+import 'room/host_rebate_hub_page.dart';
 import 'room/host_operation_logs_page.dart';
 import 'room/host_room_settings_page.dart';
 
@@ -50,6 +52,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     ('\u623f\u95f4\u6210\u5458', 'members'),
     ('\u4ee3\u7406\u5217\u8868', 'agents'),
     ('\u8d54\u7387\u8bbe\u7f6e', 'odds'),
+    ('\u56de\u6c34\u8bbe\u7f6e', 'rebate'),
     ('\u64cd\u4f5c\u65e5\u5fd7', 'logs'),
   ];
 
@@ -91,17 +94,13 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
 
   Future<void> _toggleGame(int i, bool v) async {
     if (!v) {
-      final ok = await showEmulatorSafeDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          content: const Text('\u786e\u5b9a\u5173\u95ed\u8be5\u5f69\u79cd\u5417\uff1f'),
-          actions: [
-            TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('\u53d6\u6d88')),
-            TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('\u786e\u5b9a')),
-          ],
-        ),
+      final ok = await hostConfirm(
+        context,
+        title: '关闭彩种',
+        message: '确定关闭该彩种吗？',
+        danger: true,
       );
-      if (ok != true || !mounted) return;
+      if (!ok || !mounted) return;
     }
     final next = [..._games];
     next[i] = (next[i].$1, next[i].$2, v);
@@ -148,6 +147,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       'members' => HostMembersPage(roomId: id),
       'agents' => HostAgentsPage(roomId: id),
       'odds' => HostOddsLimitsPage(roomId: id),
+      'rebate' => HostRebateHubPage(roomId: id),
       'logs' => HostOperationLogsPage(roomId: id),
       _ => null,
     };
@@ -172,7 +172,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                 onBack: () => goHostLottery(context, widget.roomId),
               ),
               Expanded(
-                child: RefreshIndicator(
+                child: AppPullRefresh(
                   onRefresh: () => _load(fromPull: true),
                   child: _loading && _room.isEmpty
                       ? ListView(

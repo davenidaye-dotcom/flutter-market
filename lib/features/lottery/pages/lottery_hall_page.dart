@@ -112,15 +112,18 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
                 type: visible ? MaterialType.canvas : MaterialType.transparency,
                 color: visible ? const Color(0xFFF5F5F5) : Colors.transparent,
                 child: AppToastScope(
-                  child: HeroControllerScope.none(
-                    child: Navigator(
-                      onGenerateRoute: (_) => MaterialPageRoute<void>(
-                        builder: (_) => ChatBetPage(
-                          key: ValueKey('chat-$gameId'),
-                          roomId: widget.roomId,
-                          gameId: gameId,
-                          onClose: _hideChat,
-                          onSwitchGame: _openChat,
+                  child: ChatOverlayVisibility(
+                    visible: visible,
+                    child: HeroControllerScope.none(
+                      child: Navigator(
+                        onGenerateRoute: (_) => MaterialPageRoute<void>(
+                          builder: (_) => ChatBetPage(
+                            key: ValueKey('chat-$gameId'),
+                            roomId: widget.roomId,
+                            gameId: gameId,
+                            onClose: _hideChat,
+                            onSwitchGame: _openChat,
+                          ),
                         ),
                       ),
                     ),

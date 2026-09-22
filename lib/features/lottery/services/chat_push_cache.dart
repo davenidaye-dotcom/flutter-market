@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -57,6 +56,8 @@ class ChatPushCache {
   static final ChatPushCache instance = ChatPushCache._();
 
   static const maxPerGame = 20;
+  /// 聊天历史按期数，后端默认/最大 15 期，不要当成消息条数去拉 50。
+  static const chatHistoryIssueLimit = 15;
   /// 聊天 ListView 最多渲染条数：20 期 ×（封盘预警+封盘线+开奖）+ 余量
   static const maxVisibleChatMessages = maxPerGame * 3 + 10;
   /// 进房预拉、聊天同步：每彩种最新开奖条数
@@ -129,20 +130,20 @@ class ChatPushCache {
     return false;
   }
 
-  /// 开奖期号是否不连续（如 5279 下一期直接 5281）。
+  /// 开奖期号是否不连续（比完整期号，不用后四位）。
   bool hasDrawGap(String roomId, String gameId) {
-    final keys = <int>[];
+    final nums = <int>[];
     for (final m in bufferedForGame(roomId, gameId)) {
       if (m.type != ChatMessageType.resultCard) continue;
       final issue = extractIssue(m);
       if (issue == null || issue.isEmpty) continue;
-      final key = issueCompareKey(issue);
-      if (key > 0) keys.add(key);
+      final n = int.tryParse(issue.trim()) ?? 0;
+      if (n >= 10000) nums.add(n);
     }
-    if (keys.length < 2) return false;
-    keys.sort();
-    for (var i = 1; i < keys.length; i++) {
-      if (keys[i] - keys[i - 1] > 1) return true;
+    if (nums.length < 2) return false;
+    nums.sort();
+    for (var i = 1; i < nums.length; i++) {
+      if (nums[i] - nums[i - 1] > 1) return true;
     }
     return false;
   }
@@ -161,6 +162,12 @@ class ChatPushCache {
     _purgeAliasDuplicates(roomId, gameId, normalized, logicalKey);
     final keys = _keysByRoom[roomId]!;
     if (keys.contains(logicalKey)) {
+      if (normalized.type == ChatMessageType.betReceipt &&
+          _replaceIfRicher(roomId, logicalKey, normalized)) {
+        _invalidateGameCache(roomId, gameId);
+        _schedulePersist(roomId);
+        return true;
+      }
       _upgradeStoredIssueIfLonger(roomId, logicalKey, normalized);
       return false;
     }
@@ -177,6 +184,28 @@ class ChatPushCache {
     _invalidateGameCache(roomId, gameId);
     _schedulePersist(roomId);
     return true;
+  }
+
+  /// 本地先插的确认卡文案较短时，用服务端 BET_RECEIPT 覆盖。
+  bool _replaceIfRicher(
+    String roomId,
+    String logicalKey,
+    ChatMessageModel incoming,
+  ) {
+    final buffer = _bufferByRoom[roomId];
+    if (buffer == null || incoming.content.trim().isEmpty) return false;
+    for (var i = 0; i < buffer.length; i++) {
+      final entry = buffer[i];
+      if (entry.dedupeKey != logicalKey) continue;
+      final existing = entry.push.message.content;
+      if (incoming.content.trim().length <= existing.trim().length) return false;
+      buffer[i] = _CachedChatPush(
+        dedupeKey: logicalKey,
+        push: LotteryChatPush(gameId: entry.push.gameId, message: incoming),
+      );
+      return true;
+    }
+    return false;
   }
 
   /// 同逻辑期已存在时：若新消息期号更长，升级展示文案（短号→长号）。
@@ -206,6 +235,7 @@ class ChatPushCache {
               isAdmin: existing.isAdmin,
               issueNo: preferred,
               drawRanks: existing.drawRanks ?? incoming.drawRanks,
+              avatarUrl: existing.avatarUrl ?? incoming.avatarUrl,
             )
           : ChatMessageModel(
               id: existing.id,
@@ -216,6 +246,7 @@ class ChatPushCache {
               isAdmin: existing.isAdmin,
               issueNo: preferred,
               drawRanks: existing.drawRanks,
+              avatarUrl: existing.avatarUrl ?? incoming.avatarUrl,
             );
       buffer[i] = _CachedChatPush(
         dedupeKey: logicalKey,
@@ -232,6 +263,12 @@ class ChatPushCache {
     if (issue == null || issue.isEmpty) return null;
     if (message.type == ChatMessageType.resultCard) {
       return drawChatMessageId(gameId, issue);
+    }
+    if (message.type == ChatMessageType.winCheck) {
+      return 'win-list-$gameId-$issue';
+    }
+    if (message.type == ChatMessageType.betListCheck) {
+      return 'bet-rank-$gameId-$issue';
     }
     if (message.type == ChatMessageType.system) {
       if (message.content.contains('封盘线') ||
@@ -269,6 +306,12 @@ class ChatPushCache {
       }
       final m = entry.push.message;
       if (m.type != incoming.type) {
+        kept.add(entry);
+        continue;
+      }
+      // 只合并开奖卡 / 封盘提示的长短号别名。玩家指令和机器人确认卡按单保留。
+      if (incoming.type != ChatMessageType.resultCard &&
+          incoming.type != ChatMessageType.system) {
         kept.add(entry);
         continue;
       }
@@ -454,22 +497,19 @@ class ChatPushCache {
     final keys = _keysByRoom[roomId]!;
     final buffer = _bufferByRoom[roomId]!;
 
-    var maxApiKey = 0;
-    var minApiKey = 1 << 30;
+    var minFull = 1 << 62;
     final apiIssueKeys = <int>{};
     for (final draw in draws) {
       final issue = extractIssue(draw);
       if (issue != null && issue.isNotEmpty) {
         final key = issueCompareKey(issue);
-        if (key > 0) {
-          apiIssueKeys.add(key);
-          maxApiKey = math.max(maxApiKey, key);
-          minApiKey = math.min(minApiKey, key);
-        }
+        final full = int.tryParse(issue.trim()) ?? 0;
+        if (key > 0) apiIssueKeys.add(key);
+        if (full >= 10000 && full < minFull) minFull = full;
       }
     }
     if (apiIssueKeys.isEmpty) return;
-    if (minApiKey > maxApiKey) minApiKey = maxApiKey;
+    if (minFull == 1 << 62) minFull = 0;
 
     final kept = <_CachedChatPush>[];
     for (final entry in List<_CachedChatPush>.from(buffer)) {
@@ -478,11 +518,12 @@ class ChatPushCache {
         final issue = extractIssue(entry.push.message);
         final issueKey =
             issue != null && issue.isNotEmpty ? issueCompareKey(issue) : 0;
+        final full = issue != null ? (int.tryParse(issue.trim()) ?? 0) : 0;
         if (issueKey > 0 && apiIssueKeys.contains(issueKey)) {
           keys.remove(entry.dedupeKey);
           continue;
         }
-        if (issueKey > 0 && issueKey < minApiKey) {
+        if (minFull > 0 && full >= 10000 && full < minFull) {
           keys.remove(entry.dedupeKey);
           continue;
         }
@@ -498,8 +539,8 @@ class ChatPushCache {
           continue;
         }
         final issueKey = issueCompareKey(issue);
-        // 比 API 最旧开奖还早 → 过期；无有效期号 key 也丢
-        if (issueKey <= 0 || issueKey < minApiKey) {
+        final full = int.tryParse(issue.trim()) ?? 0;
+        if (issueKey <= 0 || (minFull > 0 && full >= 10000 && full < minFull)) {
           keys.remove(entry.dedupeKey);
           continue;
         }
@@ -730,9 +771,18 @@ class ChatPushCache {
     final userBets = entries
         .where((e) => isUserBetChatMessage(e.push.message))
         .toList();
+    final robotMsgs = entries
+        .where((e) =>
+            e.push.message.type == ChatMessageType.betReceipt ||
+            e.push.message.type == ChatMessageType.winCheck ||
+            e.push.message.type == ChatMessageType.betListCheck)
+        .toList();
     final others = entries
         .where((e) =>
             e.push.message.type != ChatMessageType.resultCard &&
+            e.push.message.type != ChatMessageType.betReceipt &&
+            e.push.message.type != ChatMessageType.winCheck &&
+            e.push.message.type != ChatMessageType.betListCheck &&
             !isUserBetChatMessage(e.push.message))
         .toList();
 
@@ -740,18 +790,27 @@ class ChatPushCache {
         ? draws.sublist(draws.length - maxPerGame)
         : draws;
     const maxUserBets = 10;
+    const maxRobot = 10;
     final keptUserBets = userBets.length > maxUserBets
         ? userBets.sublist(userBets.length - maxUserBets)
         : userBets;
+    final keptRobot = robotMsgs.length > maxRobot
+        ? robotMsgs.sublist(robotMsgs.length - maxRobot)
+        : robotMsgs;
     final slotsForOthers =
-        maxPerGame - keptDraws.length - keptUserBets.length;
+        maxPerGame - keptDraws.length - keptUserBets.length - keptRobot.length;
     final keptOthers = slotsForOthers <= 0
         ? const <_CachedChatPush>[]
         : others.sublist(
             others.length > slotsForOthers ? others.length - slotsForOthers : 0,
           );
 
-    final keptSet = <_CachedChatPush>{...keptDraws, ...keptUserBets, ...keptOthers};
+    final keptSet = <_CachedChatPush>{
+      ...keptDraws,
+      ...keptUserBets,
+      ...keptRobot,
+      ...keptOthers,
+    };
     for (final e in entries) {
       if (keptSet.contains(e)) continue;
       // 封盘 dedupe key 必须保留：否则 PERIOD_TICK 会每秒重推 → 聊天闪屏
@@ -764,7 +823,7 @@ class ChatPushCache {
       keys.remove(k);
     }
 
-    final merged = [...keptDraws, ...keptUserBets, ...keptOthers];
+    final merged = [...keptDraws, ...keptUserBets, ...keptRobot, ...keptOthers];
     merged.sort((a, b) => entries.indexOf(a).compareTo(entries.indexOf(b)));
     return merged;
   }
@@ -795,8 +854,10 @@ Map<String, dynamic> _messageToJson(ChatMessageModel message) => {
       'time': message.time,
       'type': message.type.name,
       'isAdmin': message.isAdmin,
+      'isSelf': message.isSelf,
       if (message.issueNo != null) 'issueNo': message.issueNo,
       if (message.drawRanks != null) 'drawRanks': message.drawRanks,
+      if (message.avatarUrl != null) 'avatarUrl': message.avatarUrl,
     };
 
 ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
@@ -813,12 +874,16 @@ ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
       : null;
   return ChatMessageModel(
     id: id,
-    sender: json['sender']?.toString() ?? '管理员',
+    sender: json['sender']?.toString() == '管理员'
+        ? '机器人'
+        : (json['sender']?.toString() ?? '机器人'),
     content: json['content']?.toString() ?? '',
     time: json['time']?.toString() ?? '',
     type: type,
     isAdmin: json['isAdmin'] == true,
+    isSelf: json['isSelf'] == true,
     issueNo: json['issueNo']?.toString(),
     drawRanks: drawRanks == null || drawRanks.isEmpty ? null : drawRanks,
+    avatarUrl: json['avatarUrl']?.toString(),
   );
 }

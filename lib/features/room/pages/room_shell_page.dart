@@ -29,10 +29,11 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
   @override
   void initState() {
     super.initState();
-    // 进房即预拉彩种列表 + 全部彩种历史开奖/聊天缓存，下注页秒开
+    // 进房拉彩种列表，并预拉每个彩种最近 15 期开奖/聊天，避免第一次点进彩种只有本地封盘。
     Future.microtask(() async {
       final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
       await live.ensureLoaded();
+      if (!mounted) return;
       unawaited(live.ensureDrawHistoryPreloaded());
     });
   }

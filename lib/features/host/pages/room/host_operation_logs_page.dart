@@ -8,6 +8,7 @@ import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
 /// Op logs — GET /owner/room/op-logs?action=
+/// action/content 接口仍可能是英文码，展示一律走 [hostOpActionLabel] / [hostOpContentLabel]
 class HostOperationLogsPage extends ConsumerStatefulWidget {
   const HostOperationLogsPage({super.key, required this.roomId});
   final String roomId;
@@ -29,37 +30,27 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
   bool _loading = true;
   int _filter = 0;
 
-  /// 与后端 writeOpLog action 对齐；无对应埋点的分类筛完为空属正常
   static const _filters = <_Filter>[
     _Filter('全部'),
-    _Filter('用户管理', action: 'MEMBER_STATUS,MEMBER_REBATE'),
-    _Filter('积分', action: 'APPLICATION*'),
+    _Filter(
+      '用户管理',
+      action:
+          'MEMBER_STATUS,MEMBER_REBATE,MEMBER_REMARK,MEMBER_DELETE,MEMBER_ROBOT,MEMBER_TRIAL',
+    ),
+    _Filter('积分', action: 'MEMBER_CREDIT,APPLICATION*'),
     _Filter('审核', action: 'APPLICATION*'),
-    _Filter('代理', action: 'FEIPAN_BIND,FEIPAN_UNBIND,FEIPAN_SWITCH'),
+    _Filter(
+      '代理',
+      action: 'MEMBER_AGENT,MEMBER_DOWNLINE,FEIPAN_BIND,FEIPAN_UNBIND,FEIPAN_SWITCH',
+    ),
     _Filter('赔率与限额', action: 'ODDS,FEIPAN_ODDS'),
-    _Filter('反水', action: 'REBATE,MEMBER_REBATE'),
+    _Filter('回水', action: 'REBATE,MEMBER_REBATE'),
     _Filter('彩种', action: 'GAME_SETTINGS'),
     _Filter('公告', action: 'ANNOUNCEMENT'),
-    _Filter('气氛号', action: 'REDPACK'),
-    _Filter('房间设置', action: 'ROOM_NAME,ENTER_PASSWORD'),
+    _Filter('红包', action: 'REDPACK'),
+    _Filter('房间设置', action: 'ROOM_NAME,ENTER_PASSWORD,ROOM_FLAGS'),
     _Filter('协管', action: 'ASSISTANT*'),
   ];
-
-  static String actionLabel(String? action) {
-    final a = (action ?? '').toUpperCase();
-    if (a.startsWith('APPLICATION_')) return '审核';
-    return switch (a) {
-      'MEMBER_STATUS' || 'MEMBER_REBATE' => '用户管理',
-      'FEIPAN_BIND' || 'FEIPAN_UNBIND' || 'FEIPAN_SWITCH' => '代理',
-      'ODDS' || 'FEIPAN_ODDS' => '赔率与限额',
-      'REBATE' => '反水',
-      'GAME_SETTINGS' => '彩种',
-      'ANNOUNCEMENT' => '公告',
-      'REDPACK' => '气氛号',
-      'ROOM_NAME' || 'ENTER_PASSWORD' => '房间设置',
-      _ => a.isEmpty ? '-' : a,
-    };
-  }
 
   @override
   void initState() {
@@ -144,17 +135,20 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
                         itemBuilder: (_, i) {
                           final r = _rows[i];
                           final action = (r['action'] ?? '').toString();
+                          final content = hostOpContentLabel(
+                            (r['content'] ?? r['summary'] ?? '').toString(),
+                          );
                           return HostWhiteCard(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  (r['content'] ?? r['summary'] ?? '').toString(),
+                                  content.isEmpty ? '—' : content,
                                   style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  '${actionLabel(action)} · ${r['operatorName'] ?? r['operator'] ?? ''} · ${r['createdAt'] ?? r['time'] ?? ''}',
+                                  '${hostOpActionLabel(action)} · ${r['operatorName'] ?? r['operator'] ?? ''} · ${r['createdAt'] ?? r['time'] ?? ''}',
                                   style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                                 ),
                               ],

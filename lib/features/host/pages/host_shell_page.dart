@@ -34,6 +34,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       // 与玩家 RoomShell 一致：进壳即拉彩种，否则大厅 ready 永远 false 一直转圈
       final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
       await live.ensureLoaded();
+      if (!mounted) return;
       unawaited(live.ensureDrawHistoryPreloaded());
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
     });

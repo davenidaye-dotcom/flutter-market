@@ -89,7 +89,7 @@ List<ChatMessageModel> syntheticSealMessagesForDraw({
   return [
     ChatMessageModel(
       id: 'hist-seal-warn-$gameId-${issueCompareKey(issue)}',
-      sender: '管理员',
+      sender: '机器人',
       content: '注意：距离封盘时间还有10秒，封盘之后将不能再投注！',
       time: '',
       type: ChatMessageType.system,
@@ -98,7 +98,7 @@ List<ChatMessageModel> syntheticSealMessagesForDraw({
     ),
     ChatMessageModel(
       id: 'hist-sealed-$gameId-${issueCompareKey(issue)}',
-      sender: '管理员',
+      sender: '机器人',
       content: '======停止战斗====== =======封盘线=======',
       time: '',
       type: ChatMessageType.system,

@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
-import '../../../../shared/widgets/emulator_safe_dialog.dart';
+import '../../../../shared/widgets/app_pull_refresh.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../widgets/host_ui.dart';
@@ -108,57 +108,62 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
     final userCtrl = TextEditingController();
     final pwdCtrl = TextEditingController(text: 'Pass1234');
     final selected = <String>{'成员', '审核'};
-    final ok = await showEmulatorSafeDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('创建协管'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                EmulatorSafeTextField(controller: nameCtrl, decoration: const InputDecoration(hintText: '昵称')),
-                SizedBox(height: 8.h),
-                EmulatorSafeTextField(controller: userCtrl, decoration: const InputDecoration(hintText: '用户名')),
-                SizedBox(height: 8.h),
-                EmulatorSafeTextField(
-                  controller: pwdCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(hintText: '初始密码'),
-                ),
-                SizedBox(height: 12.h),
-                Text('权限', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
-                SizedBox(height: 6.h),
-                Wrap(
-                  spacing: 6.w,
-                  runSpacing: 6.h,
-                  children: [
-                    for (final p in _allPermissions)
-                      FilterChip(
-                        label: Text(p, style: TextStyle(fontSize: 12.sp)),
-                        selected: selected.contains(p),
-                        onSelected: (v) => setDialogState(() {
-                          if (v) {
-                            selected.add(p);
-                          } else {
-                            selected.remove(p);
-                          }
-                        }),
-                      ),
-                  ],
-                ),
-              ],
+    final ok = await hostFormSheet(
+      context,
+      title: '创建协管',
+      confirmText: '确定',
+      buildFields: (ctx, setSheet) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          EmulatorSafeTextField(
+            controller: nameCtrl,
+            decoration: InputDecoration(
+              hintText: '昵称',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
             ),
           ),
-          actions: [
-            TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('确定')),
-          ],
-        ),
+          SizedBox(height: 8.h),
+          EmulatorSafeTextField(
+            controller: userCtrl,
+            decoration: InputDecoration(
+              hintText: '用户名',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+          ),
+          SizedBox(height: 8.h),
+          EmulatorSafeTextField(
+            controller: pwdCtrl,
+            obscureText: true,
+            decoration: InputDecoration(
+              hintText: '初始密码',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          Text('权限', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+          SizedBox(height: 6.h),
+          Wrap(
+            spacing: 6.w,
+            runSpacing: 6.h,
+            children: [
+              for (final p in _allPermissions)
+                FilterChip(
+                  label: Text(p, style: TextStyle(fontSize: 12.sp)),
+                  selected: selected.contains(p),
+                  onSelected: (v) => setSheet(() {
+                    if (v) {
+                      selected.add(p);
+                    } else {
+                      selected.remove(p);
+                    }
+                  }),
+                ),
+            ],
+          ),
+        ],
       ),
     );
-    if (ok != true) {
+    if (!ok) {
       nameCtrl.dispose();
       userCtrl.dispose();
       pwdCtrl.dispose();
@@ -237,7 +242,7 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
         onPressed: _createAssistant,
         child: Text('创建', style: TextStyle(fontSize: 14.sp, color: AppColors.navBlue)),
       ),
-      body: RefreshIndicator(
+      body: AppPullRefresh(
         onRefresh: () => _load(fromPull: true),
         child: _loading && _assistants.isEmpty
             ? ListView(

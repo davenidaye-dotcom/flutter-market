@@ -23,12 +23,23 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
   String _type = 'SUMMARY';
 
   static const _typeMap = {
-    'COMMISSION': '\u4f63\u91d1\u8fd4\u70b9',
-    'SPECIAL': '\u7279\u6b8a\u8fd4\u70b9',
-    'INVITE': '\u9080\u8bf7\u8fd4\u70b9',
-    'REDPACK': '\u7ea2\u5305',
-    'AGENT_REBATE': '\u4ee3\u7406\u8fd4\u4f63',
-    'RATIO': '\u8fd4\u70b9\u6bd4\u4f8b',
+    'SUMMARY': '汇总',
+    'COMMISSION': '回水',
+    'SPECIAL': '特殊返点',
+    'INVITE': '邀请返点',
+    'REDPACK': '红包',
+    'AGENT_REBATE': '代理返佣',
+    'RATIO': '返点比例',
+  };
+
+  static const _valueKeys = {
+    'SUMMARY': 'total',
+    'COMMISSION': 'commissionRebate',
+    'SPECIAL': 'specialRebate',
+    'INVITE': 'inviteRebate',
+    'REDPACK': 'redpack',
+    'AGENT_REBATE': 'agentRebate',
+    'RATIO': 'rebateRatio',
   };
 
   @override
@@ -129,7 +140,7 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
                                         Text(e.value, style: TextStyle(fontSize: 14.sp)),
                                         const Spacer(),
                                         Text(
-                                          _n(e.key.toLowerCase()),
+                                          _n(_valueKeys[e.key] ?? e.key.toLowerCase()),
                                           style: TextStyle(fontSize: 14.sp),
                                         ),
                                         Icon(

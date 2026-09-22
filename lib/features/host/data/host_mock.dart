@@ -115,13 +115,24 @@ HostMember hostMemberFromMap(Map<String, dynamic> m) {
   final nick = (m['nickname'] ?? m['displayName'] ?? '').toString();
   final user = (m['username'] ?? '').toString();
   final balance = m['balance'] ?? m['points'] ?? 0;
-  final pts = balance is num ? balance.toInt() : int.tryParse('$balance') ?? 0;
+  final parsed = balance is num ? balance : num.tryParse('$balance');
+  final pts = (parsed ?? 0).round();
   final status = (m['status'] ?? '').toString().toUpperCase();
   final role = (m['roleLabel'] ?? m['role'] ?? '普通用户').toString();
   final online = m['online'] == true || (m['presence']?.toString().toUpperCase() == 'IN');
   final isAgent = m['isAgent'] == true || role.contains('代理');
-  final isMood = m['isMood'] == true || role.contains('气氛') || role.contains('机器');
-  final isTrial = m['isTrial'] == true || role.contains('试玩');
+  // 以后端 playMode 为准：ATMOSPHERE=机器人，TRIAL=试玩号
+  final playMode = (m['playMode'] ?? '').toString().toUpperCase();
+  final isMood = playMode == 'ATMOSPHERE' ||
+      m['isRobot'] == true ||
+      m['isMood'] == true ||
+      role.contains('气氛') ||
+      role.contains('机器');
+  final isTrial = playMode == 'TRIAL' ||
+      m['isFake'] == true ||
+      m['isTrial'] == true ||
+      role.contains('假人') ||
+      role.contains('试玩');
   final disabled = status == 'FROZEN' ||
       status == 'BAN_ENTER' ||
       status == 'DISABLED' ||
@@ -174,5 +185,59 @@ String hostNumStr(dynamic value, {int fraction = 0}) {
     return parsed == parsed.roundToDouble() ? '${parsed.toInt()}' : parsed.toString();
   }
   return parsed.toStringAsFixed(fraction);
+}
+
+/// 操作日志 action 码 → 中文（接口仍返回英文码，展示侧翻译）
+String hostOpActionLabel(String? action) {
+  final a = (action ?? '').trim().toUpperCase();
+  if (a.isEmpty) return '-';
+  if (a.startsWith('APPLICATION_')) return '审核';
+  if (a.startsWith('ASSISTANT')) return '协管';
+  return switch (a) {
+    'MEMBER_CREDIT' => '上下分',
+    'MEMBER_AGENT' || 'MEMBER_DOWNLINE' => '代理',
+    'MEMBER_TRIAL' => '试玩号',
+    'MEMBER_STATUS' || 'MEMBER_REBATE' || 'MEMBER_REMARK' || 'MEMBER_DELETE' ||
+    'MEMBER_ROBOT' =>
+      '用户管理',
+    'FEIPAN_BIND' || 'FEIPAN_UNBIND' || 'FEIPAN_SWITCH' || 'FEIPAN_ODDS' => '飞单',
+    'ODDS' => '赔率与限额',
+    'REBATE' => '回水',
+    'GAME_SETTINGS' => '彩种',
+    'ANNOUNCEMENT' => '公告',
+    'REDPACK' => '红包',
+    'ROOM_NAME' || 'ENTER_PASSWORD' || 'ROOM_FLAGS' => '房间设置',
+    _ => a,
+  };
+}
+
+/// 操作日志 content 里残留英文片段（历史数据）→ 中文
+String hostOpContentLabel(String? content) {
+  var t = (content ?? '').trim();
+  if (t.isEmpty) return t;
+  t = t.replaceFirst(RegExp(r'^UP--', caseSensitive: false), '上分--');
+  t = t.replaceFirst(RegExp(r'^DOWN--', caseSensitive: false), '下分--');
+  t = t.replaceAllMapped(RegExp(r'申请(APPROVED|REJECTED|CANCELLED|PENDING)--', caseSensitive: false), (m) {
+    final s = m.group(1)!.toUpperCase();
+    final zh = switch (s) {
+      'APPROVED' => '通过',
+      'REJECTED' => '拒绝',
+      'CANCELLED' => '取消',
+      'PENDING' => '待审',
+      _ => s,
+    };
+    return '申请$zh--';
+  });
+  t = t.replaceAllMapped(RegExp(r'--(ACTIVE|NORMAL|DISABLED|BAN|BANNED|BLOCK|REMOVED)$', caseSensitive: false), (m) {
+    final s = m.group(1)!.toUpperCase();
+    final zh = switch (s) {
+      'ACTIVE' || 'NORMAL' => '正常',
+      'DISABLED' || 'BAN' || 'BANNED' || 'BLOCK' => '封禁',
+      'REMOVED' => '已删除',
+      _ => s,
+    };
+    return '--$zh';
+  });
+  return t;
 }
 

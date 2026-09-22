@@ -17,6 +17,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
+import '../utils/bet_receipt_format.dart';
 import '../../host/pages/host_shell_page.dart';
 import '../../room/pages/room_shell_page.dart';
 import '../../room/pages/customer_service_page.dart';
@@ -45,6 +46,25 @@ import 'market_bet_page.dart';
 
 enum _BottomPanel { none, keypad, menu, quickBet }
 enum _TopPanel { none, betSlip, longDragon }
+
+/// 大厅 Overlay Offstage 可见性，供 ChatBetPage 在隐藏时收起盘口。
+class ChatOverlayVisibility extends InheritedWidget {
+  const ChatOverlayVisibility({
+    super.key,
+    required this.visible,
+    required super.child,
+  });
+
+  final bool visible;
+
+  static ChatOverlayVisibility? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<ChatOverlayVisibility>();
+  }
+
+  @override
+  bool updateShouldNotify(ChatOverlayVisibility oldWidget) =>
+      visible != oldWidget.visible;
+}
 
 class ChatBetPage extends ConsumerStatefulWidget {
   const ChatBetPage({
@@ -77,6 +97,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   final _gameIdNotifier = ValueNotifier<String>('');
   final _messagesLoadingNotifier = ValueNotifier(false);
   _BottomPanel _panel = _BottomPanel.none;
+  bool _overlayWasVisible = true;
   final _panelNotifier = ValueNotifier<_BottomPanel>(_BottomPanel.none);
   final _topPanelNotifier = ValueNotifier<_TopPanel>(_TopPanel.none);
   final _historyExpandedNotifier = ValueNotifier(false);
@@ -217,7 +238,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     for (final m in timeline) {
       final issue = extractIssue(m);
       if (issue == null || issue.isEmpty) continue;
-      final key = issueCompareKey(issue);
+      final key = int.tryParse(issue.trim()) ?? 0;
+      if (key <= 0) continue;
       if (m.type == ChatMessageType.resultCard) {
         maxDrawKey = math.max(maxDrawKey, key);
       } else if (m.type == ChatMessageType.system) {
@@ -228,13 +250,15 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         }
       }
     }
+    final game = ref.read(roomLotteryLiveProvider(widget.roomId)).gameById(_gameId);
+    final currentKey = int.tryParse((game?.currentIssue ?? '').trim()) ?? 0;
     final extras = <ChatMessageModel>[];
     for (final m in _messagesNotifier.value) {
       if (m.type != ChatMessageType.system) continue;
       final issue = extractIssue(m);
       if (issue == null || issue.isEmpty) continue;
-      final key = issueCompareKey(issue);
-      if (key <= maxDrawKey) continue;
+      final key = int.tryParse(issue.trim()) ?? 0;
+      if (key <= 0 || key != currentKey || key <= maxDrawKey) continue;
       final isLine =
           m.content.contains('封盘线') || m.content.contains('停止战斗');
       final isWarn = m.content.contains('封盘');
@@ -369,6 +393,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       content: command,
       time: TimeOfDay.now().format(context),
       issueNo: issue.isNotEmpty ? issue : null,
+      isSelf: true,
+      avatarUrl: user?.avatarUrl,
     );
     _appendChatMessage(message);
     ChatPushCache.instance.pushOnce(
@@ -376,6 +402,25 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       dedupeKey: id,
       gameId: _gameId,
       message: message,
+    );
+    final receipt = ChatMessageModel(
+      id: 'bet-receipt-$_gameId-${orderIds.isNotEmpty ? orderIds.first : id}',
+      sender: '机器人',
+      content: formatBetReceiptText(
+        mention: sender,
+        issue: issue,
+        fallbackContent: command,
+      ),
+      time: message.time,
+      type: ChatMessageType.betReceipt,
+      issueNo: issue.isNotEmpty ? issue : null,
+    );
+    _appendChatMessage(receipt);
+    ChatPushCache.instance.pushOnce(
+      roomId: widget.roomId,
+      dedupeKey: receipt.id,
+      gameId: _gameId,
+      message: receipt,
     );
   }
 
@@ -637,6 +682,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
       await live.ensureLoaded();
       if (_disposed || subGen != _chatSubGen) return;
+      await live.ensureDrawHistoryPreloaded();
+      if (_disposed || subGen != _chatSubGen) return;
+      // 15 期已在进房时拉过：这里只上屏，不盖转圈。
+      _messagesLoadingNotifier.value = false;
+      _hydrateMessagesFromCacheIfReady();
       // 进聊天页强制刷积分（总资产页有数、顶栏常为 0 的主因之一是 ready 后未再拉钱包）
       unawaited(live.refreshWallet());
       if (_disposed || subGen != _chatSubGen) return;
@@ -655,7 +705,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         _chatPushSub = null;
         return;
       }
-      unawaited(_loadMessages());
+      unawaited(_loadMessages(showLoadingOverlay: false));
     });
   }
 
@@ -663,6 +713,16 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _syncDockLayout();
+    final visible = ChatOverlayVisibility.maybeOf(context)?.visible ?? true;
+    if (_overlayWasVisible && !visible) {
+      if (_panel != _BottomPanel.none) {
+        _setPanel(_BottomPanel.none);
+      }
+      _topPanelNotifier.value = _TopPanel.none;
+      _historyExpandedNotifier.value = false;
+      _fabSelectedNotifier.value = null;
+    }
+    _overlayWasVisible = visible;
   }
 
   @override
@@ -749,10 +809,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   Future<void> _loadMessages({
     bool silent = false,
     bool forceReload = false,
+    bool showLoadingOverlay = true,
   }) {
     return _msgLoadInflight ??= _loadMessagesImpl(
       silent: silent,
       forceReload: forceReload,
+      showLoadingOverlay: showLoadingOverlay,
     ).whenComplete(() {
       _msgLoadInflight = null;
     });
@@ -761,6 +823,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   Future<void> _loadMessagesImpl({
     bool silent = false,
     bool forceReload = false,
+    bool showLoadingOverlay = true,
   }) async {
     final gen = ++_msgLoadGen;
     final liveNotifier =
@@ -772,7 +835,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         .hasDrawsForGame(widget.roomId, _gameId);
     // 已有内容上屏时后台刷新，不把列表换成转圈（防闪）
     final hasVisibleMessages = _messagesNotifier.value.isNotEmpty;
-    if (!silent && !warm && !hasVisibleMessages && !hasCache) {
+    if (showLoadingOverlay &&
+        !silent &&
+        !warm &&
+        !hasVisibleMessages &&
+        !hasCache) {
       _messagesLoadingNotifier.value = true;
     } else {
       _messagesLoadingNotifier.value = false;
@@ -798,8 +865,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         if (!mounted || gen != _msgLoadGen) return;
         _lastTimelineSig = null;
         _syncMessagesFromCache(forceScroll: true);
-        await _restoreBetDraft();
-        await _restoreBetSlipsFromServer();
+        unawaited(_restoreBetDraft());
+        unawaited(_restoreBetSlipsFromServer());
         _setPanel(_BottomPanel.none);
         _topPanelNotifier.value = _TopPanel.none;
         _historyExpandedNotifier.value = false;
@@ -932,16 +999,39 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     }
   }
 
+  Future<void> _claimRebate() async {
+    try {
+      final data = await ref.read(walletRepositoryProvider).claimRebate();
+      final raw = data['claimed'];
+      final claimed = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 0;
+      if (!mounted) return;
+      if (claimed > 0) {
+        AppToast.success('已领取回水 ${claimed.toStringAsFixed(2)}');
+      } else {
+        AppToast.info('暂无可领取回水');
+      }
+      unawaited(
+        ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
+      );
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
+  }
+
   void _onMenuItem(String label) {
     _setPanel(_BottomPanel.none);
     if (label == '上分' || label == '下分') {
       _submitWalletApplication(label == '上分' ? 'UP' : 'DOWN');
       return;
     }
+    if (label == '自助回水') {
+      unawaited(_claimRebate());
+      return;
+    }
     final page = switch (label) {
       '申请记录' => const ApplyRecordsPage(),
       '积分账变' => const PointsChangePage(),
-      '福利报表' || '自助回水' => const WelfareReportPage(),
+      '福利报表' => const WelfareReportPage(),
       '竞猜报表' => const BetRecordsPage(),
       _ => null,
     };
@@ -1216,54 +1306,27 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   Widget build(BuildContext context) {
     // 根 build 不 setState：倒计时/键盘/面板各自 ValueNotifier + Consumer select
     final canBet = ref.watch(authSessionProvider.select((s) => s.canPlaceBet));
-    ref.listen<(String, int)?>(
+    ref.listen<String?>(
       roomLotteryLiveProvider(widget.roomId).select((s) {
         final g = s.gameById(_gameId);
         if (g == null) return null;
-        return (
-          normalizedGameChatMeta(
-            currentIssue: g.currentIssue,
-            previousIssue: g.previousIssue,
-            previousResults: g.previousResults,
-          ),
-          s.drawCacheEpoch,
+        return normalizedGameChatMeta(
+          currentIssue: g.currentIssue,
+          previousIssue: g.previousIssue,
+          previousResults: g.previousResults,
         );
       }),
       (prev, next) {
-        if (_disposed || !mounted || next == null) return;
-        final prevMeta = prev?.$1;
-        final nextMeta = next.$1;
-        // 期号/开奖结果真变了才 reconcile；不要每次 epoch 整表刷聊天（那是 2 秒闪的源头）
-        if (prevMeta != nextMeta) {
-          ref
-              .read(roomLotteryLiveProvider(widget.roomId).notifier)
-              .scheduleReconcileChatDraws(_gameId);
-          _scheduleHistoryRowsRefresh();
-        } else if (prev == null || prev.$2 != next.$2) {
-          // epoch 变了：若仍有缺口，禁止用稀疏 timeline 刷屏
-          if (ChatPushCache.instance.hasDrawGap(widget.roomId, _gameId)) {
-            unawaited(_syncDrawsAfterBackfill());
-          } else {
-            _syncMessagesFromCache();
-          }
-          _scheduleHistoryRowsRefresh();
-        }
-        if (_disposed || !mounted) return;
-        if (_historyExpandedNotifier.value) {
-          unawaited(
-            ref
-                .read(roomLotteryLiveProvider(widget.roomId).notifier)
-                .refreshDrawHistoryRows(_gameId)
-                .then((_) {
-              if (mounted) _refreshHistoryRows();
-            }),
-          );
-        }
+        if (_disposed || !mounted || next == null || prev == next) return;
+        ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .scheduleReconcileChatDraws(_gameId);
+        _scheduleHistoryRowsRefresh();
       },
     );
     return AppPageScaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: Colors.white,
       body: ValueListenableBuilder<String>(
         valueListenable: _gameIdNotifier,
         builder: (context, activeGameId, _) {
@@ -1280,6 +1343,14 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                 gameName: gameName,
                 roomId: widget.roomId,
                 onBack: () {
+                  // Overlay 保活：离开前必须收起盘口，否则再进仍停在快捷下单
+                  if (_panel == _BottomPanel.quickBet) {
+                    _setPanel(_BottomPanel.none);
+                    return;
+                  }
+                  if (_panel != _BottomPanel.none) {
+                    _setPanel(_BottomPanel.none);
+                  }
                   final close = widget.onClose;
                   if (close != null) {
                     close();
@@ -1389,7 +1460,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     children: [
                                       list,
                                       ColoredBox(
-                                        color: const Color(0xFFF5F5F5)
+                                        color: Colors.white
                                             .withValues(alpha: 0.72),
                                         child: const Center(
                                           child: CircularProgressIndicator(),
@@ -1585,10 +1656,20 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                         case _TopPanel.betSlip:
                           return ValueListenableBuilder<List<BetSlipRow>>(
                             valueListenable: _betSlipsNotifier,
-                            builder: (_, rows, __) => BetSlipPanel(
-                              rows: rows,
-                              onCancelRow: _cancelBetSlipRow,
-                            ),
+                            builder: (_, rows, __) {
+                              final issue = ref
+                                      .read(roomLotteryLiveProvider(widget.roomId))
+                                      .gameById(_gameId)
+                                      ?.currentIssue ??
+                                  '';
+                              final pending = rows
+                                  .where((r) => issue.isEmpty || r.issue == issue)
+                                  .toList();
+                              return BetSlipPanel(
+                                rows: pending,
+                                onCancelRow: _cancelBetSlipRow,
+                              );
+                            },
                           );
                         case _TopPanel.longDragon:
                           return ValueListenableBuilder<bool>(
@@ -1884,14 +1965,13 @@ class _StatusIssueColumn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 40.w,
+      width: HistoryDrawLayout.issueW(),
       child: Text(
         label.isEmpty ? '--' : label,
-        style: TextStyle(
-          fontSize: 12.sp,
-          color: const Color(0xFF7A7A7A),
-          fontWeight: FontWeight.w500,
-        ),
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: HistoryDrawLayout.issueStyle(),
       ),
     );
   }
@@ -1922,14 +2002,17 @@ class _GameStatusBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: Colors.white,
-      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      padding: EdgeInsets.symmetric(
+        horizontal: HistoryDrawLayout.hPad(),
+        vertical: 8.h,
+      ),
       child: Column(
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               _StatusIssueColumn(label: currentIssue),
-              SizedBox(width: 8.w),
+              SizedBox(width: HistoryDrawLayout.issueGap()),
               Expanded(
                 child: LiveLotteryPeriodCountdownRow(
                   roomId: roomId,
@@ -1952,38 +2035,38 @@ class _GameStatusBar extends StatelessWidget {
           GestureDetector(
             onTap: onToggleHistory,
             behavior: HitTestBehavior.opaque,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: 40.w,
-                  child: LiveLatestDrawIssueText(
-                    roomId: roomId,
-                    gameId: gameId,
-                    compact: true,
-                    emptyLabel: '--',
-                    style: TextStyle(
-                      fontSize: 12.sp,
-                      color: const Color(0xFF7A7A7A),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+            child: Pk10AlignRow(
+              issue: LiveLatestDrawIssueText(
+                roomId: roomId,
+                gameId: gameId,
+                compact: true,
+                emptyLabel: '--',
+                style: HistoryDrawLayout.issueStyle(),
+              ),
+              middle: LiveLatestDrawBalls(
+                roomId: roomId,
+                gameId: gameId,
+                ballSize: HistoryDrawLayout.ballSize(),
+                expandSlots: true,
+              ),
+              gy: LiveLatestDrawSumText(
+                roomId: roomId,
+                gameId: gameId,
+                prefix: '',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  height: 1.1,
+                  color: AppColors.danger,
+                  fontWeight: FontWeight.w600,
                 ),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: LiveLatestDrawBalls(
-                    roomId: roomId,
-                    gameId: gameId,
-                    ballSize: 18.w,
-                  ),
-                ),
-                LiveLatestDrawSumText(roomId: roomId, gameId: gameId),
-                Icon(
-                  historyExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                  color: AppColors.primary,
-                  size: 20.sp,
-                ),
-              ],
+              ),
+              dt: Icon(
+                historyExpanded
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                color: AppColors.primary,
+                size: 18.sp,
+              ),
             ),
           ),
         ],

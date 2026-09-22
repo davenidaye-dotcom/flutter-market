@@ -33,6 +33,7 @@ class LiveLatestDrawIssueText extends ConsumerWidget {
     required this.gameId,
     this.compact = false,
     this.style,
+    this.textAlign = TextAlign.center,
     this.emptyLabel = '--',
   });
 
@@ -40,6 +41,7 @@ class LiveLatestDrawIssueText extends ConsumerWidget {
   final String gameId;
   final bool compact;
   final TextStyle? style;
+  final TextAlign textAlign;
   final String emptyLabel;
 
   @override
@@ -59,7 +61,13 @@ class LiveLatestDrawIssueText extends ConsumerWidget {
     final label = snap.issue.isEmpty
         ? emptyLabel
         : (compact ? compactIssueNo(snap.issue) : snap.issue);
-    return Text(label, style: style);
+    return Text(
+      label,
+      style: style,
+      textAlign: textAlign,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
   }
 }
 
@@ -71,12 +79,14 @@ class LiveLatestDrawBalls extends ConsumerWidget {
     required this.gameId,
     this.ballSize,
     this.gap,
+    this.expandSlots = false,
   });
 
   final String roomId;
   final String gameId;
   final double? ballSize;
   final double? gap;
+  final bool expandSlots;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -97,6 +107,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
       ballSize: ballSize,
       gap: gap,
       placeholder: snap.placeholder,
+      expandSlots: expandSlots,
     );
   }
 }
@@ -136,7 +147,8 @@ class LiveLatestDrawSumText extends ConsumerWidget {
     var sumText = '';
     if (ranks.length >= 2) {
       final sum = ranks[0] + ranks[1];
-      sumText = ' $sum${sum >= 12 ? '大' : '小'}${sum % 2 == 0 ? '双' : '单'}';
+      final body = '$sum${sum >= 12 ? '大' : '小'}${sum % 2 == 0 ? '双' : '单'}';
+      sumText = prefix.trim().isEmpty ? body : ' $body';
     }
     return Text(
       '$prefix$sumText',

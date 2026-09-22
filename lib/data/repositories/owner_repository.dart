@@ -78,15 +78,25 @@ class OwnerRepository {
   Future<Map<String, dynamic>> getMembers({
     String? keyword,
     String? status,
+    /// ALL / ONLINE / ROBOT / FAKE / AGENT（后端补齐后生效）
+    String? memberType,
+    String? presence,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/room/members', query: {
-      if (keyword != null) 'keyword': keyword,
+      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
       if (status != null) 'status': status,
+      if (memberType != null && memberType.isNotEmpty) 'memberType': memberType,
+      if (presence != null) 'presence': presence,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getMemberDetail(String accountId) async {
+    final data = await _client.get('/owner/room/members/$accountId');
     return _asMap(data);
   }
 
@@ -98,13 +108,102 @@ class OwnerRepository {
 
   Future<void> updateMemberRebate(String accountId, num rebate) async {
     await _client.put('/owner/room/members/$accountId/rebate', data: {
-      'rebate': rebate,
+      'rebateRatio': rebate,
     });
   }
 
-  Future<List<Map<String, dynamic>>> getAgents() async {
-    final data = await _client.get('/owner/room/agents');
-    return _asMapList(data);
+  Future<void> updateMemberRemark(String accountId, String remark) async {
+    await _client.put('/owner/room/members/$accountId/remark', data: {
+      'remark': remark,
+    });
+  }
+
+  Future<void> memberCredit({
+    required String accountId,
+    required String direction,
+    required num amount,
+    String? remark,
+  }) async {
+    await _client.post('/owner/room/members/$accountId/credits', data: {
+      'direction': direction,
+      'amount': amount,
+      if (remark != null && remark.isNotEmpty) 'remark': remark,
+    });
+  }
+
+  Future<void> setMemberAgent({
+    required String accountId,
+    required num commissionRatio,
+  }) async {
+    await _client.post('/owner/room/members/$accountId/agent', data: {
+      'commissionRatio': commissionRatio,
+    });
+  }
+
+  Future<void> cancelMemberAgent(String accountId) async {
+    await _client.delete('/owner/room/members/$accountId/agent');
+  }
+
+  Future<void> markMemberFake(String accountId, {bool fake = true}) async {
+    await _client.put('/owner/room/members/$accountId/fake', data: {
+      'fake': fake,
+    });
+  }
+
+  Future<void> deleteMember(String accountId) async {
+    await _client.delete('/owner/room/members/$accountId');
+  }
+
+  Future<void> createRobot(Map<String, dynamic> body) async {
+    await _client.post('/owner/room/members/robots', data: body);
+  }
+
+  Future<List<Map<String, dynamic>>> getAgents({
+    String? keyword,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    final data = await _client.get('/owner/room/agents', query: {
+      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMapList(data is Map ? (data['rows'] ?? data) : data);
+  }
+
+  Future<List<Map<String, dynamic>>> getAgentDownlines(
+    String accountId, {
+    String? keyword,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    final data = await _client.get(
+      '/owner/room/agents/$accountId/downlines',
+      query: {
+        if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+        'pageNum': pageNum,
+        'pageSize': pageSize,
+      },
+    );
+    return _asMapList(data is Map ? (data['rows'] ?? data) : data);
+  }
+
+  Future<void> addAgentDownline({
+    required String agentAccountId,
+    required String memberAccountId,
+  }) async {
+    await _client.post('/owner/room/agents/$agentAccountId/downlines', data: {
+      'memberAccountId': memberAccountId,
+    });
+  }
+
+  Future<void> removeAgentDownline({
+    required String agentAccountId,
+    required String memberAccountId,
+  }) async {
+    await _client.delete(
+      '/owner/room/agents/$agentAccountId/downlines/$memberAccountId',
+    );
   }
 
   Future<Map<String, dynamic>> getOdds({required String gameType}) async {
@@ -215,30 +314,102 @@ class OwnerRepository {
     );
   }
 
-  Future<Map<String, dynamic>> getBetReports({
+  /// 图1 玩家报表 — GET /owner/manage/reports/bets
+  /// 「全部」不传 startDate/endDate。
+  Future<Map<String, dynamic>> getRoomPlayerReport({
     String? startDate,
     String? endDate,
+    String? category,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/manage/reports/bets', query: {
-      if (startDate != null) 'startDate': startDate,
-      if (endDate != null) 'endDate': endDate,
+      if (startDate != null && startDate.isNotEmpty) 'startDate': startDate,
+      if (endDate != null && endDate.isNotEmpty) 'endDate': endDate,
+      if (category != null && category.isNotEmpty && category != 'ALL')
+        'category': category,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
     return _asMap(data);
   }
 
+  /// 图2 期数报表 — GET /owner/manage/reports/bets/issues
+  Future<Map<String, dynamic>> getPlayerPeriodReport({
+    required String accountId,
+    String? startDate,
+    String? endDate,
+    String? category,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    final data = await _client.get('/owner/manage/reports/bets/issues', query: {
+      'accountId': accountId,
+      if (startDate != null && startDate.isNotEmpty) 'startDate': startDate,
+      if (endDate != null && endDate.isNotEmpty) 'endDate': endDate,
+      if (category != null && category.isNotEmpty && category != 'ALL')
+        'category': category,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMap(data);
+  }
+
+  /// 图3 玩法明细 — GET /owner/manage/reports/bets/items
+  Future<Map<String, dynamic>> getPlayerIssueBetDetail({
+    required String accountId,
+    required String issueNo,
+    required String gameType,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    final data = await _client.get('/owner/manage/reports/bets/items', query: {
+      'accountId': accountId,
+      'gameType': gameType,
+      'issueNo': issueNo,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    final map = _asMap(data);
+    // 头顶字段可能在 data 根上，统一塞进 summary 方便页面读
+    final summary = <String, dynamic>{};
+    final rawSummary = map['summary'];
+    if (rawSummary is Map) summary.addAll(Map<String, dynamic>.from(rawSummary));
+    for (final k in ['itemCount', 'betAmount', 'playerResult', 'nickname', 'accountId']) {
+      if (map[k] != null) summary.putIfAbsent(k, () => map[k]);
+    }
+    return {
+      ...map,
+      'summary': summary,
+      'total': map['total'] ?? summary['itemCount'],
+      'rows': map['rows'] ?? const [],
+    };
+  }
+
+  @Deprecated('Use getRoomPlayerReport')
+  Future<Map<String, dynamic>> getRoomReport({
+    required String startDate,
+    required String endDate,
+    String? category,
+  }) async {
+    return getRoomPlayerReport(
+      startDate: startDate,
+      endDate: endDate,
+      category: category,
+    );
+  }
+
   Future<Map<String, dynamic>> getWelfare({
     required String type,
     String? startDate,
     String? endDate,
+    String? accountId,
   }) async {
     final data = await _client.get('/owner/manage/welfare', query: {
       'type': type,
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
     });
     return _asMap(data);
   }
@@ -250,12 +421,16 @@ class OwnerRepository {
   Future<Map<String, dynamic>> getCreditRecords({
     String? startDate,
     String? endDate,
+    String? accountId,
+    String? direction,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/manage/credits/records', query: {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
+      if (direction != null && direction.isNotEmpty) 'direction': direction,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
@@ -265,12 +440,14 @@ class OwnerRepository {
   Future<Map<String, dynamic>> getManageBets({
     String? startDate,
     String? endDate,
+    String? accountId,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/manage/bets', query: {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
@@ -284,11 +461,13 @@ class OwnerRepository {
 
   Future<Map<String, dynamic>> listRedpacks({
     String? status,
+    String? accountId,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/manage/redpacks', query: {
       if (status != null) 'status': status,
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
@@ -332,11 +511,13 @@ class OwnerRepository {
     String? startDate,
     String? endDate,
     String category = 'ALL',
+    int? bindingId,
   }) async {
     final data = await _client.get('/owner/feipan/reports', query: {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       'category': category,
+      if (bindingId != null) 'bindingId': bindingId,
     });
     return _asMap(data);
   }
@@ -387,6 +568,12 @@ class OwnerRepository {
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
+    return _asMap(data);
+  }
+
+  /// 没有会话就建空会话。玩家信息「发起私聊」先调这个。
+  Future<Map<String, dynamic>> ensureCsSession(String accountId) async {
+    final data = await _client.get('/owner/cs/sessions/$accountId');
     return _asMap(data);
   }
 

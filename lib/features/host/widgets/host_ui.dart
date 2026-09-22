@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
-import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -160,19 +159,234 @@ Future<bool> hostConfirm(
   String cancelText = '取消',
   bool danger = false,
 }) async {
-  final result = await showEmulatorSafeDialog<bool>(
+  final result = await showModalBottomSheet<bool>(
     context: context,
-    builder: (ctx) => AlertDialog(
-      title: Text(title, style: TextStyle(fontSize: 16.sp)),
-      content: Text(message, style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
-      actions: [
-        TextButton(onPressed: safeDialogPop(ctx, false), child: Text(cancelText)),
-        TextButton(
-          onPressed: safeDialogPop(ctx, true),
-          child: Text(confirmText, style: TextStyle(color: danger ? AppColors.danger : AppColors.navBlue)),
-        ),
-      ],
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (ctx) => _HostSheetShell(
+      title: title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            message,
+            style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary, height: 1.4),
+          ),
+          SizedBox(height: 20.h),
+          _HostSheetActions(
+            cancelText: cancelText,
+            confirmText: confirmText,
+            danger: danger,
+            onCancel: () => Navigator.pop(ctx, false),
+            onConfirm: () => Navigator.pop(ctx, true),
+          ),
+        ],
+      ),
     ),
   );
   return result == true;
+}
+
+/// 竞品风格：底部弹出、单行输入、取消/保存并排。
+Future<String?> hostInputSheet(
+  BuildContext context, {
+  required String title,
+  String? initial,
+  String? hint,
+  String? suffixText,
+  TextInputType? keyboardType,
+  bool obscureText = false,
+  String confirmText = '保存',
+  String cancelText = '取消',
+}) {
+  final ctrl = TextEditingController(text: initial ?? '');
+  return showModalBottomSheet<String>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (ctx) {
+      final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
+      return Padding(
+        padding: EdgeInsets.only(bottom: bottom),
+        child: _HostSheetShell(
+          title: title,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              EmulatorSafeTextField(
+                controller: ctrl,
+                autofocus: true,
+                obscureText: obscureText,
+                keyboardType: keyboardType,
+                decoration: InputDecoration(
+                  hintText: hint,
+                  suffixText: suffixText,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10.r),
+                    borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10.r),
+                    borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10.r),
+                    borderSide: BorderSide(color: AppColors.navBlue, width: 1.2),
+                  ),
+                ),
+              ),
+              SizedBox(height: 16.h),
+              _HostSheetActions(
+                cancelText: cancelText,
+                confirmText: confirmText,
+                onCancel: () => Navigator.pop(ctx),
+                onConfirm: () => Navigator.pop(ctx, ctrl.text.trim()),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  ).whenComplete(ctrl.dispose);
+}
+
+/// 底部弹出多字段表单。fields 返回 true 时关闭并回 true。
+Future<bool> hostFormSheet(
+  BuildContext context, {
+  required String title,
+  required Widget Function(BuildContext ctx, void Function(VoidCallback) setSheet) buildFields,
+  String confirmText = '确定',
+  String cancelText = '取消',
+  Future<bool> Function()? onConfirm,
+}) async {
+  final result = await showModalBottomSheet<bool>(
+    context: context,
+    backgroundColor: Colors.transparent,
+    isScrollControlled: true,
+    builder: (ctx) {
+      return StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
+          return Padding(
+            padding: EdgeInsets.only(bottom: bottom),
+            child: _HostSheetShell(
+              title: title,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  buildFields(ctx, setSheet),
+                  SizedBox(height: 16.h),
+                  _HostSheetActions(
+                    cancelText: cancelText,
+                    confirmText: confirmText,
+                    onCancel: () => Navigator.pop(ctx, false),
+                    onConfirm: () async {
+                      if (onConfirm != null) {
+                        final ok = await onConfirm();
+                        if (ok && ctx.mounted) Navigator.pop(ctx, true);
+                        return;
+                      }
+                      Navigator.pop(ctx, true);
+                    },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+  return result == true;
+}
+
+class _HostSheetShell extends StatelessWidget {
+  const _HostSheetShell({required this.title, required this.child});
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+        ),
+        padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 16.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 36.w,
+                height: 4.h,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDDDDDD),
+                  borderRadius: BorderRadius.circular(2.r),
+                ),
+              ),
+            ),
+            SizedBox(height: 12.h),
+            Text(title, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700)),
+            SizedBox(height: 14.h),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HostSheetActions extends StatelessWidget {
+  const _HostSheetActions({
+    required this.cancelText,
+    required this.confirmText,
+    required this.onCancel,
+    required this.onConfirm,
+    this.danger = false,
+  });
+
+  final String cancelText;
+  final String confirmText;
+  final VoidCallback onCancel;
+  final VoidCallback onConfirm;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton(
+            onPressed: onCancel,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xFF666666),
+              side: const BorderSide(color: Color(0xFFDDDDDD)),
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+            child: Text('✕ $cancelText', style: TextStyle(fontSize: 15.sp)),
+          ),
+        ),
+        SizedBox(width: 12.w),
+        Expanded(
+          child: FilledButton(
+            onPressed: onConfirm,
+            style: FilledButton.styleFrom(
+              backgroundColor: danger ? AppColors.danger : AppColors.navBlue,
+              padding: EdgeInsets.symmetric(vertical: 12.h),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+            child: Text('✓ $confirmText', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
+          ),
+        ),
+      ],
+    );
+  }
 }

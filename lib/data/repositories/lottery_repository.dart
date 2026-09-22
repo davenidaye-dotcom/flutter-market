@@ -1,5 +1,6 @@
 import '../../core/network/api_client.dart';
 import '../../core/network/session_store.dart';
+import '../../features/lottery/utils/bet_receipt_format.dart';
 import '../../features/lottery/utils/draw_result_parse.dart';
 import '../../features/lottery/utils/lottery_period_ui.dart';
 import '../models/chat_message_model.dart';
@@ -61,9 +62,8 @@ class LotteryRepository {
     required String roomId,
     required String gameId,
     bool asOwner = false,
-    int limit = 20,
+    int limit = 15,
   }) async {
-    final _ = roomId;
     final dynamic data;
     if (asOwner) {
       data = await _client.get(
@@ -82,17 +82,17 @@ class LotteryRepository {
     if (data is! List) return const [];
     final messages = data
         .whereType<Map>()
+        .where((e) => _visibleInRoom(e, roomId))
         .map((e) => _parseChatMessage(Map<String, dynamic>.from(e)))
         .toList();
-    return messages.reversed.toList();
+    return messages;
   }
 
-  /// 当前房间全部彩种各取最新 [limit] 条开奖（一次 HTTP）。
+  /// 当前房间全部已启用彩种，各取最近 [limit] 期后按 gameType 分组。顺序与接口一致：旧 → 新。
   Future<Map<String, List<ChatMessageModel>>> getAllRoomDrawMessages({
     required String roomId,
-    int limit = 20,
+    int limit = 15,
   }) async {
-    final _ = roomId;
     final data = await _client.get(
       '/member/rooms/messages/all',
       query: {'limit': limit},
@@ -100,15 +100,20 @@ class LotteryRepository {
     if (data is! List) return const {};
     final grouped = <String, List<ChatMessageModel>>{};
     for (final item in data.whereType<Map>()) {
+      if (!_visibleInRoom(item, roomId)) continue;
       final m = Map<String, dynamic>.from(item);
       final gameType = m['gameType']?.toString() ?? '';
       if (gameType.isEmpty) continue;
       grouped.putIfAbsent(gameType, () => []).add(_parseChatMessage(m));
     }
-    for (final key in grouped.keys.toList()) {
-      grouped[key] = grouped[key]!.reversed.toList();
-    }
     return grouped;
+  }
+
+  /// 封盘/开奖 roomId 为空，本房消息必须等于当前房。
+  bool _visibleInRoom(Map raw, String roomId) {
+    final id = raw['roomId']?.toString().trim() ?? '';
+    if (id.isEmpty || id == 'null') return true;
+    return roomId.isEmpty || id == roomId.trim();
   }
 
   ChatMessageModel _parseChatMessage(Map<String, dynamic> m) {
@@ -120,22 +125,85 @@ class LotteryRepository {
         ? DrawResultParse.parse(content)
         : (issueNo: null, ranks: const <int>[]);
     final apiIssue = m['issueNo']?.toString();
+    final isReceipt = msgType == 'BET_RECEIPT';
     final isUserChat = msgType == 'CHAT';
+    final isBetRank = msgType == 'BET_RANK' ||
+        msgType == 'BET_LIST_CHECK' ||
+        msgType == 'GUESS_LIST_CHECK' ||
+        msgType == 'SEAL_BET_LIST';
+    final isWinList = msgType == 'WIN_LIST' ||
+        msgType == 'WIN_CHECK' ||
+        msgType == 'WIN_LIST_CHECK';
+    final isDrawOrSeal = msgType == 'DRAW_RESULT' ||
+        msgType == 'SEAL_WARN' ||
+        msgType == 'SEALED' ||
+        msgType == 'SYS';
+    final orderId = m['orderId']?.toString() ?? '';
+    final gameType = m['gameType']?.toString() ?? '';
+    final rawId = m['id']?.toString() ?? '';
+    final issueForId = (apiIssue ?? '').trim();
+    final serverSender = (m['senderName'] ?? '').toString().trim();
+    final id = rawId.isNotEmpty
+        ? rawId
+        : (isBetRank && gameType.isNotEmpty && issueForId.isNotEmpty
+            ? 'bet-rank-$gameType-$issueForId'
+            : (isWinList && gameType.isNotEmpty && issueForId.isNotEmpty
+                ? 'win-list-$gameType-$issueForId'
+                : (orderId.isNotEmpty && gameType.isNotEmpty
+                    ? (isReceipt
+                        ? 'bet-receipt-$gameType-$orderId'
+                        : 'bet-chat-$gameType-$orderId')
+                    : '')));
+    final displayContent = isReceipt
+        ? formatBetReceiptText(
+            mention: (m['mentionName'] ?? '').toString(),
+            issue: (m['issueNo'] ?? '').toString(),
+            total: m['totalAmount'],
+            items: m['items'] is List ? m['items'] as List : null,
+            fallbackContent: content,
+          )
+        : (isBetRank
+            ? formatBetRankText(
+                issue: issueForId,
+                content: content,
+                rankings: m['rankings'] is List ? m['rankings'] as List : null,
+              )
+            : (isWinList
+                ? formatWinCheckText(
+                    issue: issueForId,
+                    content: content,
+                    winners: parseWinCheckWinners(
+                      m['winners'] is List ? m['winners'] as List : null,
+                    ),
+                  )
+                : content));
     return ChatMessageModel(
-      id: m['id']?.toString() ?? '',
-      sender: m['senderName']?.toString() ?? (isUserChat ? '会员' : '管理员'),
-      content: content,
+      id: id,
+      sender: isUserChat
+          ? (serverSender.isEmpty ? '会员' : serverSender)
+          : (serverSender.isNotEmpty
+              ? (serverSender == '管理员' ? '机器人' : serverSender)
+              : '机器人'),
+      content: displayContent,
       time: time,
       type: switch (msgType) {
         'DRAW_RESULT' => ChatMessageType.resultCard,
         'SEAL_WARN' || 'SEALED' || 'SYS' => ChatMessageType.system,
+        'BET_RECEIPT' => ChatMessageType.betReceipt,
+        'BET_RANK' ||
+        'BET_LIST_CHECK' ||
+        'GUESS_LIST_CHECK' ||
+        'SEAL_BET_LIST' =>
+          ChatMessageType.betListCheck,
+        'WIN_LIST' || 'WIN_CHECK' || 'WIN_LIST_CHECK' => ChatMessageType.winCheck,
         _ => ChatMessageType.text,
       },
-      isAdmin: !isUserChat,
+      isAdmin: isDrawOrSeal,
       issueNo: apiIssue?.isNotEmpty == true
           ? apiIssue
-          : (parsed.issueNo ?? _issueFromMessageId(m['id']?.toString())),
+          : (parsed.issueNo ?? _issueFromMessageId(id.isNotEmpty ? id : m['id']?.toString())),
       drawRanks: parsed.ranks.isEmpty ? null : parsed.ranks,
+      avatarUrl: (m['avatarUrl'] ?? m['avatar'])?.toString(),
     );
   }
 
@@ -163,7 +231,9 @@ class LotteryRepository {
     };
     if (items != null && items.isNotEmpty) {
       body['items'] = items;
-    } else if (command.trim().isNotEmpty) {
+    }
+    // 有 items 也带 command，便于后端广播同房可见的下注文案
+    if (command.trim().isNotEmpty) {
       body['command'] = command.trim();
     }
     final resp = await _client.post(

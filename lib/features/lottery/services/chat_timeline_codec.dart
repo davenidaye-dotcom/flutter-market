@@ -31,8 +31,10 @@ Map<String, dynamic> _messageToJson(ChatMessageModel message) => {
       'time': message.time,
       'type': message.type.name,
       'isAdmin': message.isAdmin,
+      'isSelf': message.isSelf,
       if (message.issueNo != null) 'issueNo': message.issueNo,
       if (message.drawRanks != null) 'drawRanks': message.drawRanks,
+      if (message.avatarUrl != null) 'avatarUrl': message.avatarUrl,
     };
 
 ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
@@ -49,12 +51,16 @@ ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
       : null;
   return ChatMessageModel(
     id: id,
-    sender: json['sender']?.toString() ?? '管理员',
+    sender: json['sender']?.toString() == '管理员'
+        ? '机器人'
+        : (json['sender']?.toString() ?? '机器人'),
     content: json['content']?.toString() ?? '',
     time: json['time']?.toString() ?? '',
     type: type,
     isAdmin: json['isAdmin'] == true,
+    isSelf: json['isSelf'] == true,
     issueNo: json['issueNo']?.toString(),
     drawRanks: drawRanks == null || drawRanks.isEmpty ? null : drawRanks,
+    avatarUrl: json['avatarUrl']?.toString(),
   );
 }

@@ -9,7 +9,7 @@ import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 import 'host_member_detail_page.dart';
 
-/// Room members
+/// 房间成员 — 统计卡片 + Tab + 搜索 + 卡片列表（对齐竞品截图）
 class HostMembersPage extends ConsumerStatefulWidget {
   const HostMembersPage({super.key, required this.roomId});
   final String roomId;
@@ -19,9 +19,11 @@ class HostMembersPage extends ConsumerStatefulWidget {
 }
 
 class _HostMembersPageState extends ConsumerState<HostMembersPage> {
+  static const _tabs = ['全部', '在线', '机器人', '试玩号'];
+
   int _filter = 0;
   final _search = TextEditingController();
-  List<HostMember> _all = [];
+  List<HostMember> _rows = [];
   bool _loading = true;
   Map<String, dynamic> _stats = {};
 
@@ -37,19 +39,33 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
     super.dispose();
   }
 
+  String get _memberType => switch (_filter) {
+        1 => 'ONLINE',
+        2 => 'ROBOT',
+        3 => 'FAKE',
+        _ => 'ALL',
+      };
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getMembers(
-            keyword: _search.text.trim(),
-            pageSize: 100,
-          );
-      final rows = hostRowsOf(data);
-      final list = rows.map(hostMemberFromMap).toList();
+      final repo = ref.read(ownerRepositoryProvider);
+      final kw = _search.text.trim();
+      final results = await Future.wait([
+        repo.getMembers(keyword: kw, memberType: _memberType, pageSize: 100),
+        repo.getMembers(memberType: 'ALL', pageSize: 1),
+      ]);
       if (!mounted) return;
+      final data = results[0];
+      final statsData = results[1];
+      final summary = statsData['summary'];
       setState(() {
-        _all = list;
-        _stats = data;
+        _rows = hostRowsOf(data).map(hostMemberFromMap).toList();
+        _stats = summary is Map
+            ? Map<String, dynamic>.from(summary)
+            : (data['summary'] is Map
+                ? Map<String, dynamic>.from(data['summary'] as Map)
+                : <String, dynamic>{});
         _loading = false;
       });
     } catch (e) {
@@ -59,199 +75,387 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
     }
   }
 
-  List<HostMember> get _list {
-    return _all.where((m) {
-      final byFilter = switch (_filter) {
-        0 => m.online || true, // show all when online filter if API omits presence
-        1 => m.isMood,
-        2 => m.disabled,
-        3 => false,
-        4 => false,
-        5 => false,
-        6 => m.isAgent,
-        _ => true,
-      };
-      if (_filter == 0) {
-        // Prefer online; if none marked online, show all
-        final anyOnline = _all.any((x) => x.online);
-        if (anyOnline && !m.online) return false;
-      } else if (!byFilter) {
-        return false;
-      }
-      return true;
-    }).toList();
+  Future<void> _createRobots() async {
+    final ctrl = TextEditingController(text: '1');
+    final nickCtrl = TextEditingController(text: '机器人');
+    final ok = await hostFormSheet(
+      context,
+      title: '新增机器人',
+      confirmText: '创建',
+      buildFields: (ctx, setSheet) => Column(
+        children: [
+          EmulatorSafeTextField(
+            controller: nickCtrl,
+            decoration: InputDecoration(
+              hintText: '昵称前缀',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+          ),
+          SizedBox(height: 10.h),
+          EmulatorSafeTextField(
+            controller: ctrl,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              hintText: '数量(1-20)',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
+            ),
+          ),
+        ],
+      ),
+    );
+    final count = int.tryParse(ctrl.text.trim()) ?? 1;
+    final nick = nickCtrl.text.trim();
+    ctrl.dispose();
+    nickCtrl.dispose();
+    if (!ok) return;
+    try {
+      await ref.read(ownerRepositoryProvider).createRobot({
+        'nickname': nick.isEmpty ? '机器人' : nick,
+        'count': count.clamp(1, 20),
+      });
+      AppToast.success('已创建');
+      setState(() => _filter = 2);
+      await _load();
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
   }
 
-  List<(String, int)> get _catCounts {
-    final online = _all.where((m) => m.online).length;
-    final mood = _all.where((m) => m.isMood).length;
-    final disabled = _all.where((m) => m.disabled).length;
-    final agents = _all.where((m) => m.isAgent).length;
-    final showOnline = online == 0 ? _all.length : online;
-    return [
-      ('\u5728\u7ebf\u73a9\u5bb6', showOnline),
-      ('\u673a\u5668\u4eba', mood),
-      ('\u7981\u7528', disabled),
-      ('\u4ee3\u6ce8', 0),
-      ('\u7279\u6b8a\u8fd4\u70b9', 0),
-      ('\u5b50\u8d26\u6237', 0),
-      ('\u4ee3\u7406\u5217\u8868', agents),
-    ];
+  String _badge(HostMember m) {
+    if (m.isMood) return '启用中';
+    if (m.isTrial) return '试玩号';
+    if (m.isAgent) return '代理';
+    if (m.disabled) return m.statusLabel;
+    return '会员';
+  }
+
+  Color _badgeFg(HostMember m) {
+    if (m.isMood) return const Color(0xFF2E7D32);
+    if (m.isTrial) return const Color(0xFFC62828);
+    if (m.disabled) return const Color(0xFF757575);
+    return const Color(0xFF616161);
+  }
+
+  Color _badgeBg(HostMember m) {
+    if (m.isMood) return const Color(0xFFE8F5E9);
+    if (m.isTrial) return const Color(0xFFFFEBEE);
+    if (m.disabled) return const Color(0xFFEEEEEE);
+    return const Color(0xFFF0F0F0);
   }
 
   @override
   Widget build(BuildContext context) {
-    final list = _list;
-    final cats = _catCounts;
+    final blue = AppColors.navBlue;
     return HostSubPageScaffold(
-      title: '\u623f\u95f4\u6210\u5458',
+      title: '房间成员',
+      trailing: TextButton(
+        onPressed: _createRobots,
+        child: Text('新增', style: TextStyle(fontSize: 15.sp, color: Colors.white, fontWeight: FontWeight.w600)),
+      ),
       body: Column(
         children: [
           Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 8.h),
+            padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
+            child: _StatsGrid(stats: _stats),
+          ),
+          SizedBox(height: 12.h),
+          // Tab：全部 / 在线 / 机器人 / 试玩号
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            child: Container(
+              height: 40.h,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Row(
+                children: [
+                  for (var i = 0; i < _tabs.length; i++)
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () {
+                          if (_filter == i) return;
+                          setState(() => _filter = i);
+                          _load();
+                        },
+                        child: Container(
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: _filter == i ? blue : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10.r),
+                          ),
+                          child: Text(
+                            _tabs[i],
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
+                              color: _filter == i ? Colors.white : const Color(0xFF333333),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: 12.h),
+          // 搜索
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: Row(
               children: [
                 Expanded(
                   child: Container(
                     height: 40.h,
                     padding: EdgeInsets.symmetric(horizontal: 12.w),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8.r)),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10.r),
+                      border: Border.all(color: const Color(0xFFE0E0E0)),
+                    ),
                     alignment: Alignment.center,
                     child: EmulatorSafeTextField(
                       controller: _search,
-                      textAlign: TextAlign.center,
+                      textAlign: TextAlign.left,
+                      onSubmitted: (_) => _load(),
                       decoration: InputDecoration(
                         border: InputBorder.none,
-                        hintText: '\u8bf7\u8f93\u5165\u73a9\u5bb6\u7528\u6237\u540d\u6216ID',
+                        hintText: '请输入玩家昵称或备注',
                         hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
                         isDense: true,
                       ),
                     ),
                   ),
                 ),
-                SizedBox(width: 10.w),
+                SizedBox(width: 8.w),
                 GestureDetector(
                   onTap: _load,
                   child: Container(
+                    width: 40.w,
                     height: 40.h,
-                    padding: EdgeInsets.symmetric(horizontal: 18.w),
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [Color(0xFF6BB6F0), AppColors.navBlue]),
-                      borderRadius: BorderRadius.circular(20.r),
+                      color: blue,
+                      borderRadius: BorderRadius.circular(10.r),
                     ),
-                    child: Text('\u67e5\u8be2', style: TextStyle(fontSize: 14.sp, color: Colors.white)),
+                    child: Icon(Icons.search, color: Colors.white, size: 22.sp),
                   ),
                 ),
               ],
             ),
           ),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.symmetric(horizontal: 12.w),
-            child: Row(
-              children: [
-                for (var i = 0; i < cats.length; i++) ...[
-                  if (i > 0) SizedBox(width: 8.w),
-                  GestureDetector(
-                    onTap: () => setState(() => _filter = i),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 40.w,
-                          height: 28.h,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: _filter == i ? AppColors.navBlue : const Color(0xFFD6EBFA),
-                            borderRadius: BorderRadius.circular(4.r),
-                          ),
-                          child: Text(
-                            '${cats[i].$2}',
-                            style: TextStyle(
-                              fontSize: 13.sp,
-                              color: _filter == i ? Colors.white : AppColors.navBlue,
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(cats[i].$1, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          SizedBox(height: 10.h),
+          SizedBox(height: 12.h),
           Expanded(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
-              child: Container(
-                width: double.infinity,
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12.r)),
-                child: _loading
-                    ? const Center(child: CircularProgressIndicator())
-                    : list.isEmpty
-                        ? Center(
-                            child: Text(
-                              '\u6682\u65e0\u6570\u636e',
-                              style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                            ),
-                          )
-                        : ListView.separated(
-                            padding: EdgeInsets.all(12.w),
-                            itemCount: list.length,
-                            separatorBuilder: (_, _) => SizedBox(height: 8.h),
-                            itemBuilder: (_, i) {
-                              final m = list[i];
-                              return InkWell(
-                                onTap: () => pushHostPage(
-                                  context,
-                                  HostMemberDetailPage(roomId: widget.roomId, memberId: m.id),
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _rows.isEmpty
+                    ? Center(
+                        child: Text('暂无数据', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
+                      )
+                    : ListView.separated(
+                        padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
+                        itemCount: _rows.length + 1,
+                        separatorBuilder: (_, i) =>
+                            i == _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 10.h),
+                        itemBuilder: (_, i) {
+                          if (i == _rows.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: 12.h, bottom: 8.h),
+                              child: Center(
+                                child: Text(
+                                  '没有更多了，共 ${_rows.length} 条',
+                                  style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
                                 ),
-                                child: Row(
-                                  children: [
-                                    CircleAvatar(
-                                      radius: 18.r,
-                                      backgroundColor: const Color(0xFFBDE0FE),
-                                      child: Text(m.nickname.isNotEmpty ? m.nickname.characters.first : '?'),
-                                    ),
-                                    SizedBox(width: 10.w),
-                                    Expanded(child: Text('${m.nickname} (${m.username})')),
-                                    Text('${m.points}'),
-                                  ],
-                                ),
+                              ),
+                            );
+                          }
+                          final m = _rows[i];
+                          return _MemberCard(
+                            member: m,
+                            badge: _badge(m),
+                            badgeFg: _badgeFg(m),
+                            badgeBg: _badgeBg(m),
+                            onTap: () async {
+                              await pushHostPage(
+                                context,
+                                HostMemberDetailPage(roomId: widget.roomId, memberId: m.id),
                               );
+                              if (mounted) await _load();
                             },
-                          ),
-              ),
-            ),
+                          );
+                        },
+                      ),
           ),
-          Container(
-            color: Colors.white,
-            padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 8.w),
-            child: Row(
-              children: [
-                _foot('\u7528\u6237\u4f59\u989d', hostNumStr(_stats['totalBalance'] ?? _stats['balance'])),
-                _foot('\u4eca\u65e5\u6d41\u6c34', hostNumStr(_stats['turnover'] ?? _stats['todayTurnover'])),
-                _foot('\u4eca\u65e5\u76c8\u4e8f', hostNumStr(_stats['profitLoss'] ?? _stats['todayProfitLoss'])),
-                _foot('\u4eca\u65e5\u56de\u6c34', hostNumStr(_stats['rebate'] ?? _stats['todayRebate'])),
-              ],
+        ],
+      ),
+    );
+  }
+}
+
+class _StatsGrid extends StatelessWidget {
+  const _StatsGrid({required this.stats});
+  final Map<String, dynamic> stats;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = [
+      (Icons.receipt_long_outlined, '总流水', hostNumStr(stats['totalTurnover'] ?? stats['turnover'], fraction: 2)),
+      (Icons.balance_outlined, '总输赢', hostNumStr(stats['totalWinLoss'] ?? stats['winLoss'], fraction: 2)),
+      (Icons.water_drop_outlined, '彩票回水', hostNumStr(stats['totalRebate'] ?? stats['rebate'], fraction: 2)),
+      (Icons.paid_outlined, '真实玩家总积分', hostNumStr(stats['realPlayerPoints'] ?? stats['totalBalance'], fraction: 2)),
+    ];
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _StatCard(icon: items[0].$1, label: items[0].$2, value: items[0].$3)),
+            SizedBox(width: 10.w),
+            Expanded(child: _StatCard(icon: items[1].$1, label: items[1].$2, value: items[1].$3)),
+          ],
+        ),
+        SizedBox(height: 10.h),
+        Row(
+          children: [
+            Expanded(child: _StatCard(icon: items[2].$1, label: items[2].$2, value: items[2].$3)),
+            SizedBox(width: 10.w),
+            Expanded(child: _StatCard(icon: items[3].$1, label: items[3].$2, value: items[3].$3)),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({required this.icon, required this.label, required this.value});
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16.sp, color: const Color(0xFF9E9E9E)),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w700,
+              color: AppColors.navBlue,
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _foot(String label, String value) {
-    return Expanded(
-      child: Column(
-        children: [
-          Text(label, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
-          SizedBox(height: 4.h),
-          Text(value, style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
-        ],
+class _MemberCard extends StatelessWidget {
+  const _MemberCard({
+    required this.member,
+    required this.badge,
+    required this.badgeFg,
+    required this.badgeBg,
+    required this.onTap,
+  });
+
+  final HostMember member;
+  final String badge;
+  final Color badgeFg;
+  final Color badgeBg;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final nick = member.nickname.isNotEmpty ? member.nickname : member.username;
+    final initial = nick.isNotEmpty ? nick.characters.first : '?';
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12.r),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12.r),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 22.r,
+                backgroundColor: const Color(0xFFBDE0FE),
+                child: Text(initial, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
+              ),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      nick,
+                      style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: const Color(0xFF222222)),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'ID: ${member.id}',
+                      style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                    decoration: BoxDecoration(
+                      color: badgeBg,
+                      borderRadius: BorderRadius.circular(10.r),
+                    ),
+                    child: Text(badge, style: TextStyle(fontSize: 11.sp, color: badgeFg)),
+                  ),
+                  if (!member.isMood) ...[
+                    SizedBox(height: 6.h),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.account_balance_wallet_outlined, size: 14.sp, color: AppColors.textSecondary),
+                        SizedBox(width: 2.w),
+                        Text(
+                          '余额 ${hostNumStr(member.points, fraction: 2)}',
+                          style: TextStyle(fontSize: 12.sp, color: const Color(0xFF333333)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+              SizedBox(width: 4.w),
+              Icon(Icons.chevron_right, color: const Color(0xFFBDBDBD), size: 22.sp),
+            ],
+          ),
+        ),
       ),
     );
   }

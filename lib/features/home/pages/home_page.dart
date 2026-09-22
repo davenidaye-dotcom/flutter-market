@@ -12,11 +12,13 @@ import '../../../core/network/api_exception.dart';
 import '../../../data/models/room_model.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_logo.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
@@ -221,7 +223,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(
-          child: RefreshIndicator(
+          child: AppPullRefresh(
             onRefresh: _loadHistory,
             child: SingleChildScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
@@ -235,6 +237,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   _ProfileCard(
                     nickname: user?.nickname ?? '未登录',
                     username: user?.username ?? '',
+                    avatarUrl: user?.avatarUrl,
                     loading: _loading,
                     initialRoomCode: _roomCode,
                     onSettings: () => context.push(RoutePaths.personalSettings),
@@ -285,11 +288,13 @@ class _ProfileCard extends StatefulWidget {
     required this.onRoomCodeChanged,
     required this.onEnterRoom,
     required this.loading,
+    this.avatarUrl,
     this.initialRoomCode = '',
   });
 
   final String nickname;
   final String username;
+  final String? avatarUrl;
   final String initialRoomCode;
   final VoidCallback onSettings;
   final VoidCallback onLogout;
@@ -343,10 +348,9 @@ class _ProfileCardState extends State<_ProfileCard> {
             children: [
               Row(
                 children: [
-                  CircleAvatar(
+                  UserAvatar(
+                    codeOrUrl: widget.avatarUrl,
                     radius: 28.r,
-                    backgroundColor: AppColors.primaryLight,
-                    child: Icon(Icons.person, color: Colors.white, size: 32.sp),
                   ),
                   SizedBox(width: 12.w),
                   Column(

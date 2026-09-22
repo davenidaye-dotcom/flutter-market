@@ -1,5 +1,5 @@
 name: letou_app
-description: 乐投 - 房间聊天下注应用
+description: ?? - ????????
 publish_to: 'none'
 version: 100.3.19+1000319
 
@@ -40,9 +40,9 @@ flutter:
   uses-material-design: true
   assets:
     - assets/bootstrap/
-  # No bundled image assets yet; design_refs stays out of the package.
+    - assets/avatars/
 
-# 原生启动页：由 flutter_native_splash 生成 Android/iOS 配置，避免手写 MainActivity/主题导致黑屏
+# ??????? flutter_native_splash ?? Android/iOS ??????? MainActivity/??????
 flutter_native_splash:
   color: "#F0F8FF"
   android_12:

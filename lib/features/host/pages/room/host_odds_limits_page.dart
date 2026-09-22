@@ -103,6 +103,24 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
 
   double get _step => double.tryParse(_unifyCtrl.text.trim()) ?? 0.1;
 
+  Future<void> _editOne(int index) async {
+    final row = _rows[index];
+    final text = await hostInputSheet(
+      context,
+      title: '设置 ${row.name}',
+      initial: '${row.odds}',
+      hint: '请输入赔率',
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      confirmText: '确定',
+    );
+    final v = double.tryParse(text ?? '');
+    if (v == null || !mounted) return;
+    setState(() {
+      row.odds = v;
+      _dirty = true;
+    });
+  }
+
   void _adjustAll(double sign) {
     final delta = _step * sign;
     setState(() {
@@ -245,13 +263,17 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
                                       children: [
                                         Text(r.name, style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
                                         Text(
-                                          'min ${r.minBet} / period ${r.periodLimit}',
+                                          '最小 ${hostNumStr(r.minBet)} / 单期 ${hostNumStr(r.periodLimit)}',
                                           style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
                                         ),
                                       ],
                                     ),
                                   ),
                                   Text('${r.odds}', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700)),
+                                  IconButton(
+                                    onPressed: () => _editOne(i),
+                                    icon: const Icon(Icons.edit_outlined),
+                                  ),
                                 ],
                               ),
                             );

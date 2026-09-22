@@ -43,9 +43,40 @@ String ledgerChangeLabel(String type) {
     case 'REDPACK':
       return '红包';
     case 'UP':
+    case 'OWNER_CREDIT_UP':
       return '上分';
     case 'DOWN':
+    case 'OWNER_CREDIT_DOWN':
       return '下分';
+    case 'TOTALUP':
+      return '总上分';
+    case 'TOTALDOWN':
+      return '总下分';
+    case 'TOTALBET':
+    case 'TOTALTURNOVER':
+      return '总流水';
+    case 'TOTALBONUS':
+      return '总派彩';
+    case 'TOTALWINLOSS':
+      return '总输赢';
+    case 'TOTALREBATE':
+      return '总回水';
+    case 'TOTALORDERS':
+      return '总笔数';
+    case 'TOTALBALANCE':
+      return '总积分';
+    case 'GAMERESULT':
+      return '庄家结果';
+    case 'PLAYERRESULT':
+      return '玩家结果';
+    case 'PENDING':
+      return '待开奖';
+    case 'SETTLED':
+      return '已结算';
+    case 'CANCELLED':
+    case 'CANCEL':
+    case 'VOID':
+      return '已取消';
     default:
       return type;
   }
@@ -54,15 +85,17 @@ String ledgerChangeLabel(String type) {
 String betStatusLabel(String status) {
   switch (status.toUpperCase()) {
     case 'WIN':
-      return 'WIN';
+      return '中奖';
     case 'LOSE':
-      return 'LOSE';
+      return '未中';
     case 'SETTLING':
       return '结算中';
     case 'PENDING':
-      return '待开';
+      return '待开奖';
     case 'CANCEL':
       return '已取消';
+    case 'VOID':
+      return '已作废';
     default:
       return status;
   }

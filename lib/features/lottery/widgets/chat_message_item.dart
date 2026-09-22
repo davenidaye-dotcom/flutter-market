@@ -3,23 +3,111 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../shared/widgets/lottery_ball.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../utils/draw_result_parse.dart';
+
+bool _isRobotName(String raw) {
+  final s = raw.trim();
+  return s.isEmpty || s == '机器人' || s == '管理员';
+}
+
+String _displaySender(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty || s == '管理员') return '机器人';
+  return s;
+}
 
 class ChatMessageItem extends StatelessWidget {
   const ChatMessageItem({super.key, required this.message});
 
   final ChatMessageModel message;
 
-  bool get _isAdminLayout =>
-      message.isAdmin ||
+  bool get _isRobotSystemLayout =>
       message.type == ChatMessageType.system ||
-      message.type == ChatMessageType.resultCard;
+      message.type == ChatMessageType.resultCard ||
+      message.isAdmin;
 
   @override
   Widget build(BuildContext context) {
-    if (!_isAdminLayout) {
-      return _UserMessage(message: message);
+    if (message.type == ChatMessageType.betReceipt ||
+        message.type == ChatMessageType.winCheck ||
+        message.type == ChatMessageType.betListCheck) {
+      return _RobotBubble(message: message);
     }
+    if (_isRobotSystemLayout) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: 12.h),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          CircleAvatar(
+              radius: 18.r,
+              backgroundColor: _isRobotName(message.sender)
+                  ? const Color(0xFF7E57C2)
+                  : AppColors.textPrimary,
+              child: Icon(
+                _isRobotName(message.sender) ? Icons.smart_toy : Icons.person,
+                color: Colors.white,
+                size: 18.sp,
+              ),
+            ),
+            SizedBox(width: 8.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    message.time.trim().isEmpty
+                        ? _displaySender(message.sender)
+                        : '${_displaySender(message.sender)}  ${message.time}',
+                    style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                  ),
+                  SizedBox(height: 4.h),
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(10.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8.r),
+                    ),
+                    child: _buildRobotSystemBody(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    // 用户下注：左侧默认头像（自己和他人同一套，对齐竞品）
+    return _UserBetBubble(message: message);
+  }
+
+  Widget _buildRobotSystemBody() {
+    if (message.type == ChatMessageType.resultCard) {
+      return _ResultCard(message: message);
+    }
+    if (message.type == ChatMessageType.system) {
+      return _SystemNotice(content: message.content, issueNo: message.issueNo);
+    }
+    return Text(
+      message.content,
+      style: TextStyle(
+        fontSize: 13.sp,
+        color: Colors.black,
+        fontWeight: FontWeight.bold,
+      ),
+    );
+  }
+}
+
+class _RobotBubble extends StatelessWidget {
+  const _RobotBubble({required this.message});
+
+  final ChatMessageModel message;
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: Row(
@@ -27,29 +115,38 @@ class ChatMessageItem extends StatelessWidget {
         children: [
           CircleAvatar(
             radius: 18.r,
-            backgroundColor: AppColors.textPrimary,
-            child: Icon(Icons.person, color: Colors.white, size: 18.sp),
+            backgroundColor: const Color(0xFF7E57C2),
+            child: Icon(Icons.smart_toy, color: Colors.white, size: 18.sp),
           ),
           SizedBox(width: 8.w),
-          Expanded(
+          Flexible(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  message.time.trim().isEmpty
-                      ? message.sender
-                      : '${message.sender}  ${message.time}',
+                  () {
+                    final name = _displaySender(message.sender);
+                    return message.time.trim().isEmpty ? name : '$name  ${message.time}';
+                  }(),
                   style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
                 ),
                 SizedBox(height: 4.h),
                 Container(
-                  width: double.infinity,
-                  padding: EdgeInsets.all(10.w),
+                  constraints: BoxConstraints(maxWidth: 0.78.sw),
+                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFFF2F2F2),
                     borderRadius: BorderRadius.circular(8.r),
                   ),
-                  child: _buildAdminBody(),
+                  child: Text(
+                    message.content,
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      height: 1.45,
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -58,50 +155,72 @@ class ChatMessageItem extends StatelessWidget {
       ),
     );
   }
-
-  Widget _buildAdminBody() {
-    if (message.type == ChatMessageType.resultCard) {
-      return _ResultCard(message: message);
-    }
-    if (message.type == ChatMessageType.system) {
-      return _SystemNotice(content: message.content);
-    }
-    return Text(message.content, style: TextStyle(fontSize: 13.sp));
-  }
 }
 
-class _UserMessage extends StatelessWidget {
-  const _UserMessage({required this.message});
+class _UserBetBubble extends StatelessWidget {
+  const _UserBetBubble({required this.message});
 
   final ChatMessageModel message;
 
   @override
   Widget build(BuildContext context) {
+    final name = message.sender.trim().isEmpty ? '会员' : message.sender.trim();
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: Container(
-          constraints: BoxConstraints(maxWidth: 0.72.sw),
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-          decoration: BoxDecoration(
-            color: const Color(0xFF95EC69),
-            borderRadius: BorderRadius.circular(8.r),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          UserAvatar(
+            codeOrUrl: message.avatarUrl,
+            radius: 18.r,
+            backgroundColor: const Color(0xFFBDBDBD),
           ),
-          child: Text(message.content, style: TextStyle(fontSize: 13.sp)),
-        ),
+          SizedBox(width: 8.w),
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  message.time.trim().isEmpty ? name : '$name  ${message.time}',
+                  style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                ),
+                SizedBox(height: 4.h),
+                Container(
+                  constraints: BoxConstraints(maxWidth: 0.72.sw),
+                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF2F2F2),
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  child: Text(
+                    message.content,
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      height: 1.35,
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _SystemNotice extends StatelessWidget {
-  const _SystemNotice({required this.content});
+  const _SystemNotice({required this.content, this.issueNo});
 
   final String content;
+  final String? issueNo;
 
   @override
   Widget build(BuildContext context) {
+    final issue = (issueNo ?? '').trim();
+    final text = issue.isEmpty ? content : '第$issue期\n$content';
     return Container(
       width: double.infinity,
       padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
@@ -111,7 +230,7 @@ class _SystemNotice extends StatelessWidget {
         border: Border.all(color: const Color(0xFFFFCC80)),
       ),
       child: Text(
-        content,
+        text,
         textAlign: TextAlign.center,
         style: TextStyle(
           fontSize: 13.sp,

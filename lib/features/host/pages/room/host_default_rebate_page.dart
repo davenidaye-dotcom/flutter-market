@@ -110,9 +110,9 @@ class _HostDefaultRebatePageState extends ConsumerState<HostDefaultRebatePage> {
                           DropdownButton<String>(
                             value: _settleMode,
                             items: const [
-                              DropdownMenuItem(value: 'DAILY', child: Text('DAILY')),
-                              DropdownMenuItem(value: 'WEEKLY', child: Text('WEEKLY')),
-                              DropdownMenuItem(value: 'MANUAL', child: Text('MANUAL')),
+                              DropdownMenuItem(value: 'DAILY', child: Text('日结')),
+                              DropdownMenuItem(value: 'WEEKLY', child: Text('周结')),
+                              DropdownMenuItem(value: 'MANUAL', child: Text('手动')),
                             ],
                             onChanged: (v) => setState(() => _settleMode = v ?? _settleMode),
                           ),

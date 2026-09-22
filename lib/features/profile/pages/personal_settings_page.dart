@@ -8,7 +8,9 @@ import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/providers/auth_session_provider.dart';
+import '../widgets/avatar_picker_sheet.dart';
 import 'change_password_page.dart';
 
 class PersonalSettingsPage extends ConsumerWidget {
@@ -47,6 +49,18 @@ class PersonalSettingsPage extends ConsumerWidget {
     }
   }
 
+  Future<void> _pickAvatar(BuildContext context, WidgetRef ref, UserModel user) async {
+    final code = await showAvatarPickerSheet(context, currentCode: user.avatarUrl);
+    if (code == null || code.isEmpty) return;
+    try {
+      await ref.read(memberRepositoryProvider).updateAvatar(code);
+      ref.read(authSessionProvider.notifier).updateAvatar(code);
+      AppToast.success('\u5934\u50cf\u5df2\u66f4\u65b0');
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(authSessionProvider.select((s) => s.user));
@@ -71,11 +85,11 @@ class PersonalSettingsPage extends ConsumerWidget {
                     children: [
                       _SettingsTile(
                         label: '\u5934\u50cf',
-                        trailing: CircleAvatar(
+                        trailing: UserAvatar(
+                          codeOrUrl: user.avatarUrl,
                           radius: 20.r,
-                          child: Icon(Icons.person, size: 20.sp),
                         ),
-                        onTap: () => AppToast.info('\u5934\u50cf\u4fee\u6539\u5f85\u5bf9\u63a5'),
+                        onTap: () => _pickAvatar(context, ref, user),
                       ),
                       const Divider(indent: 16, endIndent: 16, height: 1),
                       _SettingsTile(

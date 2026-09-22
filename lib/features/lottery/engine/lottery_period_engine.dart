@@ -173,18 +173,19 @@ final class LotteryPeriodEngine {
     final httpPrev = g.previousIssue ?? '';
     if (httpPrev.isEmpty || g.previousResults.isEmpty) return;
 
-    final curK = issueCompareKey(slot.model.currentIssue);
-    final httpK = issueCompareKey(httpPrev);
-    if (curK > 0 && httpK >= curK) return;
+    if (slot.model.currentIssue.isNotEmpty &&
+        compareIssueNo(httpPrev, slot.model.currentIssue) >= 0) {
+      return;
+    }
 
-    final prevK = issueCompareKey(slot.model.previousIssue ?? '');
-    if (httpK > prevK) {
+    final prev = slot.model.previousIssue ?? '';
+    final cmp = prev.isEmpty ? 1 : compareIssueNo(httpPrev, prev);
+    if (cmp > 0) {
       slot.model = slot.model.copyWith(
-        previousIssue: preferFullIssueNo(httpPrev, slot.model.previousIssue ?? ''),
+        previousIssue: preferFullIssueNo(httpPrev, prev),
         previousResults: g.previousResults,
       );
-    } else if (httpK == prevK) {
-      // 同期已有 WS 球号时保留本地，避免 HTTP 回补把顶栏球闪来闪去。
+    } else if (cmp == 0) {
       final local = slot.model.previousResults;
       if (local.isEmpty && g.previousResults.isNotEmpty) {
         slot.model = slot.model.copyWith(previousResults: g.previousResults);
@@ -233,18 +234,21 @@ final class LotteryPeriodEngine {
 
     final cdBefore = _secondsLeft(slot, clock);
     final httpAnchored = first && slot.openDeadline != null;
-    final allowWsIncrease = first &&
+    var allowWsIncrease = first &&
         (!httpAnchored || _wsMayCorrectHttpOnFirstTick(slot, seconds, clock));
+    var issueChanged = false;
 
     if (issue.isNotEmpty) {
       final newer = _pickNewer(issue, slot.model.currentIssue);
-      if (!_sameIssue(newer, slot.model.currentIssue)) {
-        // 下注中不提前换期号，避免倒计时与期号错位；封盘/开奖后 WS 换期包再切。
-        if (_secondsLeft(slot, clock) <= 0 || first) {
-          slot.model = slot.model.copyWith(currentIssue: newer);
-        }
-      } else if (first) {
+      issueChanged = !_sameIssue(newer, slot.model.currentIssue);
+      if (issueChanged || first) {
+        // 与 PC mergePeriod 一致：PERIOD_TICK/SNAPSHOT 的 issueNo 以服务端为准。
+        // 旧逻辑要求本地 CD≤0 才换期，开奖已出但本机倒计时未归零时会卡在旧期（顶栏 1598、聊天已开 1598）。
         slot.model = slot.model.copyWith(currentIssue: newer);
+      }
+      if (issueChanged) {
+        // 换期后必须允许倒计时按新 openAt 抬升，否则仍停在旧 deadline。
+        allowWsIncrease = true;
       }
     }
 
@@ -253,7 +257,8 @@ final class LotteryPeriodEngine {
       seconds: seconds,
       openAtMs: openAtEpochMs,
       now: clock,
-      force: (cdBefore <= 0 && seconds > 0) ||
+      force: issueChanged ||
+          (cdBefore <= 0 && seconds > 0) ||
           (first && slot.openDeadline == null && seconds > 0) ||
           (cdBefore <= 0 &&
               openAtEpochMs != null &&
@@ -326,25 +331,23 @@ final class LotteryPeriodEngine {
       _slots[patch.id] = s;
       return;
     }
-    final localPrevK = issueCompareKey(slot.model.previousIssue ?? '');
-    final patchPrevK = patch.previousIssue != null && patch.previousIssue!.isNotEmpty
-        ? issueCompareKey(patch.previousIssue!)
-        : 0;
+    final localPrev = slot.model.previousIssue ?? '';
     var nextPrevIssue = slot.model.previousIssue;
     var nextResults = slot.model.previousResults;
     if (patch.previousIssue != null && patch.previousIssue!.isNotEmpty) {
-      if (patchPrevK >= localPrevK) {
-        nextPrevIssue = preferFullIssueNo(
-          patch.previousIssue!,
-          nextPrevIssue ?? '',
-        );
-      }
-    }
-    if (patch.previousResults.isNotEmpty) {
-      if (patchPrevK > localPrevK) {
-        nextResults = patch.previousResults;
-      } else if (patchPrevK == localPrevK && nextResults.isEmpty) {
-        nextResults = patch.previousResults;
+      final cmp = localPrev.isEmpty
+          ? 1
+          : compareIssueNo(patch.previousIssue!, localPrev);
+      if (cmp > 0) {
+        nextPrevIssue = preferFullIssueNo(patch.previousIssue!, localPrev);
+        if (patch.previousResults.isNotEmpty) {
+          nextResults = patch.previousResults;
+        }
+      } else if (cmp == 0) {
+        nextPrevIssue = preferFullIssueNo(patch.previousIssue!, localPrev);
+        if (nextResults.isEmpty && patch.previousResults.isNotEmpty) {
+          nextResults = patch.previousResults;
+        }
       }
     }
     slot.model = slot.model.copyWith(
@@ -411,13 +414,15 @@ final class LotteryPeriodEngine {
     }
 
     final cd = _secondsLeft(slot, now);
-    final drawK = issueCompareKey(issue);
-    final curK = issueCompareKey(slot.model.currentIssue);
-    final prevK = issueCompareKey(slot.model.previousIssue ?? '');
+    final olderThanCurrent = slot.model.currentIssue.isNotEmpty &&
+        compareIssueNo(issue, slot.model.currentIssue) < 0;
+    final prevIssue = slot.model.previousIssue ?? '';
+    final olderThanPrev =
+        prevIssue.isNotEmpty && compareIssueNo(issue, prevIssue) < 0;
 
-    // 历史补期：仅当比当前上期更新时才写入，禁止 WS 旧包把 567 刷回 566。
-    if (!force && cd > 0 && drawK > 0 && curK > 0 && drawK < curK) {
-      if (drawK < prevK) return const [];
+    // 历史补期：仅当比当前上期更新时才写入，禁止 WS 旧包把上一期刷回去。
+    if (!force && cd > 0 && olderThanCurrent) {
+      if (olderThanPrev) return const [];
       return _applyDrawNow(gameId, slot, issue, ranks);
     }
 
@@ -436,13 +441,12 @@ final class LotteryPeriodEngine {
     final current = slot.model.currentIssue;
     if (current.isNotEmpty &&
         !_sameIssue(issue, current) &&
-        issueCompareKey(issue) >= issueCompareKey(current)) {
+        compareIssueNo(issue, current) >= 0) {
       return const [];
     }
 
-    final prevK = issueCompareKey(slot.model.previousIssue ?? '');
-    final drawK = issueCompareKey(issue);
-    if (prevK > 0 && drawK > 0 && drawK < prevK) {
+    final prev = slot.model.previousIssue ?? '';
+    if (prev.isNotEmpty && compareIssueNo(issue, prev) < 0) {
       return const [];
     }
 
@@ -607,10 +611,9 @@ final class LotteryPeriodEngine {
   static String _pickNewer(String a, String b) {
     if (b.isEmpty) return a;
     if (a.isEmpty) return b;
-    final ak = issueCompareKey(a);
-    final bk = issueCompareKey(b);
-    if (ak > bk) return a;
-    if (bk > ak) return b;
+    final cmp = compareIssueNo(a, b);
+    if (cmp > 0) return a;
+    if (cmp < 0) return b;
     return preferFullIssueNo(a, b);
   }
 

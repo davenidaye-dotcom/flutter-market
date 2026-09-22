@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -13,6 +12,7 @@ import '../../../shared/widgets/red_count_badge.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
+import '../widgets/host_ui.dart';
 import 'fly/fly_hub_page.dart';
 import 'host_shell_page.dart';
 import 'reports/rebate_report_page.dart';
@@ -63,36 +63,41 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     final titleCtrl = TextEditingController(text: '红包');
     final totalCtrl = TextEditingController(text: '100');
     final countCtrl = TextEditingController(text: '10');
-    final ok = await showEmulatorSafeDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('发红包'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            EmulatorSafeTextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(labelText: '标题'),
+    final ok = await hostFormSheet(
+      context,
+      title: '发红包',
+      confirmText: '确定',
+      buildFields: (ctx, setSheet) => Column(
+        children: [
+          EmulatorSafeTextField(
+            controller: titleCtrl,
+            decoration: InputDecoration(
+              hintText: '标题',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
             ),
-            EmulatorSafeTextField(
-              controller: totalCtrl,
-              decoration: const InputDecoration(labelText: '总金额'),
-              keyboardType: TextInputType.number,
+          ),
+          SizedBox(height: 10.h),
+          EmulatorSafeTextField(
+            controller: totalCtrl,
+            decoration: InputDecoration(
+              hintText: '总金额',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
             ),
-            EmulatorSafeTextField(
-              controller: countCtrl,
-              decoration: const InputDecoration(labelText: '个数'),
-              keyboardType: TextInputType.number,
+            keyboardType: TextInputType.number,
+          ),
+          SizedBox(height: 10.h),
+          EmulatorSafeTextField(
+            controller: countCtrl,
+            decoration: InputDecoration(
+              hintText: '个数',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
             ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
-          TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('确定')),
+            keyboardType: TextInputType.number,
+          ),
         ],
       ),
     );
-    if (ok != true) {
+    if (!ok) {
       titleCtrl.dispose();
       totalCtrl.dispose();
       countCtrl.dispose();
@@ -240,7 +245,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                           _div(),
                           _menu('\u53d1\u7ea2\u5305', _sendRedpack),
                           _div(),
-                          _menu('\u7ade\u731c\u62a5\u8868', () => pushHostPage(context, RoomReportPage(roomId: roomId))),
+                          _menu('房间报表', () => pushHostPage(context, RoomReportPage(roomId: roomId))),
                           _div(),
                           _menu('\u798f\u5229\u62a5\u8868', () => pushHostPage(context, RebateReportPage(roomId: roomId))),
                           _div(),

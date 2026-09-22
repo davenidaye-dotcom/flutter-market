@@ -59,6 +59,24 @@ int issueCompareKey(String issue) {
   return n >= 10000 ? n % 10000 : n;
 }
 
+/// 谁更新。两边都是长号时比完整数字，避免 34134131 的后四位 4131 盖过 34162601。
+/// 一边是 4 位缩写时，只和长号的后四位比，相同则视为同一期。
+int compareIssueNo(String a, String b) {
+  final an = int.tryParse(a.trim()) ?? 0;
+  final bn = int.tryParse(b.trim()) ?? 0;
+  if (an == bn) return 0;
+  if (an <= 0) return -1;
+  if (bn <= 0) return 1;
+  final aShort = an < 10000;
+  final bShort = bn < 10000;
+  if (aShort == bShort) return an.compareTo(bn);
+  final long = aShort ? bn : an;
+  final short = aShort ? an : bn;
+  final byTail = short.compareTo(long % 10000);
+  if (byTail == 0) return 0;
+  return aShort ? byTail : -byTail;
+}
+
 /// 期号 +1（全号位数对齐），用于「开奖已写入 previous 但 WS 尚未推下一期」的展示修正。
 String incrementIssueNo(String issue) {
   final t = issue.trim();
@@ -150,7 +168,9 @@ ChatMessageModel normalizeStoredChatMessage(
     final ranks = message.drawRanks;
     return ChatMessageModel(
       id: drawChatMessageId(gameId, rawIssue),
-      sender: message.sender.isEmpty ? '管理员' : message.sender,
+      sender: (message.sender.isEmpty || message.sender == '管理员')
+          ? '机器人'
+          : message.sender,
       content: '第$full期开奖',
       time: message.time,
       type: ChatMessageType.resultCard,
@@ -168,7 +188,9 @@ ChatMessageModel normalizeStoredChatMessage(
       id: isLine
           ? sealedChatMessageId(gameId, rawIssue)
           : sealWarnChatMessageId(gameId, rawIssue),
-      sender: message.sender.isEmpty ? '管理员' : message.sender,
+      sender: (message.sender.isEmpty || message.sender == '管理员')
+          ? '机器人'
+          : message.sender,
       content: message.content,
       time: message.time,
       type: ChatMessageType.system,
@@ -270,7 +292,7 @@ List<ChatMessageModel> drawRowsToResultMessages(
           final issue = r.issue.trim();
           return ChatMessageModel(
             id: drawChatMessageId(gameId, r.issue),
-            sender: '管理员',
+            sender: '机器人',
             content: '第$issue期开奖',
             time: '',
             type: ChatMessageType.resultCard,

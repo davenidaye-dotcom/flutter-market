@@ -1091,6 +1091,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           type: ChatMessageType.text,
           isAdmin: false,
           issueNo: issue.isNotEmpty ? issue : null,
+          avatarUrl: (payload['avatarUrl'] ?? payload['avatar'])?.toString(),
         ),
       );
       return;
@@ -1211,7 +1212,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         gameType,
         ChatMessageModel(
           id: key,
-          sender: '管理员',
+          sender: '机器人',
           content:
               '注意：距离封盘时间还有${remain > 0 ? remain : LotteryPeriodRules.sealWarnSeconds}秒，封盘之后将不能再投注！',
           time: _nowTime(),
@@ -1234,7 +1235,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       gameType,
       ChatMessageModel(
         id: key,
-        sender: '管理员',
+        sender: '机器人',
         content: '======停止战斗====== =======封盘线=======',
         time: _nowTime(),
         type: ChatMessageType.system,
@@ -1255,7 +1256,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       gameType,
       ChatMessageModel(
         id: msgId,
-        sender: '管理员',
+        sender: '机器人',
         content: fullIssue.isNotEmpty ? '第$fullIssue期开奖' : '开奖结果',
         time: _nowTime(),
         type: ChatMessageType.resultCard,

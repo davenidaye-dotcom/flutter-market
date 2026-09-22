@@ -27,9 +27,16 @@ class _CsSession {
 
 /// Owner CS sessions — GET /owner/cs/sessions
 class HostServicePage extends ConsumerStatefulWidget {
-  const HostServicePage({super.key, required this.roomId});
+  const HostServicePage({
+    super.key,
+    required this.roomId,
+    this.openAccountId,
+    this.openName,
+  });
 
   final String roomId;
+  final String? openAccountId;
+  final String? openName;
 
   @override
   ConsumerState<HostServicePage> createState() => _HostServicePageState();
@@ -43,7 +50,36 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(_loadSessions);
+    Future.microtask(_bootstrap);
+  }
+
+  Future<void> _bootstrap() async {
+    final id = widget.openAccountId?.trim() ?? '';
+    if (id.isNotEmpty) {
+      try {
+        final row = await ref.read(ownerRepositoryProvider).ensureCsSession(id);
+        if (!mounted) return;
+        final at = row['lastMessageAt']?.toString() ?? '';
+        setState(() {
+          _open = _CsSession(
+            accountId: '${row['accountId'] ?? id}',
+            name: row['nickname']?.toString().trim().isNotEmpty == true
+                ? row['nickname'].toString()
+                : (widget.openName ?? id),
+            last: row['lastMessage']?.toString() ?? '',
+            time: at.length >= 16 ? at.substring(11, 16) : at,
+            unread: int.tryParse('${row['unreadCount'] ?? 0}') ?? 0,
+          );
+          _loading = false;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        AppToast.error(e.toString());
+      }
+      return;
+    }
+    await _loadSessions();
   }
 
   Future<void> _loadSessions() async {
@@ -80,9 +116,23 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   @override
   Widget build(BuildContext context) {
     if (_open != null) {
+      final fromMember = (widget.openAccountId ?? '').trim().isNotEmpty;
       return _ChatView(
         session: _open!,
         onBack: () {
+          // 会员详情发起私聊：返回直接关页回到详情；底栏进客服：退回会话列表
+          if (fromMember) {
+            final nav = Navigator.of(context);
+            if (nav.canPop()) {
+              nav.pop();
+              return;
+            }
+            final closer = ShellCoverCloser.maybeOf(context);
+            if (closer != null) {
+              closer.close();
+              return;
+            }
+          }
           setState(() => _open = null);
           _loadSessions();
         },
@@ -96,7 +146,20 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
             children: [
               PageAppBar(
                 title: '在线客服',
-                onBack: () => goHostLottery(context, widget.roomId),
+                onBack: () {
+                  // 从会员详情「发起私聊」压栈/盖层进来：必须 pop/关盖层回到详情，不能 goHostLottery 把栈冲掉
+                  final nav = Navigator.of(context);
+                  if (nav.canPop()) {
+                    nav.pop();
+                    return;
+                  }
+                  final closer = ShellCoverCloser.maybeOf(context);
+                  if (closer != null) {
+                    closer.close();
+                    return;
+                  }
+                  goHostLottery(context, widget.roomId);
+                },
               ),
               Expanded(
                 child: _loading

@@ -8,9 +8,12 @@ import '../../../config/theme/app_colors.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/user_avatar.dart';
+import '../../../data/repositories/providers.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../../room/pages/room_shell_page.dart';
+import '../widgets/avatar_picker_sheet.dart';
 import 'personal_settings_page.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
@@ -55,15 +58,30 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                   child: Column(
                     children: [
                 SizedBox(height: 12.h),
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
-                  ),
-                  child: CircleAvatar(
-                    radius: 40.r,
-                    backgroundColor: AppColors.primaryLight,
-                    child: Icon(Icons.person, size: 48.sp, color: Colors.white),
+                GestureDetector(
+                  onTap: () async {
+                    final code = await showAvatarPickerSheet(
+                      context,
+                      currentCode: user.avatarUrl,
+                    );
+                    if (code == null || code.isEmpty) return;
+                    try {
+                      await ref.read(memberRepositoryProvider).updateAvatar(code);
+                      ref.read(authSessionProvider.notifier).updateAvatar(code);
+                      AppToast.success('头像已更新');
+                    } catch (e) {
+                      AppToast.error(e.toString());
+                    }
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 2),
+                    ),
+                    child: UserAvatar(
+                      codeOrUrl: user.avatarUrl,
+                      radius: 40.r,
+                    ),
                   ),
                 ),
                 SizedBox(height: 12.h),

@@ -17,9 +17,10 @@ class WalletRepository {
     double n(dynamic v) =>
         v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
     return WalletSummaryModel(
-      availablePoints: n(m['totalAssets'] ?? m['availablePoints'] ?? m['balance']),
+      availablePoints: n(m['totalAssets'] ?? m['available'] ?? m['availablePoints'] ?? m['balance']),
       todayTurnover: n(m['turnover'] ?? m['todayTurnover']),
-      pendingRebate: n(m['rebate'] ?? m['pendingRebate']),
+      // rebate = 个人回水比例%；pendingRebate = 待领金额
+      pendingRebate: n(m['pendingRebate']),
       todayWinLoss: n(m['profitLoss'] ?? m['todayWinLoss'] ?? m['winLoss']),
     );
   }
@@ -55,15 +56,24 @@ class WalletRepository {
   Future<Map<String, dynamic>> getBets({
     String? startDate,
     String? endDate,
+    String? issueNo,
+    String walletType = 'REAL',
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/member/bets', query: {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      if (issueNo != null && issueNo.isNotEmpty) 'issueNo': issueNo,
+      'walletType': walletType,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getBetDetail(String orderId) async {
+    final data = await _client.get('/member/bets/$orderId');
     return _asMap(data);
   }
 
@@ -128,6 +138,16 @@ class WalletRepository {
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> claimRebate() async {
+    final data = await _client.post('/member/rebate/claim');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getRebatePending() async {
+    final data = await _client.get('/member/rebate/pending');
     return _asMap(data);
   }
 

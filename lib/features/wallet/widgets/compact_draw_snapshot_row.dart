@@ -66,6 +66,7 @@ class BetLedgerRecordTile extends StatelessWidget {
     this.trailing,
     this.subtitle,
     this.padding,
+    this.onTap,
   });
 
   final Widget topLine;
@@ -74,10 +75,13 @@ class BetLedgerRecordTile extends StatelessWidget {
   final Widget? trailing;
   final Widget? subtitle;
   final EdgeInsetsGeometry? padding;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
       padding: padding ?? EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -98,6 +102,7 @@ class BetLedgerRecordTile extends StatelessWidget {
             CompactDrawSnapshotRow(ranks: drawRanks, sumGy: sumGy),
           ],
         ],
+      ),
       ),
     );
   }

@@ -9,11 +9,14 @@ class LotteryBall extends StatelessWidget {
     required this.number,
     this.size,
     this.placeholder = false,
+    /// 数字相对球径比例，默认 0.48；历史表可加大
+    this.fontScale = 0.48,
   });
 
   final int number;
   final double? size;
   final bool placeholder;
+  final double fontScale;
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +30,10 @@ class LotteryBall extends StatelessWidget {
           color: const Color(0xFF5D4037),
           borderRadius: BorderRadius.circular(4.r),
         ),
-        child: Text('-', style: TextStyle(color: Colors.white, fontSize: 10.sp)),
+        child: Text(
+          '-',
+          style: TextStyle(color: Colors.white, fontSize: s * fontScale),
+        ),
       );
     }
     final color = AppColors.ballColors[number] ?? AppColors.textSecondary;
@@ -43,7 +49,8 @@ class LotteryBall extends StatelessWidget {
         '$number',
         style: TextStyle(
           color: Colors.white,
-          fontSize: (s * 0.5).sp,
+          fontSize: s * fontScale,
+          height: 1,
           fontWeight: FontWeight.bold,
         ),
       ),
@@ -59,15 +66,37 @@ class LotteryBallRow extends StatelessWidget {
     this.placeholder = false,
     this.ballSize,
     this.gap,
+    /// true：10 列等宽居中（与表头「一」～「十」、顶栏开奖球对齐）
+    this.expandSlots = false,
+    this.fontScale = 0.48,
   });
 
   final List<int> numbers;
   final bool placeholder;
   final double? ballSize;
   final double? gap;
+  final bool expandSlots;
+  final double fontScale;
 
   @override
   Widget build(BuildContext context) {
+    if (expandSlots) {
+      return Row(
+        children: List.generate(
+          10,
+          (i) => Expanded(
+            child: Center(
+              child: LotteryBall(
+                number: i < numbers.length ? numbers[i] : 0,
+                size: ballSize,
+                placeholder: placeholder || i >= numbers.length,
+                fontScale: fontScale,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final spacing = gap ?? 3.w;
     return FittedBox(
       fit: BoxFit.scaleDown,
@@ -82,6 +111,7 @@ class LotteryBallRow extends StatelessWidget {
               number: i < numbers.length ? numbers[i] : 0,
               size: ballSize,
               placeholder: placeholder || i >= numbers.length,
+              fontScale: fontScale,
             ),
           ),
         ),

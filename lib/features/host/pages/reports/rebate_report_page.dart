@@ -63,14 +63,13 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
   @override
   Widget build(BuildContext context) {
     final metrics = [
-      ('\u9ed8\u8ba4\u53cd\u6c34', _v(['defaultRebate', 'rebate'])),
-      ('\u7279\u6b8a\u53cd\u6c34', _v(['specialRebate'])),
-      ('\u7d2f\u8ba1\u53cd\u6c34', _v(['totalRebate', 'total'])),
-      ('\u5df2\u53cd\u6c34', _v(['settledRebate', 'paid'])),
-      ('\u5f85\u53cd\u6c34', _v(['pendingRebate', 'unpaid'])),
+      ('回水入账', _v(['commissionRebate'])),
+      ('红包', _v(['redpack'])),
+      ('合计', _v(['total', 'totalRebate'])),
+      ('个人比例', _v(['rebateRatio'])),
     ];
     return HostSubPageScaffold(
-      title: '\u53cd\u6c34\u62a5\u8868',
+      title: '回水报表',
       body: Column(
         children: [
           SizedBox(height: 8.h),

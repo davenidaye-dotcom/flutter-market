@@ -54,6 +54,10 @@ class AgentRepository {
     String? endDate,
     String? type,
     String? source,
+    int? parentAccountId,
+    String status = 'SETTLED',
+    String? username,
+    String? issueNo,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
@@ -62,9 +66,56 @@ class AgentRepository {
       if (endDate != null) 'endDate': endDate,
       if (type != null && type.isNotEmpty) 'type': type,
       if (source != null && source.isNotEmpty) 'source': source,
+      if (parentAccountId != null) 'parentAccountId': parentAccountId,
+      'status': status,
+      if (username != null && username.isNotEmpty) 'username': username,
+      if (issueNo != null && issueNo.isNotEmpty) 'issueNo': issueNo,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
+    return _asMap(data);
+  }
+
+  /// 会员注单明细（玩法行）。点进会员后调这个，不要继续 reports 下钻。
+  Future<Map<String, dynamic>> getReportTickets({
+    required String startDate,
+    required String endDate,
+    int? memberAccountId,
+    String? type,
+    String status = 'SETTLED',
+    String? source,
+    int? bindingId,
+    int pageNum = 1,
+    int pageSize = 50,
+  }) async {
+    final data = await _client.get('/agent/reports/tickets', query: {
+      'startDate': startDate,
+      'endDate': endDate,
+      if (memberAccountId != null) 'memberAccountId': memberAccountId,
+      if (type != null && type.isNotEmpty) 'type': type,
+      'status': status,
+      if (source != null && source.isNotEmpty) 'source': source,
+      if (bindingId != null) 'bindingId': bindingId,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMap(data);
+  }
+
+  /// 飞单按房主汇总（仅 AGENT_MEMBER）
+  Future<Map<String, dynamic>> getFlightOwners({
+    required String startDate,
+    required String endDate,
+  }) async {
+    final data = await _client.get('/agent/reports/flight-owners', query: {
+      'startDate': startDate,
+      'endDate': endDate,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getShareDetail(int orderId) async {
+    final data = await _client.get('/agent/bets/$orderId/share-detail');
     return _asMap(data);
   }
 
@@ -125,6 +176,8 @@ class AgentRepository {
     String? endDate,
     String? type,
     String? source,
+    String status = 'ALL',
+    String? issueNo,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
@@ -133,6 +186,8 @@ class AgentRepository {
       if (endDate != null) 'endDate': endDate,
       if (type != null && type.isNotEmpty) 'type': type,
       if (source != null && source.isNotEmpty) 'source': source,
+      'status': status,
+      if (issueNo != null && issueNo.isNotEmpty) 'issueNo': issueNo,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
