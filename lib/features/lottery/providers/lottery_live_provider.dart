@@ -13,6 +13,7 @@ import '../../../data/repositories/providers.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../engine/lottery_period_engine.dart';
 import '../services/chat_push_cache.dart';
+import '../utils/bet_receipt_format.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
 import '../utils/chat_timeline.dart';
@@ -29,6 +30,7 @@ class RoomLotteryLiveState {
     this.turnover = 0,
     this.winLoss = 0,
     this.rebate = 0,
+    this.isTrialAccount = false,
     this.ready = false,
     this.loadError,
     this.drawCacheEpoch = 0,
@@ -43,6 +45,8 @@ class RoomLotteryLiveState {
   final int turnover;
   final int winLoss;
   final int rebate;
+  /// 本房会员 playMode=TRIAL（试玩号）
+  final bool isTrialAccount;
   final bool ready;
   final String? loadError;
   /// 本地开奖缓存变更代次，供历史面板刷新
@@ -68,6 +72,7 @@ class RoomLotteryLiveState {
     int? turnover,
     int? winLoss,
     int? rebate,
+    bool? isTrialAccount,
     bool? ready,
     String? loadError,
     bool clearLoadError = false,
@@ -83,6 +88,7 @@ class RoomLotteryLiveState {
       turnover: turnover ?? this.turnover,
       winLoss: winLoss ?? this.winLoss,
       rebate: rebate ?? this.rebate,
+      isTrialAccount: isTrialAccount ?? this.isTrialAccount,
       ready: ready ?? this.ready,
       loadError: clearLoadError ? null : (loadError ?? this.loadError),
       drawCacheEpoch: drawCacheEpoch ?? this.drawCacheEpoch,
@@ -255,6 +261,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         turnover: wallet.todayTurnover.toInt(),
         winLoss: wallet.todayWinLoss.toInt(),
         rebate: wallet.pendingRebate.toInt(),
+        isTrialAccount: wallet.isTrial,
       );
     } catch (_) {}
   }
@@ -680,6 +687,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     var turnover = state.turnover;
     var winLoss = state.winLoss;
     var rebate = state.rebate;
+    var isTrialAccount = state.isTrialAccount;
     var betConfirm = state.betConfirm;
 
     if (isHost) {
@@ -712,6 +720,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       turnover = w.$2;
       winLoss = w.$3;
       rebate = w.$4;
+      isTrialAccount = w.$5;
       try {
         final ann = await _ref.read(memberRepositoryProvider).getRoomAnnouncement();
         final c = ann['content']?.toString();
@@ -732,11 +741,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       turnover: turnover,
       winLoss: winLoss,
       rebate: rebate,
+      isTrialAccount: isTrialAccount,
       betConfirm: betConfirm,
     );
   }
 
-  Future<(int, int, int, int)> _loadWalletSummary() async {
+  Future<(int, int, int, int, bool)> _loadWalletSummary() async {
     try {
       final wallet = await _ref.read(walletRepositoryProvider).getSummary(roomId);
       return (
@@ -744,9 +754,16 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         wallet.todayTurnover.toInt(),
         wallet.todayWinLoss.toInt(),
         wallet.pendingRebate.toInt(),
+        wallet.isTrial,
       );
     } catch (_) {
-      return (state.points, state.turnover, state.winLoss, state.rebate);
+      return (
+        state.points,
+        state.turnover,
+        state.winLoss,
+        state.rebate,
+        state.isTrialAccount,
+      );
     }
   }
 
@@ -828,14 +845,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   void _applyEngineResult(String gameId, PeriodTickResult result) {
     _markPeriodSynced(gameId);
-    var walletDirty = false;
     for (final draw in result.draws) {
       final gid = draw.gameId.isNotEmpty ? draw.gameId : gameId;
+      // 回补只由 _finalizeDrawChatPush 负责，避免与 scheduleReconcile 双路 HTTP。
       _pushDrawChat(gid, draw.issue, draw.ranks);
-      walletDirty = true;
-      if (ChatPushCache.instance.hasDrawGap(roomId, gid)) {
-        scheduleReconcileChatDraws(gid);
-      }
     }
     for (final seal in result.seals) {
       final gid = seal.gameId.isNotEmpty ? seal.gameId : gameId;
@@ -845,9 +858,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _publishGames();
       _bumpUiTick();
     }
-    if (walletDirty) {
-      unawaited(refreshWallet());
-    }
+    // 开奖瞬间不刷钱包：避免与开奖卡上屏抢同一帧；余额以 SETTLE_RESULT 对齐。
     _ensureTickerRunning();
     _recoverStuckDrawingIfNeeded(gameId);
   }
@@ -860,13 +871,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   }
 
   void _applySecondTickResult(PeriodTickResult result) {
-    var walletDirty = false;
     for (final draw in result.draws) {
       _pushDrawChat(draw.gameId, draw.issue, draw.ranks);
-      walletDirty = true;
-      if (ChatPushCache.instance.hasDrawGap(roomId, draw.gameId)) {
-        scheduleReconcileChatDraws(draw.gameId);
-      }
     }
     for (final seal in result.seals) {
       _pushSealFromEngine(seal.gameId, seal);
@@ -875,9 +881,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _publishGames();
     }
     _bumpUiTick();
-    if (walletDirty) {
-      unawaited(refreshWallet());
-    }
   }
 
   void _pushSealFromEngine(String gameId, SealRevealEvent seal) {
@@ -1097,6 +1100,27 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    // 封盘后竞猜列表核对（后端 RoomSealRankService → BET_RANK）
+    if (type == 'BET_RANK' ||
+        type == 'BET_LIST_CHECK' ||
+        type == 'GUESS_LIST_CHECK' ||
+        type == 'SEAL_BET_LIST') {
+      _onBetRankWs(gameType, payload);
+      return;
+    }
+
+    // 开奖后中奖列表核对（后端 SettleExecutor → WIN_LIST）
+    if (type == 'WIN_LIST' || type == 'WIN_CHECK' || type == 'WIN_LIST_CHECK') {
+      _onWinListWs(gameType, payload);
+      return;
+    }
+
+    // 他人/本机机器人确认卡
+    if (type == 'BET_RECEIPT') {
+      _onBetReceiptWs(gameType, payload);
+      return;
+    }
+
     if (type == 'DRAW_RESULT') {
       final ranks = _parseRanks(payload['ranks'] ?? payload['lastRanks']);
       final issue = payload['issueNo']?.toString() ?? '';
@@ -1150,18 +1174,110 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         break;
       }
     }
-    // 账本异步落库：立刻刷可能读到旧余额；短延迟 + 二次对齐
+    // 账本异步落库：单次短延迟对齐，避免 350+1200 双刷与中奖列表上屏抢帧。
     unawaited(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 350));
-      if (!mounted) return;
-      await refreshWallet();
-      await Future<void>.delayed(const Duration(milliseconds: 1200));
+      await Future<void>.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
       await refreshWallet();
     }());
     if (touched || truncated || alreadyOptimistic) {
       _bumpUiTick();
     }
+  }
+
+  void _onBetRankWs(String gameType, Map<String, dynamic> payload) {
+    final issue = (payload['issueNo'] ?? '').toString().trim();
+    final content = (payload['content'] ?? payload['text'] ?? '').toString();
+    final rankings = payload['rankings'] is List ? payload['rankings'] as List : null;
+    final text = formatBetRankText(
+      issue: issue,
+      content: content,
+      rankings: rankings,
+    ).trim();
+    if (text.isEmpty) return;
+    final key = issue.isNotEmpty
+        ? betRankChatMessageId(gameType, issue)
+        : 'bet-rank-$gameType-${DateTime.now().millisecondsSinceEpoch}';
+    var sender = (payload['senderName'] ?? '机器人').toString().trim();
+    if (sender.isEmpty || sender == '管理员') sender = '机器人';
+    _pushChatOnce(
+      key,
+      gameType,
+      ChatMessageModel(
+        id: key,
+        sender: sender,
+        content: text,
+        time: _nowTime(),
+        type: ChatMessageType.betListCheck,
+        isAdmin: false,
+        issueNo: issue.isNotEmpty ? issue : null,
+      ),
+    );
+  }
+
+  void _onWinListWs(String gameType, Map<String, dynamic> payload) {
+    final issue = (payload['issueNo'] ?? '').toString().trim();
+    final content = (payload['content'] ?? payload['text'] ?? '').toString();
+    final winners = parseWinCheckWinners(
+      payload['winners'] is List ? payload['winners'] as List : null,
+    );
+    final text = formatWinCheckText(
+      issue: issue,
+      content: content,
+      winners: winners,
+    ).trim();
+    if (text.isEmpty) return;
+    final key = issue.isNotEmpty
+        ? winListChatMessageId(gameType, issue)
+        : 'win-list-$gameType-${DateTime.now().millisecondsSinceEpoch}';
+    var sender = (payload['senderName'] ?? '机器人').toString().trim();
+    if (sender.isEmpty || sender == '管理员') sender = '机器人';
+    _pushChatOnce(
+      key,
+      gameType,
+      ChatMessageModel(
+        id: key,
+        sender: sender,
+        content: text,
+        time: _nowTime(),
+        type: ChatMessageType.winCheck,
+        isAdmin: false,
+        issueNo: issue.isNotEmpty ? issue : null,
+      ),
+    );
+  }
+
+  void _onBetReceiptWs(String gameType, Map<String, dynamic> payload) {
+    final orderId = (payload['orderId'] ?? '').toString().trim();
+    final issue = (payload['issueNo'] ?? '').toString().trim();
+    final content = formatBetReceiptText(
+      mention: (payload['mentionName'] ?? '').toString(),
+      issue: issue,
+      total: payload['totalAmount'],
+      items: payload['items'] is List ? payload['items'] as List : null,
+      fallbackContent: (payload['content'] ?? payload['text'] ?? '').toString(),
+    ).trim();
+    if (content.isEmpty) return;
+    final key = orderId.isNotEmpty
+        ? 'bet-receipt-$gameType-$orderId'
+        : (issue.isNotEmpty
+            ? 'bet-receipt-$gameType-$issue-${content.hashCode}'
+            : 'bet-receipt-$gameType-${DateTime.now().millisecondsSinceEpoch}');
+    var sender = (payload['senderName'] ?? '机器人').toString().trim();
+    if (sender.isEmpty || sender == '管理员') sender = '机器人';
+    _pushChatOnce(
+      key,
+      gameType,
+      ChatMessageModel(
+        id: key,
+        sender: sender,
+        content: content,
+        time: _nowTime(),
+        type: ChatMessageType.betReceipt,
+        isAdmin: false,
+        issueNo: issue.isNotEmpty ? issue : null,
+      ),
+    );
   }
 
   Map<String, dynamic> _wsPayload(Map<String, dynamic> event) {
@@ -1290,12 +1406,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       );
     }
     if (!added) return false;
-    if (message.type == ChatMessageType.resultCard) {
-      unawaited(_finalizeDrawChatPush(gameId, message));
-      return true;
-    }
+    // 开奖先立刻上屏，HTTP 缺口回补放到后台，避免等 reconcile 造成「开奖结果」晚闪/跳一下。
     if (!_chatPushController.isClosed) {
       _chatPushController.add(LotteryChatPush(gameId: gameId, message: message));
+    }
+    if (message.type == ChatMessageType.resultCard) {
+      unawaited(_finalizeDrawChatPush(gameId, message));
     }
     return true;
   }
@@ -1305,13 +1421,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     ChatMessageModel message,
   ) async {
     if (!mounted) return;
-    if (ChatPushCache.instance.hasDrawGap(roomId, gameId) ||
-        _cacheNeedsDrawBackfill(gameId)) {
+    final needsBackfill = ChatPushCache.instance.hasDrawGap(roomId, gameId) ||
+        _cacheNeedsDrawBackfill(gameId);
+    if (needsBackfill) {
       await reconcileChatDraws(gameId);
       if (!mounted) return;
     }
     _bumpDrawCache();
-    if (!_chatPushController.isClosed) {
+    // 仅在回补改写了缓存时再通知一次，避免无缺口时双刷 UI。
+    if (needsBackfill && !_chatPushController.isClosed) {
       _chatPushController.add(
         LotteryChatPush(gameId: gameId, message: message),
       );

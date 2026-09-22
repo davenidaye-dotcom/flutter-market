@@ -18,6 +18,7 @@ import 'room/host_announcements_page.dart';
 import 'room/host_basic_settings_page.dart';
 import 'room/host_games_manage_page.dart';
 import 'room/host_members_page.dart';
+import 'room/host_default_rebate_page.dart';
 import 'room/host_odds_limits_page.dart';
 import 'room/host_rebate_hub_page.dart';
 import 'room/host_operation_logs_page.dart';
@@ -46,14 +47,14 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
   bool get wantKeepAlive => true;
 
   static const _navMenus = [
-    ('\u623f\u95f4\u540d\u79f0\u4fee\u6539', 'name'),
-    ('\u5bc6\u7801\u4fee\u6539', 'password'),
-    ('\u623f\u95f4\u516c\u544a', 'announce'),
-    ('\u623f\u95f4\u6210\u5458', 'members'),
-    ('\u4ee3\u7406\u5217\u8868', 'agents'),
-    ('\u8d54\u7387\u8bbe\u7f6e', 'odds'),
-    ('\u56de\u6c34\u8bbe\u7f6e', 'rebate'),
-    ('\u64cd\u4f5c\u65e5\u5fd7', 'logs'),
+    ('房间名称修改', 'name'),
+    ('密码修改', 'password'),
+    ('房间公告', 'announce'),
+    ('房间设置', 'roomSettings'),
+    ('房间成员', 'members'),
+    ('代理成员', 'agents'),
+    ('回水设置', 'rebate'),
+    ('操作日志', 'logs'),
   ];
 
   @override
@@ -138,15 +139,76 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     }
   }
 
+  Future<void> _openRoomSettingsSheet() async {
+    final id = widget.roomId;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+        ),
+        child: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 16.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFDDDDDD),
+                    borderRadius: BorderRadius.circular(2.r),
+                  ),
+                ),
+                SizedBox(height: 14.h),
+                Text('房间设置', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700)),
+                SizedBox(height: 8.h),
+                _sheetItem('赔率设置', () => Navigator.pop(ctx, 'odds')),
+                _sheetItem('默认回水', () => Navigator.pop(ctx, 'rebateConfig')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    if (action == 'odds') {
+      await pushHostPage(context, HostOddsLimitsPage(roomId: id));
+    } else if (action == 'rebateConfig') {
+      await pushHostPage(context, HostDefaultRebatePage(roomId: id));
+    }
+  }
+
+  Widget _sheetItem(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: EdgeInsets.symmetric(vertical: 14.h),
+        child: Row(
+          children: [
+            Expanded(child: Text(label, style: TextStyle(fontSize: 15.sp))),
+            Icon(Icons.chevron_right, size: 18.sp, color: AppColors.textHint),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _open(String key) {
     final id = widget.roomId;
+    if (key == 'roomSettings') {
+      unawaited(_openRoomSettingsSheet());
+      return;
+    }
     final Widget? page = switch (key) {
       'name' => HostBasicSettingsPage(roomId: id),
       'password' => const ChangePasswordPage(),
       'announce' => HostAnnouncementsPage(roomId: id),
       'members' => HostMembersPage(roomId: id),
       'agents' => HostAgentsPage(roomId: id),
-      'odds' => HostOddsLimitsPage(roomId: id),
       'rebate' => HostRebateHubPage(roomId: id),
       'logs' => HostOperationLogsPage(roomId: id),
       _ => null,

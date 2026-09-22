@@ -4,6 +4,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/stable_screen_metrics.dart';
 
 /// 房主二级页通用壳（全屏，无底部 Tab）
 class HostSubPageScaffold extends StatelessWidget {
@@ -25,6 +26,7 @@ class HostSubPageScaffold extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AppPageScaffold(
+      resizeToAvoidBottomInset: true,
       body: GradientBackground(
         child: SafeArea(
           child: Column(
@@ -163,25 +165,28 @@ Future<bool> hostConfirm(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (ctx) => _HostSheetShell(
-      title: title,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            message,
-            style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary, height: 1.4),
-          ),
-          SizedBox(height: 20.h),
-          _HostSheetActions(
-            cancelText: cancelText,
-            confirmText: confirmText,
-            danger: danger,
-            onCancel: () => Navigator.pop(ctx, false),
-            onConfirm: () => Navigator.pop(ctx, true),
-          ),
-        ],
+    useSafeArea: true,
+    builder: (ctx) => _HostKeyboardAware(
+      child: _HostSheetShell(
+        title: title,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message,
+              style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary, height: 1.4),
+            ),
+            SizedBox(height: 20.h),
+            _HostSheetActions(
+              cancelText: cancelText,
+              confirmText: confirmText,
+              danger: danger,
+              onCancel: () => Navigator.pop(ctx, false),
+              onConfirm: () => Navigator.pop(ctx, true),
+            ),
+          ],
+        ),
       ),
     ),
   );
@@ -189,6 +194,7 @@ Future<bool> hostConfirm(
 }
 
 /// 竞品风格：底部弹出、单行输入、取消/保存并排。
+/// 真机软键盘弹出时整体上移，输入框与按钮不被挡住。
 Future<String?> hostInputSheet(
   BuildContext context, {
   required String title,
@@ -205,10 +211,9 @@ Future<String?> hostInputSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
+    useSafeArea: true,
     builder: (ctx) {
-      final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
-      return Padding(
-        padding: EdgeInsets.only(bottom: bottom),
+      return _HostKeyboardAware(
         child: _HostSheetShell(
           title: title,
           child: Column(
@@ -219,6 +224,12 @@ Future<String?> hostInputSheet(
                 autofocus: true,
                 obscureText: obscureText,
                 keyboardType: keyboardType,
+                textInputAction: TextInputAction.done,
+                scrollPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 160.h),
+                onSubmitted: (v) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  Navigator.pop(ctx, v.trim());
+                },
                 decoration: InputDecoration(
                   hintText: hint,
                   suffixText: suffixText,
@@ -241,8 +252,14 @@ Future<String?> hostInputSheet(
               _HostSheetActions(
                 cancelText: cancelText,
                 confirmText: confirmText,
-                onCancel: () => Navigator.pop(ctx),
-                onConfirm: () => Navigator.pop(ctx, ctrl.text.trim()),
+                onCancel: () {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  Navigator.pop(ctx);
+                },
+                onConfirm: () {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  Navigator.pop(ctx, ctrl.text.trim());
+                },
               ),
             ],
           ),
@@ -265,12 +282,11 @@ Future<bool> hostFormSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
+    useSafeArea: true,
     builder: (ctx) {
       return StatefulBuilder(
         builder: (ctx, setSheet) {
-          final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
-          return Padding(
-            padding: EdgeInsets.only(bottom: bottom),
+          return _HostKeyboardAware(
             child: _HostSheetShell(
               title: title,
               child: Column(
@@ -300,6 +316,32 @@ Future<bool> hostFormSheet(
     },
   );
   return result == true;
+}
+
+/// 键盘避让：订阅 MediaQuery.viewInsets，整块顶到键盘上方。
+class _HostKeyboardAware extends StatelessWidget {
+  const _HostKeyboardAware({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    // MediaQuery 订阅保证键盘弹出/收起时重建；View 兜底防被上层篡改
+    final mqInset = MediaQuery.viewInsetsOf(context).bottom;
+    final viewInset = realKeyboardInset(context);
+    final inset = mqInset >= viewInset ? mqInset : viewInset;
+    return AnimatedPadding(
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+      padding: EdgeInsets.only(bottom: inset),
+      child: SingleChildScrollView(
+        reverse: true,
+        physics: const ClampingScrollPhysics(),
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+        child: child,
+      ),
+    );
+  }
 }
 
 class _HostSheetShell extends StatelessWidget {

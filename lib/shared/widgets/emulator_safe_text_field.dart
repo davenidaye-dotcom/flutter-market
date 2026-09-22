@@ -21,6 +21,8 @@ class EmulatorSafeTextField extends StatelessWidget {
     this.autofocus = false,
     this.textAlign = TextAlign.start,
     this.inputFormatters,
+    /// 保证聚焦时 Scrollable 能滚到键盘上方；勿用 zero
+    this.scrollPadding = const EdgeInsets.fromLTRB(20, 20, 20, 120),
   });
 
   final TextEditingController? controller;
@@ -39,6 +41,7 @@ class EmulatorSafeTextField extends StatelessWidget {
   final bool autofocus;
   final TextAlign textAlign;
   final List<TextInputFormatter>? inputFormatters;
+  final EdgeInsets scrollPadding;
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +67,7 @@ class EmulatorSafeTextField extends StatelessWidget {
       autocorrect: false,
       smartDashesType: SmartDashesType.disabled,
       smartQuotesType: SmartQuotesType.disabled,
-      scrollPadding: EdgeInsets.zero,
+      scrollPadding: scrollPadding,
     );
   }
 }

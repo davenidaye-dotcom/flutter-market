@@ -22,6 +22,7 @@ class WalletRepository {
       // rebate = 个人回水比例%；pendingRebate = 待领金额
       pendingRebate: n(m['pendingRebate']),
       todayWinLoss: n(m['profitLoss'] ?? m['todayWinLoss'] ?? m['winLoss']),
+      playMode: (m['playMode'] ?? 'REAL').toString(),
     );
   }
 

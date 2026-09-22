@@ -70,10 +70,8 @@ class _PlayerIssueDetailPageState extends ConsumerState<PlayerIssueDetailPage> {
   Future<void> _load({required bool reset}) async {
     if (reset) {
       setState(() {
-        _loading = true;
         _pageNum = 1;
         _hasMore = true;
-        _rows = [];
       });
     } else {
       if (!_hasMore || _loadingMore) return;
@@ -163,9 +161,7 @@ class _PlayerIssueDetailPageState extends ConsumerState<PlayerIssueDetailPage> {
 
     return HostSubPageScaffold(
       title: '玩家$_titleName报表',
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : AppPullRefresh(
+      body: AppPullRefresh(
               onRefresh: () => _load(reset: true),
               child: ListView.builder(
                 controller: _scroll,

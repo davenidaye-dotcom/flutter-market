@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:letou_app/data/models/chat_message_model.dart';
 import 'package:letou_app/features/lottery/utils/chat_timeline.dart';
+import 'package:letou_app/features/lottery/utils/draw_history_rows.dart';
 
 import '../../helpers/chat_test_helpers.dart';
 
@@ -175,6 +176,55 @@ void main() {
       expect(oldIdx, greaterThanOrEqualTo(0));
       expect(drawIdx, greaterThanOrEqualTo(0));
       expect(oldIdx, lessThan(drawIdx), reason: '旧全号应在新开奖之前（时间线旧→新）');
+    });
+
+    test('乱序到达仍固定：竞猜核对→开奖→中奖核对', () {
+      const gameId = 'JS_SC';
+      const issue = '34163650';
+      final timeline = buildChatTimeline(
+        [
+          winList(gameId, issue),
+          drawCard(gameId, issue, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+          betRank(gameId, issue),
+          sealedLine(gameId, issue),
+          sealWarn(gameId, issue),
+        ],
+        gameId: gameId,
+        syntheticSeals: false,
+      );
+      expect(
+        timeline.map((m) => m.type).toList(),
+        [
+          ChatMessageType.system,
+          ChatMessageType.system,
+          ChatMessageType.betListCheck,
+          ChatMessageType.resultCard,
+          ChatMessageType.winCheck,
+        ],
+      );
+    });
+
+    test('长短号竞猜/中奖与开奖同稳定 key', () {
+      const gameId = 'JS_SC';
+      final shortRank = betRank(gameId, '3650');
+      final longRank = betRank(gameId, '34163650');
+      final shortWin = winList(gameId, '3650');
+      final longDraw = drawCard(gameId, '34163650', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+
+      expect(stableChatItemKey(shortRank), stableChatItemKey(longRank));
+      expect(stableChatItemKey(shortWin), 'win-list-${issueCompareKey('34163650')}');
+      expect(stableChatItemKey(longDraw), 'draw-${issueCompareKey('34163650')}');
+
+      final timeline = buildChatTimeline(
+        [shortWin, longDraw, shortRank],
+        gameId: gameId,
+        syntheticSeals: false,
+      );
+      expect(timeline.map((m) => m.type).toList(), [
+        ChatMessageType.betListCheck,
+        ChatMessageType.resultCard,
+        ChatMessageType.winCheck,
+      ]);
     });
   });
 }

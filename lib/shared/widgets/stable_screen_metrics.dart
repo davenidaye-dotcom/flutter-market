@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
-/// 软键盘弹出时屏蔽 viewInsets 变化，避免 ScreenUtil 按新高度重建整棵 Widget 树。
+/// 锁定 [MediaQuery.size]，避免软键盘导致 ScreenUtil 按新高度整树重建。
+///
+/// 注意：必须保留真实 [viewInsets]。若清零，底部弹层/输入框无法避让键盘。
 class StableScreenMetrics extends StatefulWidget {
   const StableScreenMetrics({super.key, required this.child});
 
@@ -28,13 +30,13 @@ class _StableScreenMetricsState extends State<StableScreenMetrics> {
         ? _lockedSize!
         : mq.size;
 
-    final bottom = mq.viewInsets.bottom;
-    final stable = mq.copyWith(
-      size: size,
-      viewInsets: bottom == 0 ? mq.viewInsets : EdgeInsets.zero,
-      padding: mq.padding,
-      viewPadding: mq.viewPadding,
-    );
+    // 只锁 size；viewInsets 原样下发，供键盘避让使用
+    final stable = mq.copyWith(size: size);
     return MediaQuery(data: stable, child: widget.child);
   }
+}
+
+/// 读 FlutterView 真实键盘高度，不受上层 MediaQuery 篡改影响。
+double realKeyboardInset(BuildContext context) {
+  return MediaQueryData.fromView(View.of(context)).viewInsets.bottom;
 }

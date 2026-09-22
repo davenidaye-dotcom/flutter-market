@@ -17,9 +17,9 @@ class HostRoomSettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = <(String, Widget)>[
-      ('\u8d54\u7387\u8bbe\u7f6e', HostOddsLimitsPage(roomId: roomId)),
-      ('\u56de\u6c34\u8bbe\u7f6e', HostDefaultRebatePage(roomId: roomId)),
-      ('\u63d0\u524d\u8fd4\u70b9', HostAdvanceRebatePage(roomId: roomId)),
+      ('赔率设置', HostOddsLimitsPage(roomId: roomId)),
+      ('默认回水', HostDefaultRebatePage(roomId: roomId)),
+      ('提前返点', HostAdvanceRebatePage(roomId: roomId)),
     ];
 
     return AppPageScaffold(

@@ -11,6 +11,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../../../shared/widgets/red_count_badge.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../data/host_mock.dart';
 import '../providers/host_pending_audit_provider.dart';
 import '../widgets/host_ui.dart';
 import 'fly/fly_hub_page.dart';
@@ -119,11 +120,8 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     }
   }
 
-  String _n(String key) {
-    final v = _dash[key];
-    if (v == null) return '0';
-    if (v is num) return v is int ? '$v' : v.toStringAsFixed(0);
-    return '$v';
+  String _n(String key, {int fraction = 2}) {
+    return hostNumStr(_dash[key], fraction: fraction);
   }
 
   @override
@@ -154,31 +152,51 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                       ),
                       child: Column(
                         children: [
+                          Builder(
+                            builder: (_) {
+                              final signed = HostSignedPnl.of(_dash['todayProfitLoss'], fraction: 0);
+                              return Row(
+                                children: [
+                                  Text('\u4eca\u65e5\u76c8\u4e8f', style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary)),
+                                  SizedBox(width: 8.w),
+                                  Text(
+                                    signed.text,
+                                    style: TextStyle(
+                                      fontSize: 22.sp,
+                                      fontWeight: FontWeight.w700,
+                                      color: signed.color,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  GestureDetector(
+                                    onTap: _loadDash,
+                                    child: Container(
+                                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.navBlue.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(12.r),
+                                      ),
+                                      child: Text('\u4eca\u65e5\u7edf\u8ba1', style: TextStyle(fontSize: 12.sp, color: AppColors.navBlue)),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          SizedBox(height: 14.h),
                           Row(
                             children: [
-                              Text('\u4eca\u65e5\u76c8\u4e8f', style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary)),
-                              SizedBox(width: 8.w),
-                              Text(_n('todayProfitLoss'), style: TextStyle(fontSize: 22.sp, fontWeight: FontWeight.w700)),
-                              const Spacer(),
-                              GestureDetector(
-                                onTap: _loadDash,
-                                child: Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.navBlue.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(12.r),
-                                  ),
-                                  child: Text('\u4eca\u65e5\u7edf\u8ba1', style: TextStyle(fontSize: 12.sp, color: AppColors.navBlue)),
-                                ),
-                              ),
+                              _stat('上分', _n('upAmount')),
+                              _stat('下分', _n('downAmount'), valueColor: AppColors.success),
+                              _stat('流水', _n('turnover'), valueColor: AppColors.danger),
                             ],
                           ),
                           SizedBox(height: 14.h),
                           Row(
                             children: [
-                              _stat('\u4e0a\u5206', _n('upAmount'), sub: '\u4f59\u989d: ${_n('balance')}'),
-                              _stat('\u4e0b\u5206', _n('downAmount'), valueColor: AppColors.success, sub: '\u98de\u5355: ${_n('flyOrderAmount')}'),
-                              _stat('\u6d41\u6c34', _n('turnover'), valueColor: AppColors.danger, sub: '\u98de\u5355\u6d41\u6c34: ${_n('flyOrderTurnover')}'),
+                              _stat('余额', _n('balance')),
+                              _stat('飞单', _n('flyOrderAmount')),
+                              _stat('飞单流水', _n('flyOrderTurnover')),
                             ],
                           ),
                           SizedBox(height: 16.h),
@@ -283,17 +301,33 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     );
   }
 
-  Widget _stat(String label, String value, {String? sub, Color? valueColor}) {
+  Widget _stat(
+    String label,
+    String value, {
+    Color? valueColor,
+  }) {
+    final labelStyle = TextStyle(fontSize: 12.sp, color: AppColors.textSecondary, height: 1.2);
+    final valueStyle = TextStyle(
+      fontSize: 18.sp,
+      fontWeight: FontWeight.w600,
+      color: valueColor ?? AppColors.textPrimary,
+      height: 1.2,
+    );
     return Expanded(
       child: Column(
         children: [
-          Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+          SizedBox(
+            height: 18.h,
+            child: Text(label, style: labelStyle, textAlign: TextAlign.center),
+          ),
           SizedBox(height: 4.h),
-          Text(value, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600, color: valueColor ?? AppColors.textPrimary)),
-          if (sub != null) ...[
-            SizedBox(height: 2.h),
-            Text(sub, style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
-          ],
+          SizedBox(
+            height: 24.h,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(value, style: valueStyle, maxLines: 1, textAlign: TextAlign.center),
+            ),
+          ),
         ],
       ),
     );

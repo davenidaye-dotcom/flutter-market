@@ -85,10 +85,8 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
   Future<void> _load({required bool reset}) async {
     if (reset) {
       setState(() {
-        _loading = true;
         _pageNum = 1;
         _hasMore = true;
-        _rows = [];
       });
     } else {
       if (!_hasMore || _loadingMore) return;
@@ -214,9 +212,7 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
           ),
           SizedBox(height: 12.h),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : AppPullRefresh(
+            child: AppPullRefresh(
                     onRefresh: () => _load(reset: true),
                     child: ListView(
                       controller: _scroll,
@@ -326,11 +322,10 @@ class _PeriodRow extends StatelessWidget {
   final VoidCallback onTap;
 
   static const _green = Color(0xFF2E9E5B);
-  static const _red = Color(0xFFE53935);
 
   @override
   Widget build(BuildContext context) {
-    final pnlNum = double.tryParse(pnl.replaceAll(',', '')) ?? 0;
+    final signed = HostSignedPnl.of(pnl.replaceAll('+', ''));
     return Material(
       color: Colors.white,
       child: InkWell(
@@ -386,12 +381,12 @@ class _PeriodRow extends StatelessWidget {
               ),
             ),
             c4: Text(
-              pnl,
+              signed.text,
               textAlign: TextAlign.right,
               style: TextStyle(
                 fontSize: 15.sp,
                 fontWeight: FontWeight.w600,
-                color: pnlNum < 0 ? _red : _green,
+                color: signed.color,
               ),
             ),
           ),

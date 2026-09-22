@@ -66,7 +66,7 @@ class _HostPendingRebatePageState extends ConsumerState<HostPendingRebatePage> {
     try {
       final res = await ref.read(ownerRepositoryProvider).batchAdvanceRebate(
             accountIds: ids,
-            remark: '房主回水',
+            remark: '一键回水',
           );
       if (!mounted) return;
       final okCount = int.tryParse('${res['successCount'] ?? 0}') ?? 0;

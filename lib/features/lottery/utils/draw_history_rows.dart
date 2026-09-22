@@ -149,6 +149,14 @@ String sealedChatMessageId(String gameId, String issue) {
   return 'sealed-$gameId-${issueCompareKey(issue)}';
 }
 
+String betRankChatMessageId(String gameId, String issue) {
+  return 'bet-rank-$gameId-${issueCompareKey(issue)}';
+}
+
+String winListChatMessageId(String gameId, String issue) {
+  return 'win-list-$gameId-${issueCompareKey(issue)}';
+}
+
 /// 入库统一：id 用 compareKey 去重；展示文案保留服务端全号（不截成 4 位）。
 /// 注意：此处不调用 chat_timeline.extractIssue，避免与 chat_timeline 循环 import。
 String? _rawIssueOf(ChatMessageModel message) {
@@ -208,6 +216,12 @@ String stableChatItemKey(ChatMessageModel message) {
     final key = issueCompareKey(issue);
     if (message.type == ChatMessageType.resultCard) {
       return 'draw-$key';
+    }
+    if (message.type == ChatMessageType.betListCheck) {
+      return 'bet-rank-$key';
+    }
+    if (message.type == ChatMessageType.winCheck) {
+      return 'win-list-$key';
     }
     if (message.type == ChatMessageType.system) {
       if (message.content.contains('封盘线') ||

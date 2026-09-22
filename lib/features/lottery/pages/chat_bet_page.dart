@@ -130,16 +130,18 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   int _chatSubGen = 0;
   String _accountId = '';
   String? _lastTimelineSig;
+  bool _timelineSyncQueued = false;
 
   void _onScrollChanged() {
     if (!_scrollCtrl.hasClients) return;
     _pinnedToBottom = _scrollCtrl.offset <= 64;
   }
 
-  /// reverse ListView 下 offset 0 即底部
+  /// reverse ListView 下 offset 0 即底部；已在底部时不 jump，避免无意义回弹抖动。
   void _scrollToBottom({bool animated = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_scrollCtrl.hasClients) return;
+      if (_scrollCtrl.offset <= 1) return;
       const target = 0.0;
       if (animated) {
         _scrollCtrl.animateTo(
@@ -179,21 +181,48 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         ? messages.sublist(messages.length - maxVisible)
         : messages;
     final nextIds = trimmed.map((m) => m.id).toSet();
-    if (setEquals(nextIds, _messageIds) &&
-        trimmed.length == _messagesNotifier.value.length) {
-      var same = true;
+    final prev = _messagesNotifier.value;
+    if (setEquals(nextIds, _messageIds) && trimmed.length == prev.length) {
+      var sameOrder = true;
       for (var i = 0; i < trimmed.length; i++) {
-        if (trimmed[i].id != _messagesNotifier.value[i].id) {
-          same = false;
+        if (trimmed[i].id != prev[i].id) {
+          sameOrder = false;
           break;
         }
       }
-      if (same) return;
+      if (sameOrder) {
+        var contentSame = true;
+        for (var i = 0; i < trimmed.length; i++) {
+          final a = trimmed[i];
+          final b = prev[i];
+          if (a.content != b.content ||
+              a.issueNo != b.issueNo ||
+              !listEquals(a.drawRanks, b.drawRanks)) {
+            contentSame = false;
+            break;
+          }
+        }
+        if (contentSame) return;
+      }
     }
     _messageIds
       ..clear()
       ..addAll(nextIds);
     _messagesNotifier.value = trimmed;
+  }
+
+  /// 立刻上屏：无固定延时。仅把「同一时刻连发」的多条推送合并进下一次 microtask，
+  /// 避免同一帧里反复整表赋值；不是人为等 40ms。
+  void _applyTimelineFromCache() {
+    if (_disposed || !mounted) return;
+    _lastTimelineSig = null;
+    if (_timelineSyncQueued) return;
+    _timelineSyncQueued = true;
+    scheduleMicrotask(() {
+      _timelineSyncQueued = false;
+      if (_disposed || !mounted) return;
+      _syncMessagesFromCache();
+    });
   }
 
   void _syncMessagesFromCache({
@@ -220,17 +249,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     }
   }
 
-  /// 开奖推送：先 HTTP 回补缺口，再整表同步，避免稀疏 buffer 先上屏再闪成完整列表。
-  Future<void> _syncDrawsAfterBackfill() async {
-    if (_disposed || !mounted) return;
-    final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
-    if (ChatPushCache.instance.hasDrawGap(widget.roomId, _gameId)) {
-      await live.reconcileChatDraws(_gameId);
-      if (_disposed || !mounted) return;
-    }
-    _syncMessagesFromCache();
-  }
-
   List<ChatMessageModel> _mergeLiveSeals(List<ChatMessageModel> timeline) {
     var maxDrawKey = 0;
     final sealedInTimeline = <int>{};
@@ -238,7 +256,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     for (final m in timeline) {
       final issue = extractIssue(m);
       if (issue == null || issue.isEmpty) continue;
-      final key = int.tryParse(issue.trim()) ?? 0;
+      final key = issueCompareKey(issue);
       if (key <= 0) continue;
       if (m.type == ChatMessageType.resultCard) {
         maxDrawKey = math.max(maxDrawKey, key);
@@ -251,13 +269,13 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       }
     }
     final game = ref.read(roomLotteryLiveProvider(widget.roomId)).gameById(_gameId);
-    final currentKey = int.tryParse((game?.currentIssue ?? '').trim()) ?? 0;
+    final currentKey = issueCompareKey(game?.currentIssue ?? '');
     final extras = <ChatMessageModel>[];
     for (final m in _messagesNotifier.value) {
       if (m.type != ChatMessageType.system) continue;
       final issue = extractIssue(m);
       if (issue == null || issue.isEmpty) continue;
-      final key = int.tryParse(issue.trim()) ?? 0;
+      final key = issueCompareKey(issue);
       if (key <= 0 || key != currentKey || key <= maxDrawKey) continue;
       final isLine =
           m.content.contains('封盘线') || m.content.contains('停止战斗');
@@ -271,23 +289,24 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       }
     }
     if (extras.isEmpty) return timeline;
-    return [...timeline, ...extras];
+    // 必须重排，禁止把封盘 append 到开奖/中奖核对后面
+    return buildChatTimeline(
+      [...timeline, ...extras],
+      gameId: _gameId,
+      syntheticSeals: false,
+    );
   }
 
-  void _appendChatMessage(ChatMessageModel message) {
-    if (!_messageIds.add(message.id)) return;
-    final list = _messagesNotifier.value;
-    final next = list.isEmpty ? [message] : [...list, message];
-    final maxVisible = ChatPushCache.maxVisibleChatMessages;
-    if (next.length > maxVisible) {
-      final trimmed = next.sublist(next.length - maxVisible);
-      _messageIds
-        ..clear()
-        ..addAll(trimmed.map((m) => m.id));
-      _messagesNotifier.value = trimmed;
-    } else {
-      _messagesNotifier.value = next;
-    }
+  /// 写入缓存后统一走时间线，避免只 append 导致期序乱。
+  void _publishChatMessage(ChatMessageModel message, {required String dedupeKey}) {
+    ChatPushCache.instance.pushOnce(
+      roomId: widget.roomId,
+      dedupeKey: dedupeKey,
+      gameId: _gameId,
+      message: message,
+    );
+    _lastTimelineSig = null;
+    _syncMessagesFromCache();
     if (_pinnedToBottom) {
       _scrollToBottom();
     }
@@ -396,13 +415,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       isSelf: true,
       avatarUrl: user?.avatarUrl,
     );
-    _appendChatMessage(message);
-    ChatPushCache.instance.pushOnce(
-      roomId: widget.roomId,
-      dedupeKey: id,
-      gameId: _gameId,
-      message: message,
-    );
+    _publishChatMessage(message, dedupeKey: id);
     final receipt = ChatMessageModel(
       id: 'bet-receipt-$_gameId-${orderIds.isNotEmpty ? orderIds.first : id}',
       sender: '机器人',
@@ -415,13 +428,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       type: ChatMessageType.betReceipt,
       issueNo: issue.isNotEmpty ? issue : null,
     );
-    _appendChatMessage(receipt);
-    ChatPushCache.instance.pushOnce(
-      roomId: widget.roomId,
-      dedupeKey: receipt.id,
-      gameId: _gameId,
-      message: receipt,
-    );
+    _publishChatMessage(receipt, dedupeKey: receipt.id);
   }
 
   void _appendBetSlip(String command, {List<String> orderIds = const []}) {
@@ -662,10 +669,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _syncMessagesFromCache(forceScroll: true);
   }
 
-  void _scheduleChatSync() {
-    // 下注后已乐观更新聊天；WS 会推封盘/开奖，不再全量重拉时间线。
-  }
-
   @override
   void initState() {
     super.initState();
@@ -693,12 +696,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       _chatPushSub?.cancel();
       _chatPushSub = live.chatPushes.listen((push) {
         if (_disposed || !mounted || push.gameId != _gameId) return;
-        if (push.message.type == ChatMessageType.resultCard) {
-          // 有缺口先回补再刷 UI，杜绝 5317 跳 5320 的中间态闪屏
-          unawaited(_syncDrawsAfterBackfill());
-        } else {
-          _appendChatMessage(push.message);
-        }
+        // 全部走时间线（含他人 CHAT）：缓存已写入，禁止 append 造成短暂错序再重排。
+        _applyTimelineFromCache();
       });
       if (_disposed || subGen != _chatSubGen) {
         _chatPushSub?.cancel();
@@ -939,6 +938,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   Future<void> _handleAction(String action) async {
+    if ((action == '上分' || action == '下分') &&
+        ref.read(roomLotteryLiveProvider(widget.roomId)).isTrialAccount) {
+      AppToast.info('试玩账号不可$action');
+      return;
+    }
     switch (action) {
       case '取消':
         await _cancelCurrentIssueBets();
@@ -960,6 +964,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
   Future<void> _submitWalletApplication(String applyType) async {
     if (!ref.read(authSessionProvider).canPlaceBet) return;
+    if (ref.read(roomLotteryLiveProvider(widget.roomId)).isTrialAccount) {
+      AppToast.info(applyType == 'UP' ? '试玩账号不可上分' : '试玩账号不可下分');
+      return;
+    }
     if (_walletGuard.isBusy || _walletDialogOpen) return;
     _walletDialogOpen = true;
     final label = applyType == 'UP' ? '上分' : '下分';
@@ -1000,6 +1008,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   Future<void> _claimRebate() async {
+    if (ref.read(roomLotteryLiveProvider(widget.roomId)).isTrialAccount) {
+      AppToast.info('试玩账号不可自助回水');
+      return;
+    }
     try {
       final data = await ref.read(walletRepositoryProvider).claimRebate();
       final raw = data['claimed'];
@@ -1020,6 +1032,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
   void _onMenuItem(String label) {
     _setPanel(_BottomPanel.none);
+    final trialBlocked = const {'上分', '下分', '申请记录', '自助回水'};
+    if (trialBlocked.contains(label) &&
+        ref.read(roomLotteryLiveProvider(widget.roomId)).isTrialAccount) {
+      AppToast.info('试玩账号不可$label');
+      return;
+    }
     if (label == '上分' || label == '下分') {
       _submitWalletApplication(label == '上分' ? 'UP' : 'DOWN');
       return;
@@ -1108,7 +1126,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       _rememberSuccessfulBet(command);
       _appendBetSlip(command, orderIds: done);
       AppToast.success('下注成功');
-      _scheduleChatSync();
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
@@ -1306,6 +1323,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   Widget build(BuildContext context) {
     // 根 build 不 setState：倒计时/键盘/面板各自 ValueNotifier + Consumer select
     final canBet = ref.watch(authSessionProvider.select((s) => s.canPlaceBet));
+    final isTrialAccount = ref.watch(
+      roomLotteryLiveProvider(widget.roomId).select((s) => s.isTrialAccount),
+    );
     ref.listen<String?>(
       roomLotteryLiveProvider(widget.roomId).select((s) {
         final g = s.gameById(_gameId);
@@ -1497,7 +1517,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                               _appendLocalMessage(command);
                               _rememberSuccessfulBet(command);
                               _appendBetSlip(command, orderIds: orderIds);
-                              _scheduleChatSync();
                             },
                           );
                         },
@@ -1521,6 +1540,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                           }
                           return _ChatBetDock(
                             canBet: canBet,
+                            isTrialAccount: isTrialAccount,
                             submitting: submitting,
                             panel: panel,
                             controller: _betCtrl,
@@ -1711,6 +1731,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 class _ChatBetDock extends StatelessWidget {
   const _ChatBetDock({
     required this.canBet,
+    required this.isTrialAccount,
     required this.submitting,
     required this.panel,
     required this.controller,
@@ -1725,6 +1746,7 @@ class _ChatBetDock extends StatelessWidget {
   });
 
   final bool canBet;
+  final bool isTrialAccount;
   final bool submitting;
   final _BottomPanel panel;
   final TextEditingController controller;
@@ -1737,6 +1759,8 @@ class _ChatBetDock extends StatelessWidget {
   final ValueChanged<String> onAction;
   final ValueChanged<String> onMenuItem;
 
+  static const _trialDisabled = {'上分', '下分', '申请记录', '自助回水'};
+
   @override
   Widget build(BuildContext context) {
     final maxPanelH = BetKeypadPanel.panelHeight >
@@ -1746,6 +1770,7 @@ class _ChatBetDock extends StatelessWidget {
     final showPanel = canBet &&
         (panel == _BottomPanel.keypad || panel == _BottomPanel.menu);
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+    final trialDisabled = isTrialAccount ? _trialDisabled : const <String>{};
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1786,12 +1811,16 @@ class _ChatBetDock extends StatelessWidget {
                       children: [
                         BetKeypadPanel(
                           enabled: canBet,
+                          disabledActions: trialDisabled,
                           onInsert: onInsert,
                           onBackspace: onBackspace,
                           onClearAll: onClearAll,
                           onAction: onAction,
                         ),
-                        BetActionMenuPanel(onItemTap: onMenuItem),
+                        BetActionMenuPanel(
+                          onItemTap: onMenuItem,
+                          disabledLabels: trialDisabled,
+                        ),
                       ],
                     ),
                   ),

@@ -125,6 +125,30 @@ ChatMessageModel userBet(String gameId, String orderId, String command) {
   );
 }
 
+ChatMessageModel betRank(String gameId, String issue) {
+  return ChatMessageModel(
+    id: betRankChatMessageId(gameId, issue),
+    sender: '机器人',
+    content: '$issue期已封盘\n竞猜列表核对',
+    time: '21:05',
+    type: ChatMessageType.betListCheck,
+    isAdmin: false,
+    issueNo: issue,
+  );
+}
+
+ChatMessageModel winList(String gameId, String issue) {
+  return ChatMessageModel(
+    id: winListChatMessageId(gameId, issue),
+    sender: '机器人',
+    content: '$issue期已开奖\n中奖列表核对',
+    time: '21:06',
+    type: ChatMessageType.winCheck,
+    isAdmin: false,
+    issueNo: issue,
+  );
+}
+
 List<ChatMessageModel> drawsFromHistoryJson(String json, String gameId) {
   final rows = drawHistoryRowsFromApi(loadDrawHistoryRows(json));
   return drawRowsToResultMessages(rows, gameId: gameId);

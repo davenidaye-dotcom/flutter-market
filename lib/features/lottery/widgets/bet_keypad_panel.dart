@@ -11,6 +11,7 @@ class BetKeypadPanel extends StatefulWidget {
     required this.onClearAll,
     required this.onAction,
     this.enabled = true,
+    this.disabledActions = const {},
   });
 
   final ValueChanged<String> onInsert;
@@ -18,6 +19,8 @@ class BetKeypadPanel extends StatefulWidget {
   final VoidCallback onClearAll;
   final ValueChanged<String> onAction;
   final bool enabled;
+  /// 试玩号禁用：上分 / 下分
+  final Set<String> disabledActions;
 
   static const _grid = [
     ['大', '1', '2', '3', '⌫'],
@@ -77,7 +80,11 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
           children: [
             SizedBox(
               height: BetKeypadPanel.actionRowHeight,
-              child: _ActionRow(onAction: _onAction, enabled: widget.enabled),
+              child: _ActionRow(
+                onAction: _onAction,
+                enabled: widget.enabled,
+                disabledActions: widget.disabledActions,
+              ),
             ),
             const Divider(height: 1, thickness: 0.5, color: AppColors.divider),
             for (final row in BetKeypadPanel._grid)
@@ -105,10 +112,15 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
 }
 
 class _ActionRow extends StatelessWidget {
-  const _ActionRow({required this.onAction, required this.enabled});
+  const _ActionRow({
+    required this.onAction,
+    required this.enabled,
+    this.disabledActions = const {},
+  });
 
   final ValueChanged<String> onAction;
   final bool enabled;
+  final Set<String> disabledActions;
   static const _actions = ['上分', '取消', '梭哈', '重复', '下分'];
 
   @override
@@ -118,18 +130,27 @@ class _ActionRow extends StatelessWidget {
         for (var i = 0; i < _actions.length; i++) ...[
           if (i > 0) Container(width: 0.5, height: 16, color: AppColors.divider),
           Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: enabled ? () => onAction(_actions[i]) : null,
-              child: Center(
-                child: Text(
-                  _actions[i],
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: enabled ? const Color(0xFF666666) : AppColors.textHint,
+            child: Builder(
+              builder: (_) {
+                final action = _actions[i];
+                final actionEnabled =
+                    enabled && !disabledActions.contains(action);
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: actionEnabled ? () => onAction(action) : null,
+                  child: Center(
+                    child: Text(
+                      action,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: actionEnabled
+                            ? const Color(0xFF666666)
+                            : AppColors.textHint,
+                      ),
+                    ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ],

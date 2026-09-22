@@ -162,14 +162,17 @@ class ChatPushCache {
     _purgeAliasDuplicates(roomId, gameId, normalized, logicalKey);
     final keys = _keysByRoom[roomId]!;
     if (keys.contains(logicalKey)) {
-      if (normalized.type == ChatMessageType.betReceipt &&
+      if ((normalized.type == ChatMessageType.betReceipt ||
+              normalized.type == ChatMessageType.betListCheck ||
+              normalized.type == ChatMessageType.winCheck) &&
           _replaceIfRicher(roomId, logicalKey, normalized)) {
         _invalidateGameCache(roomId, gameId);
         _schedulePersist(roomId);
         return true;
       }
-      _upgradeStoredIssueIfLonger(roomId, logicalKey, normalized);
-      return false;
+      final upgraded =
+          _upgradeStoredIssueIfLonger(roomId, logicalKey, normalized);
+      return upgraded;
     }
     keys.add(logicalKey);
 
@@ -209,22 +212,23 @@ class ChatPushCache {
   }
 
   /// 同逻辑期已存在时：若新消息期号更长，升级展示文案（短号→长号）。
-  void _upgradeStoredIssueIfLonger(
+  /// 返回 true 表示缓存已改写，调用方应通知 UI。
+  bool _upgradeStoredIssueIfLonger(
     String roomId,
     String logicalKey,
     ChatMessageModel incoming,
   ) {
     final incomingIssue = extractIssue(incoming);
-    if (incomingIssue == null || incomingIssue.isEmpty) return;
+    if (incomingIssue == null || incomingIssue.isEmpty) return false;
     final buffer = _bufferByRoom[roomId];
-    if (buffer == null) return;
+    if (buffer == null) return false;
     for (var i = 0; i < buffer.length; i++) {
       final entry = buffer[i];
       if (entry.dedupeKey != logicalKey) continue;
       final existing = entry.push.message;
       final existingIssue = extractIssue(existing) ?? '';
       final preferred = preferFullIssueNo(incomingIssue, existingIssue);
-      if (preferred == existingIssue.trim()) return;
+      if (preferred == existingIssue.trim()) return false;
       final upgraded = existing.type == ChatMessageType.resultCard
           ? ChatMessageModel(
               id: existing.id,
@@ -254,8 +258,9 @@ class ChatPushCache {
       );
       _invalidateGameCache(roomId, entry.push.gameId);
       _schedulePersist(roomId);
-      return;
+      return true;
     }
+    return false;
   }
 
   String? _logicalDedupeKey(String gameId, ChatMessageModel message) {
@@ -265,10 +270,10 @@ class ChatPushCache {
       return drawChatMessageId(gameId, issue);
     }
     if (message.type == ChatMessageType.winCheck) {
-      return 'win-list-$gameId-$issue';
+      return winListChatMessageId(gameId, issue);
     }
     if (message.type == ChatMessageType.betListCheck) {
-      return 'bet-rank-$gameId-$issue';
+      return betRankChatMessageId(gameId, issue);
     }
     if (message.type == ChatMessageType.system) {
       if (message.content.contains('封盘线') ||

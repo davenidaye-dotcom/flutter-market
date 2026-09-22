@@ -24,7 +24,6 @@ class RoomReportPage extends ConsumerStatefulWidget {
 class _RoomReportPageState extends ConsumerState<RoomReportPage>
     with ReportDatePageMixin {
   static const _pageSize = 20;
-  static const _valueRed = Color(0xFFE53935);
 
   Map<String, dynamic> _summary = {};
   List<Map<String, dynamic>> _players = [];
@@ -64,10 +63,8 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
   Future<void> _load({required bool reset}) async {
     if (reset) {
       setState(() {
-        _loading = true;
         _pageNum = 1;
         _hasMore = true;
-        _players = [];
       });
     } else {
       if (!_hasMore || _loadingMore) return;
@@ -126,19 +123,20 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
     return fraction == 0 ? '0' : '0';
   }
 
-  Color _pnlColor(String text) {
-    final n = double.tryParse(text.replaceAll(',', '')) ?? 0;
-    if (n < 0) return _valueRed;
-    return AppColors.textPrimary;
+  HostSignedPnl _signedPick(List<String> keys) {
+    for (final k in keys) {
+      if (_summary[k] != null) return HostSignedPnl.of(_summary[k]);
+    }
+    return HostSignedPnl.of(0);
   }
 
   @override
   Widget build(BuildContext context) {
     final turnover = _pick(['turnover']);
     final rebate = _pick(['rebatePaid']);
-    final gamePnl = _pick(['gamePnl']);
+    final gamePnl = _signedPick(['gamePnl']);
     final agentWelfare = _pick(['agentWelfare']);
-    final totalPnl = _pick(['totalPnl']);
+    final totalPnl = _signedPick(['totalPnl']);
 
     return HostSubPageScaffold(
       title: '房间报表',
@@ -150,11 +148,11 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
             child: _SummaryCard(
               turnover: turnover,
               rebate: rebate,
-              gamePnl: gamePnl,
-              gamePnlColor: _pnlColor(gamePnl),
+              gamePnl: gamePnl.text,
+              gamePnlColor: gamePnl.color,
               agentWelfare: agentWelfare,
-              totalPnl: totalPnl,
-              totalPnlColor: _pnlColor(totalPnl),
+              totalPnl: totalPnl.text,
+              totalPnlColor: totalPnl.color,
             ),
           ),
           SizedBox(height: 10.h),
@@ -167,9 +165,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
           ),
           SizedBox(height: 10.h),
           Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : AppPullRefresh(
+            child: AppPullRefresh(
                     onRefresh: () => _load(reset: true),
                     child: _players.isEmpty
                         ? ListView(
@@ -361,16 +357,23 @@ class _PlayerCard extends StatelessWidget {
     return '0';
   }
 
+  HostSignedPnl _signed(List<String> keys) {
+    for (final k in keys) {
+      if (row[k] != null) return HostSignedPnl.of(row[k]);
+    }
+    return HostSignedPnl.of(0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = '${row['nickname'] ?? row['username'] ?? row['displayName'] ?? '—'}';
     final id = '${row['accountId'] ?? row['memberId'] ?? row['userId'] ?? ''}';
     final avatar = '${row['avatar'] ?? row['avatarUrl'] ?? ''}';
     final bet = _n(['betAmount']);
-    final gameResult = _n(['gameResult']);
+    final gameResult = _signed(['gameResult']);
     final returned = _n(['rebatePaid']);
     final pending = _n(['rebatePending']);
-    final playerResult = _n(['playerResult']);
+    final playerResult = _signed(['playerResult']);
 
     return Material(
       color: Colors.white,
@@ -422,7 +425,7 @@ class _PlayerCard extends StatelessWidget {
                       children: [
                         _kv('注额', bet),
                         SizedBox(height: 8.h),
-                        _kv('游戏结果', gameResult),
+                        _kv('游戏结果', gameResult.text, valueColor: gameResult.color),
                       ],
                     ),
                   ),
@@ -440,7 +443,7 @@ class _PlayerCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _kv('玩家结果', playerResult),
+                        _kv('玩家结果', playerResult.text, valueColor: playerResult.color),
                       ],
                     ),
                   ),
@@ -453,7 +456,7 @@ class _PlayerCard extends StatelessWidget {
     );
   }
 
-  Widget _kv(String label, String value) {
+  Widget _kv(String label, String value, {Color? valueColor}) {
     return Text.rich(
       TextSpan(
         children: [
@@ -463,7 +466,11 @@ class _PlayerCard extends StatelessWidget {
           ),
           TextSpan(
             text: value,
-            style: TextStyle(fontSize: 13.sp, color: _green, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 13.sp,
+              color: valueColor ?? _green,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

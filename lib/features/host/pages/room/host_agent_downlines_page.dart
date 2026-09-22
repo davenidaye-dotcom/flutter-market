@@ -93,71 +93,16 @@ class _HostAgentDownlinesPageState extends ConsumerState<HostAgentDownlinesPage>
   }
 
   Future<void> _editCommission() async {
-    final ctrl = TextEditingController(text: _commissionText);
-    final ok = await showModalBottomSheet<bool>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final bottom = MediaQuery.viewInsetsOf(ctx).bottom;
-        return Padding(
-          padding: EdgeInsets.only(bottom: bottom),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
-            ),
-            padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 16.h),
-            child: SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    '设置抽佣比例',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
-                  ),
-                  SizedBox(height: 16.h),
-                  Text('抽佣比例(%)', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
-                  SizedBox(height: 6.h),
-                  EmulatorSafeTextField(
-                    controller: ctrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    decoration: InputDecoration(
-                      hintText: '如 1 表示 1%',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                      isDense: true,
-                    ),
-                  ),
-                  SizedBox(height: 16.h),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('取消'),
-                        ),
-                      ),
-                      SizedBox(width: 12.w),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          style: FilledButton.styleFrom(backgroundColor: AppColors.navBlue),
-                          child: const Text('保存'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    final text = await hostInputSheet(
+      context,
+      title: '设置抽佣比例',
+      initial: _commissionText,
+      hint: '如 1 表示 1%',
+      suffixText: '%',
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
     );
-    if (ok != true || !mounted) return;
-    final ratio = num.tryParse(ctrl.text.trim());
+    if (text == null || !mounted) return;
+    final ratio = num.tryParse(text.trim());
     if (ratio == null || ratio < 0) {
       AppToast.error('请输入有效抽佣比例');
       return;
@@ -482,163 +427,78 @@ class AddAgentDownlineResult {
   final num commissionRatio;
 }
 
-/// UI：添加{代理名}下线 — 会员ID + 抽佣比例
+/// UI：添加{代理名}下线 — 会员ID + 抽佣比例（键盘避让走 hostFormSheet）
 Future<AddAgentDownlineResult?> showAddAgentDownlineSheet(
   BuildContext context, {
   required String agentName,
   num defaultCommission = 1,
-}) {
-  return showModalBottomSheet<AddAgentDownlineResult>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    isScrollControlled: true,
-    builder: (ctx) => _AddDownlineSheet(
-      agentName: agentName,
-      defaultCommission: defaultCommission,
-    ),
-  );
-}
+}) async {
+  final memberId = TextEditingController();
+  final ratio = TextEditingController(text: hostNumStr(defaultCommission));
+  final name = agentName.isEmpty ? '代理' : agentName;
+  AddAgentDownlineResult? result;
 
-class _AddDownlineSheet extends StatefulWidget {
-  const _AddDownlineSheet({
-    required this.agentName,
-    required this.defaultCommission,
-  });
-
-  final String agentName;
-  final num defaultCommission;
-
-  @override
-  State<_AddDownlineSheet> createState() => _AddDownlineSheetState();
-}
-
-class _AddDownlineSheetState extends State<_AddDownlineSheet> {
-  late final TextEditingController _memberId;
-  late final TextEditingController _ratio;
-
-  @override
-  void initState() {
-    super.initState();
-    _memberId = TextEditingController();
-    _ratio = TextEditingController(text: hostNumStr(widget.defaultCommission));
-  }
-
-  @override
-  void dispose() {
-    _memberId.dispose();
-    _ratio.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final id = _memberId.text.trim();
-    final ratio = num.tryParse(_ratio.text.trim());
-    if (id.isEmpty) {
-      AppToast.error('请输入会员ID');
-      return;
-    }
-    if (ratio == null || ratio < 0) {
-      AppToast.error('请输入有效抽佣比例');
-      return;
-    }
-    Navigator.pop(
-      context,
-      AddAgentDownlineResult(memberAccountId: id, commissionRatio: ratio),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    final name = widget.agentName.isEmpty ? '代理' : widget.agentName;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
-        ),
-        padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 16.h),
-        child: SafeArea(
-          top: false,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                '添加$name下线',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.w700),
-              ),
-              SizedBox(height: 18.h),
-              Text('会员ID', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
-              SizedBox(height: 6.h),
-              EmulatorSafeTextField(
-                controller: _memberId,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  hintText: '请输入会员ID',
-                  hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.r),
-                    borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-                ),
-              ),
-              SizedBox(height: 14.h),
-              Text('抽佣比例', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
-              SizedBox(height: 6.h),
-              EmulatorSafeTextField(
-                controller: _ratio,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  hintText: '百分比，如 1',
-                  hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.r),
-                    borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
-                ),
-              ),
-              SizedBox(height: 20.h),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close, size: 18),
-                      label: const Text('取消'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF666666),
-                        padding: EdgeInsets.symmetric(vertical: 12.h),
-                        side: const BorderSide(color: Color(0xFFCCCCCC)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: FilledButton.icon(
-                      onPressed: _submit,
-                      icon: const Icon(Icons.check, size: 18),
-                      label: const Text('保存'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.navBlue,
-                        padding: EdgeInsets.symmetric(vertical: 12.h),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
+  final ok = await hostFormSheet(
+    context,
+    title: '添加$name下线',
+    confirmText: '保存',
+    buildFields: (ctx, setSheet) => Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('会员ID', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
+        SizedBox(height: 6.h),
+        EmulatorSafeTextField(
+          controller: memberId,
+          keyboardType: TextInputType.number,
+          scrollPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 160.h),
+          decoration: InputDecoration(
+            hintText: '请输入会员ID',
+            hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8.r),
+              borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+            ),
+            contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
           ),
         ),
-      ),
-    );
-  }
+        SizedBox(height: 14.h),
+        Text('抽佣比例', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
+        SizedBox(height: 6.h),
+        EmulatorSafeTextField(
+          controller: ratio,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          scrollPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 160.h),
+          decoration: InputDecoration(
+            hintText: '百分比，如 1',
+            hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8.r)),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8.r),
+              borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+            ),
+            contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+          ),
+        ),
+      ],
+    ),
+    onConfirm: () async {
+      final id = memberId.text.trim();
+      final r = num.tryParse(ratio.text.trim());
+      if (id.isEmpty) {
+        AppToast.error('请输入会员ID');
+        return false;
+      }
+      if (r == null || r < 0) {
+        AppToast.error('请输入有效抽佣比例');
+        return false;
+      }
+      result = AddAgentDownlineResult(memberAccountId: id, commissionRatio: r);
+      return true;
+    },
+  );
+
+  memberId.dispose();
+  ratio.dispose();
+  return ok ? result : null;
 }

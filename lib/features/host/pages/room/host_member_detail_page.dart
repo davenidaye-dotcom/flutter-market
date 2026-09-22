@@ -51,7 +51,11 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
       final raw = await ref.read(ownerRepositoryProvider).getMemberDetail(widget.memberId);
       final found = hostMemberFromMap(raw);
       final rebate = raw['rebateRatio'] ?? raw['rebate'];
-      if (rebate != null) _rebateCtrl.text = '$rebate';
+      if (rebate != null) {
+        _rebateCtrl.text = hostNumStr(rebate, fraction: 2);
+      } else {
+        _rebateCtrl.text = '0';
+      }
       final remark = raw['remark']?.toString() ?? '';
       if (_remark.text != remark) _remark.text = remark;
       if (!mounted) return;
@@ -167,7 +171,7 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
     if (v == null) return;
     try {
       await ref.read(ownerRepositoryProvider).updateMemberRebate(widget.memberId, v);
-      _rebateCtrl.text = '$v';
+      _rebateCtrl.text = hostNumStr(v, fraction: 2);
       AppToast.success('已保存');
     } catch (e) {
       AppToast.error(e.toString());

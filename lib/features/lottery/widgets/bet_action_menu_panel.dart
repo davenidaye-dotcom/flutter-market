@@ -3,9 +3,16 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 /// 输入框右侧宫格弹出的功能菜单（可左右翻页）
 class BetActionMenuPanel extends StatefulWidget {
-  const BetActionMenuPanel({super.key, this.onItemTap});
+  const BetActionMenuPanel({
+    super.key,
+    this.onItemTap,
+    this.disabledLabels = const {},
+  });
 
   final ValueChanged<String>? onItemTap;
+
+  /// 试玩号等场景禁用：上分 / 下分 / 申请记录 / 自助回水
+  final Set<String> disabledLabels;
 
   /// 与网格布局一致，供聊天页预留列表底部空白
   static double panelHeight(BuildContext context) {
@@ -80,37 +87,49 @@ class _BetActionMenuPanelState extends State<BetActionMenuPanel> {
                     ),
                     itemBuilder: (_, i) {
                       final item = pageItems[i];
+                      final disabled = widget.disabledLabels.contains(item.label);
                       return GestureDetector(
-                        onTap: () => widget.onItemTap?.call(item.label),
+                        onTap: disabled
+                            ? null
+                            : () => widget.onItemTap?.call(item.label),
                         behavior: HitTestBehavior.opaque,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: iconSize,
-                              height: iconSize,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFE8F4FF),
-                                borderRadius: BorderRadius.circular(12.r),
+                        child: Opacity(
+                          opacity: disabled ? 0.38 : 1,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: iconSize,
+                                height: iconSize,
+                                decoration: BoxDecoration(
+                                  color: disabled
+                                      ? const Color(0xFFF0F0F0)
+                                      : const Color(0xFFE8F4FF),
+                                  borderRadius: BorderRadius.circular(12.r),
+                                ),
+                                child: Icon(
+                                  item.icon,
+                                  color: disabled
+                                      ? const Color(0xFFBBBBBB)
+                                      : const Color(0xFF5BA8E8),
+                                  size: 28.sp,
+                                ),
                               ),
-                              child: Icon(
-                                item.icon,
-                                color: const Color(0xFF5BA8E8),
-                                size: 28.sp,
+                              SizedBox(height: 6.h),
+                              Text(
+                                item.label,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13.sp,
+                                  height: 1.1,
+                                  color: disabled
+                                      ? const Color(0xFFAAAAAA)
+                                      : const Color(0xFF333333),
+                                ),
                               ),
-                            ),
-                            SizedBox(height: 6.h),
-                            Text(
-                              item.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 13.sp,
-                                height: 1.1,
-                                color: const Color(0xFF333333),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       );
                     },

@@ -43,11 +43,20 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
           );
       if (!mounted) return;
       final detail = data['detail'];
+      final rows = <Map<String, dynamic>>[];
+      if (detail is List) {
+        for (final e in detail) {
+          if (e is! Map) continue;
+          final m = Map<String, dynamic>.from(e);
+          // 文档：本页只要回水，看 changeType=REBATE
+          final ct = '${m['changeType'] ?? ''}'.toUpperCase();
+          if (ct.isNotEmpty && ct != 'REBATE' && ct != 'COMMISSION') continue;
+          rows.add(m);
+        }
+      }
       setState(() {
-        _total = hostNumStr(data['commissionRebate'] ?? data['total'], fraction: 2);
-        _rows = detail is List
-            ? detail.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
-            : const [];
+        _total = hostNumStr(data['commissionRebate'], fraction: 2);
+        _rows = rows;
         _loading = false;
       });
     } catch (e) {

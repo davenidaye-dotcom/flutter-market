@@ -4,13 +4,13 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
 
 /// 统一下拉刷新文案：下拉刷新 → 松开刷新 → 正在刷新 → 刷新成功
+/// 不显示中间/头部转圈，只保留文字状态。
 Header appRefreshHeader({
   Color? textColor,
   Color? iconColor,
   Duration processedDuration = const Duration(milliseconds: 600),
 }) {
   final color = textColor ?? AppColors.textSecondary;
-  final iColor = iconColor ?? AppColors.navBlue;
   return ClassicHeader(
     dragText: '下拉刷新',
     armedText: '松开刷新',
@@ -22,10 +22,9 @@ Header appRefreshHeader({
     showMessage: false,
     processedDuration: processedDuration,
     textStyle: TextStyle(fontSize: 13.sp, color: color),
-    iconTheme: IconThemeData(color: iColor, size: 18.sp),
-    progressIndicatorSize: 18.sp,
-    progressIndicatorStrokeWidth: 2,
-    spacing: 8,
+    pullIconBuilder: (context, state, value) => const SizedBox.shrink(),
+    iconDimension: 0,
+    spacing: 0,
   );
 }
 
@@ -35,7 +34,6 @@ Footer appLoadFooter({
   Color? iconColor,
 }) {
   final color = textColor ?? AppColors.textSecondary;
-  final iColor = iconColor ?? AppColors.navBlue;
   return ClassicFooter(
     dragText: '上拉加载',
     armedText: '松开加载',
@@ -46,10 +44,9 @@ Footer appLoadFooter({
     noMoreText: '没有更多了',
     showMessage: false,
     textStyle: TextStyle(fontSize: 13.sp, color: color),
-    iconTheme: IconThemeData(color: iColor, size: 18.sp),
-    progressIndicatorSize: 18.sp,
-    progressIndicatorStrokeWidth: 2,
-    spacing: 8,
+    pullIconBuilder: (context, state, value) => const SizedBox.shrink(),
+    iconDimension: 0,
+    spacing: 0,
   );
 }
 

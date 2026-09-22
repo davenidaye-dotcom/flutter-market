@@ -72,6 +72,10 @@ class _WalletPageState extends ConsumerState<WalletPage>
   }
 
   Future<void> _submitApply(String applyType) async {
+    if (_summary?.isTrial == true) {
+      AppToast.info(applyType == 'UP' ? '试玩账号不可上分' : '试玩账号不可下分');
+      return;
+    }
     if (_applyGuard.isBusy || _applyDialogOpen || _applyBusy.value) return;
     _applyDialogOpen = true;
     final label = applyType == 'UP' ? '上分' : '下分';
@@ -212,11 +216,14 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                       ValueListenableBuilder<bool>(
                                         valueListenable: _applyBusy,
                                         builder: (_, busy, __) {
+                                          final trial = s?.isTrial == true;
                                           return Row(
                                             children: [
                                               Expanded(
                                                 child: OutlinedButton(
-                                                  onPressed: busy ? null : () => _submitApply('UP'),
+                                                  onPressed: (busy || trial)
+                                                      ? null
+                                                      : () => _submitApply('UP'),
                                                   child: busy
                                                       ? SizedBox(
                                                           width: 18.w,
@@ -229,7 +236,9 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                               SizedBox(width: 12.w),
                                               Expanded(
                                                 child: OutlinedButton(
-                                                  onPressed: busy ? null : () => _submitApply('DOWN'),
+                                                  onPressed: (busy || trial)
+                                                      ? null
+                                                      : () => _submitApply('DOWN'),
                                                   child: const Text('下分'),
                                                 ),
                                               ),

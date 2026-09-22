@@ -3,12 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
-import '../../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../../../shared/widgets/app_pull_refresh.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
-import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
+import 'host_odds_edit_page.dart';
 
-/// Odds settings — GET/PUT /owner/room/odds
+/// 赔率设置 — 彩种列表入口（竞品：图标 + 名称 + PK10 副标题）
 class HostOddsLimitsPage extends ConsumerStatefulWidget {
   const HostOddsLimitsPage({super.key, required this.roomId});
   final String roomId;
@@ -17,81 +17,27 @@ class HostOddsLimitsPage extends ConsumerStatefulWidget {
   ConsumerState<HostOddsLimitsPage> createState() => _HostOddsLimitsPageState();
 }
 
-class _OddsRow {
-  _OddsRow({
-    required this.playCode,
-    required this.name,
-    required this.odds,
-    required this.minBet,
-    required this.periodLimit,
-  });
-
-  final String playCode;
-  final String name;
-  double odds;
-  final num minBet;
-  final num periodLimit;
-}
-
 class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
-  List<_OddsRow> _rows = [];
   List<Map<String, dynamic>> _games = [];
-  int _gameIndex = 0;
   bool _loading = true;
-  bool _dirty = false;
-  final _unifyCtrl = TextEditingController(text: '0.1');
-
-  String? get _gameType {
-    if (_games.isEmpty || _gameIndex >= _games.length) return 'JS_SC';
-    return (_games[_gameIndex]['gameType'] ?? _games[_gameIndex]['type'] ?? 'JS_SC')
-        .toString();
-  }
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(_bootstrap);
+    Future.microtask(_load);
   }
 
-  @override
-  void dispose() {
-    _unifyCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _bootstrap() async {
+  Future<void> _load({bool fromPull = false}) async {
+    if (!fromPull && mounted) setState(() => _loading = true);
     try {
-      final games = await ref.read(ownerRepositoryProvider).getGames();
-      if (!mounted) return;
-      setState(() => _games = games);
-    } catch (_) {}
-    await _loadOdds();
-  }
-
-  Future<void> _loadOdds({bool silent = false}) async {
-    if (!silent && mounted) setState(() => _loading = true);
-    try {
-      final data = await ref
-          .read(ownerRepositoryProvider)
-          .getOdds(gameType: _gameType ?? 'JS_SC');
-      final items = hostRowsOf(data.containsKey('items') ? data['items'] : data);
-      final rows = items.map((m) {
-        return _OddsRow(
-          playCode: (m['playCode'] ?? '').toString(),
-          name: (m['playName'] ?? m['playCode'] ?? '').toString(),
-          odds: (m['odds'] is num)
-              ? (m['odds'] as num).toDouble()
-              : double.tryParse('${m['odds']}') ?? 0,
-          minBet: m['minBet'] is num ? m['minBet'] as num : num.tryParse('${m['minBet']}') ?? 1,
-          periodLimit: m['periodLimit'] is num
-              ? m['periodLimit'] as num
-              : num.tryParse('${m['periodLimit']}') ?? 0,
-        );
-      }).toList();
+      var list = await ref.read(ownerRepositoryProvider).getGamesSettings();
+      if (list.isEmpty) {
+        list = await ref.read(ownerRepositoryProvider).getGames();
+      }
+      final enabled = list.where((g) => g['enabled'] != false).toList();
       if (!mounted) return;
       setState(() {
-        _rows = rows;
-        _dirty = false;
+        _games = enabled.isNotEmpty ? enabled : list;
         _loading = false;
       });
     } catch (e) {
@@ -101,193 +47,162 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
     }
   }
 
-  double get _step => double.tryParse(_unifyCtrl.text.trim()) ?? 0.1;
+  String _typeOf(Map<String, dynamic> g) =>
+      (g['gameType'] ?? g['type'] ?? '').toString();
 
-  Future<void> _editOne(int index) async {
-    final row = _rows[index];
-    final text = await hostInputSheet(
-      context,
-      title: '设置 ${row.name}',
-      initial: '${row.odds}',
-      hint: '请输入赔率',
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      confirmText: '确定',
-    );
-    final v = double.tryParse(text ?? '');
-    if (v == null || !mounted) return;
-    setState(() {
-      row.odds = v;
-      _dirty = true;
-    });
+  String _nameOf(Map<String, dynamic> g) {
+    final n = (g['gameName'] ?? g['typeName'] ?? g['gameType'] ?? g['type'] ?? '')
+        .toString();
+    return n.isEmpty ? _typeOf(g) : n;
   }
 
-  void _adjustAll(double sign) {
-    final delta = _step * sign;
-    setState(() {
-      for (final row in _rows) {
-        row.odds = double.parse((row.odds + delta).toStringAsFixed(3));
-        if (row.odds < 0) row.odds = 0;
-      }
-      _dirty = true;
-    });
+  /// 副标题：接口有 category 用接口，否则 PK10 类默认 PK10
+  String _subtitleOf(Map<String, dynamic> g) {
+    final raw = (g['category'] ??
+            g['gameCategory'] ??
+            g['groupName'] ??
+            g['series'] ??
+            '')
+        .toString()
+        .trim();
+    if (raw.isNotEmpty) return raw;
+    return 'PK10';
   }
 
-  Future<void> _save({num? uniformDelta}) async {
-    final ok = await hostConfirm(
-      context,
-      title: '\u4fdd\u5b58\u53d8\u66f4',
-      message: '\u786e\u8ba4\u4fdd\u5b58\u8d54\u7387\u8bbe\u7f6e\uff1f',
-    );
-    if (!ok || !mounted) return;
-    try {
-      await ref.read(ownerRepositoryProvider).updateOdds({
-        'gameType': _gameType,
-        if (uniformDelta != null) 'uniformDelta': uniformDelta,
-        'items': _rows
-            .map((r) => {
-                  'playCode': r.playCode,
-                  'odds': r.odds,
-                  'periodLimit': r.periodLimit,
-                  'minBet': r.minBet,
-                })
-            .toList(),
-      });
-      setState(() => _dirty = false);
-      AppToast.success('\u8d54\u7387\u8bbe\u7f6e\u5df2\u4fdd\u5b58');
-      await _loadOdds(silent: true);
-    } catch (e) {
-      AppToast.error(e.toString());
+  (IconData, Color) _iconOf(String name, String type) {
+    final key = '${type}_$name'.toUpperCase();
+    if (key.contains('飞艇') || key.contains('FT') || key.contains('AIR')) {
+      return (Icons.flight_takeoff, const Color(0xFF5C6BC0));
     }
+    if (key.contains('澳洲') || key.contains('AZXY') || key.contains('AUS')) {
+      return (Icons.flag, const Color(0xFF43A047));
+    }
+    if (key.contains('宾果') || key.contains('BINGO')) {
+      return (Icons.sports_esports, const Color(0xFFEF6C00));
+    }
+    if (key.contains('秒速') || key.contains('MS')) {
+      return (Icons.speed, const Color(0xFFFB8C00));
+    }
+    if (key.contains('幸运赛车') || key.contains('XYSC')) {
+      return (Icons.directions_car, const Color(0xFF8E24AA));
+    }
+    return (Icons.sports_motorsports, const Color(0xFFE53935));
+  }
+
+  void _open(Map<String, dynamic> g) {
+    final type = _typeOf(g);
+    if (type.isEmpty) return;
+    final catalog = _games
+        .map((e) => (type: _typeOf(e), name: _nameOf(e)))
+        .where((e) => e.type.isNotEmpty)
+        .toList();
+    pushHostPage(
+      context,
+      HostOddsEditPage(
+        roomId: widget.roomId,
+        gameType: type,
+        gameName: _nameOf(g),
+        games: catalog,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final gameNames = _games
-        .map((g) => (g['gameName'] ?? g['typeName'] ?? g['gameType'] ?? g['type'] ?? '').toString())
-        .where((s) => s.isNotEmpty)
-        .toList();
     return HostSubPageScaffold(
-      title: '\u8d54\u7387\u8bbe\u7f6e',
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                if (gameNames.isNotEmpty)
-                  SizedBox(
-                    height: 40.h,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      padding: EdgeInsets.symmetric(horizontal: 12.w),
-                      itemCount: gameNames.length,
-                      separatorBuilder: (_, _) => SizedBox(width: 8.w),
-                      itemBuilder: (_, i) {
-                        final active = i == _gameIndex;
-                        return GestureDetector(
-                          onTap: () async {
-                            setState(() => _gameIndex = i);
-                            await _loadOdds();
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 12.w),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: active ? AppColors.navBlue : Colors.white,
-                              borderRadius: BorderRadius.circular(16.r),
-                            ),
-                            child: Text(
-                              gameNames[i],
-                              style: TextStyle(
-                                fontSize: 13.sp,
-                                color: active ? Colors.white : AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
-                  child: Row(
+      title: '赔率设置',
+      body: AppPullRefresh(
+        onRefresh: () => _load(fromPull: true),
+        child: _loading
+            ? ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: const [
+                  SizedBox(height: 120),
+                  Center(child: CircularProgressIndicator()),
+                ],
+              )
+            : _games.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                     children: [
-                      Text('\u7edf\u4e00\u8c03\u6574', style: TextStyle(fontSize: 13.sp)),
-                      SizedBox(width: 8.w),
-                      SizedBox(
-                        width: 64.w,
-                        child: EmulatorSafeTextField(
-                          controller: _unifyCtrl,
-                          textAlign: TextAlign.center,
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
+                      SizedBox(height: 120.h),
+                      Center(
+                        child: Text(
+                          '暂无彩种',
+                          style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
                         ),
                       ),
-                      IconButton(
-                        onPressed: () => _adjustAll(1),
-                        icon: const Icon(Icons.add_circle_outline),
-                      ),
-                      IconButton(
-                        onPressed: () => _adjustAll(-1),
-                        icon: const Icon(Icons.remove_circle_outline),
-                      ),
-                      const Spacer(),
-                      if (_dirty)
-                        Text(
-                          '\u672a\u4fdd\u5b58',
-                          style: TextStyle(fontSize: 12.sp, color: AppColors.danger),
-                        ),
                     ],
-                  ),
-                ),
-                Expanded(
-                  child: _rows.isEmpty
-                      ? Center(
-                          child: Text(
-                            '\u6682\u65e0\u6570\u636e',
-                            style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                          ),
-                        )
-                      : ListView.separated(
-                          padding: EdgeInsets.all(16.w),
-                          itemCount: _rows.length,
-                          separatorBuilder: (_, _) => SizedBox(height: 8.h),
-                          itemBuilder: (_, i) {
-                            final r = _rows[i];
-                            return HostWhiteCard(
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(r.name, style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
-                                        Text(
-                                          '最小 ${hostNumStr(r.minBet)} / 单期 ${hostNumStr(r.periodLimit)}',
-                                          style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                  )
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
+                    itemCount: _games.length,
+                    separatorBuilder: (_, _) => SizedBox(height: 10.h),
+                    itemBuilder: (_, i) {
+                      final g = _games[i];
+                      final name = _nameOf(g);
+                      final type = _typeOf(g);
+                      final sub = _subtitleOf(g);
+                      final (icon, color) = _iconOf(name, type);
+                      return Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12.r),
+                        child: InkWell(
+                          onTap: () => _open(g),
+                          borderRadius: BorderRadius.circular(12.r),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 14.w,
+                              vertical: 12.h,
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44.w,
+                                  height: 44.w,
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(10.r),
+                                  ),
+                                  child: Icon(icon, color: color, size: 24.sp),
+                                ),
+                                SizedBox(width: 12.w),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        name,
+                                        style: TextStyle(
+                                          fontSize: 16.sp,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppColors.textPrimary,
                                         ),
-                                      ],
-                                    ),
+                                      ),
+                                      SizedBox(height: 2.h),
+                                      Text(
+                                        sub,
+                                        style: TextStyle(
+                                          fontSize: 12.sp,
+                                          color: AppColors.textHint,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  Text('${r.odds}', style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700)),
-                                  IconButton(
-                                    onPressed: () => _editOne(i),
-                                    icon: const Icon(Icons.edit_outlined),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
+                                ),
+                                Icon(
+                                  Icons.chevron_right,
+                                  size: 20.sp,
+                                  color: AppColors.textHint,
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
-                ),
-              ],
-            ),
-      bottomBar: Padding(
-        padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 16.h),
-        child: HostPrimaryButton(
-          label: '\u4fdd\u5b58',
-          onPressed: () => _save(),
-        ),
+                      );
+                    },
+                  ),
       ),
     );
   }

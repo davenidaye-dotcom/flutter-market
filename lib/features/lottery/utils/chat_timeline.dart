@@ -4,7 +4,7 @@ import 'bet_repeat_helper.dart';
 import 'draw_history_rows.dart';
 
 /// 将封盘消息插入对应期号的开奖结果之前，按时间线旧→新排序。
-/// 每期开奖若缺封盘/预警，在此动态补全（不依赖 buffer 是否被裁剪）。
+/// 同一期内固定：下注 → 投注成功 → 封盘预警 → 封盘线 → 竞猜核对 → 开奖 → 中奖核对。
 List<ChatMessageModel> buildChatTimeline(
   List<ChatMessageModel> messages, {
   String gameId = '',
@@ -71,10 +71,11 @@ List<ChatMessageModel> buildChatTimeline(
   }
   final list = deduped.values.toList()
     ..sort((a, b) {
-      final ai = _issueSortKey(a);
-      final bi = _issueSortKey(b);
-      if (ai != bi) return ai.compareTo(bi);
-      return _phaseOrder(a).compareTo(_phaseOrder(b));
+      final byIssue = _compareMessagesByIssue(a, b);
+      if (byIssue != 0) return byIssue;
+      final byPhase = _phaseOrder(a).compareTo(_phaseOrder(b));
+      if (byPhase != 0) return byPhase;
+      return _stableTieBreak(a, b);
     });
   return list;
 }
@@ -121,32 +122,65 @@ bool hasSealMessagesForIssue(
 
 String? extractIssue(ChatMessageModel message) {
   final issue = message.issueNo;
-  if (issue != null && issue.isNotEmpty) return issue;
-  final match = RegExp(r'第(\d+)期').firstMatch(message.content);
-  return match?.group(1);
+  if (issue != null && issue.isNotEmpty) return issue.trim();
+  // 开奖卡：第34163647期开奖
+  final withDi = RegExp(r'第(\d+)期').firstMatch(message.content);
+  if (withDi != null) return withDi.group(1);
+  // 竞猜/中奖核对：34163647期已封盘 / 34163647期已开奖
+  final bare = RegExp(r'(\d{5,})期').firstMatch(message.content);
+  return bare?.group(1);
 }
 
-int _issueSortKey(ChatMessageModel message) {
-  final issue = extractIssue(message);
-  if (issue == null || issue.isEmpty) return 1 << 30;
-  // 时间线排序用全号，避免 %10000 跨天回绕把旧下注排到最新开奖后面
-  final full = int.tryParse(issue.trim());
-  if (full != null && full > 0) return full;
-  final key = issueCompareKey(issue);
-  if (key > 0) return key;
-  return issue.hashCode;
+/// 长短号同一期视为相等（走 [compareIssueNo]）；无期号排最后。
+int _compareMessagesByIssue(ChatMessageModel a, ChatMessageModel b) {
+  final ia = extractIssue(a);
+  final ib = extractIssue(b);
+  final aMissing = ia == null || ia.isEmpty;
+  final bMissing = ib == null || ib.isEmpty;
+  if (aMissing && bMissing) return 0;
+  if (aMissing) return 1;
+  if (bMissing) return -1;
+  return compareIssueNo(ia, ib);
 }
 
+/// 同一期内顺序：下注 → 投注成功 → 封盘预警 → 封盘线 → 竞猜核对 → 开奖 → 中奖核对
 int _phaseOrder(ChatMessageModel message) {
   return switch (message.type) {
-    ChatMessageType.text || ChatMessageType.betReceipt => 0,
-    ChatMessageType.system =>
-      message.content.contains('封盘线') || message.content.contains('停止战斗')
-          ? 2
-          : 1,
-    ChatMessageType.resultCard => 3,
-    _ => 4,
+    ChatMessageType.text => 0,
+    ChatMessageType.betReceipt => 1,
+    ChatMessageType.system => _systemPhase(message),
+    ChatMessageType.betListCheck => 4,
+    ChatMessageType.resultCard => 5,
+    ChatMessageType.winCheck => 6,
+    _ => 7,
   };
+}
+
+int _systemPhase(ChatMessageModel message) {
+  final c = message.content;
+  if (c.contains('封盘线') || c.contains('停止战斗')) return 3;
+  if (c.contains('封盘')) return 2;
+  return 2;
+}
+
+/// 同相位稳定次序：有 HH:mm 按时间，再按 id。
+int _stableTieBreak(ChatMessageModel a, ChatMessageModel b) {
+  final at = _timeSortKey(a.time);
+  final bt = _timeSortKey(b.time);
+  if (at != bt) return at.compareTo(bt);
+  return a.id.compareTo(b.id);
+}
+
+int _timeSortKey(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty) return 0;
+  // HH:mm 或 HH:mm:ss
+  final m = RegExp(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?').firstMatch(t);
+  if (m == null) return 0;
+  final h = int.tryParse(m.group(1)!) ?? 0;
+  final min = int.tryParse(m.group(2)!) ?? 0;
+  final s = int.tryParse(m.group(3) ?? '0') ?? 0;
+  return h * 3600 + min * 60 + s;
 }
 
 bool _isSyntheticTimelineMessage(ChatMessageModel message) {
@@ -181,6 +215,16 @@ String _timelineDedupeKey(ChatMessageModel m) {
       issue != null &&
       issue.isNotEmpty) {
     return 'draw-${issueCompareKey(issue)}';
+  }
+  if (m.type == ChatMessageType.betListCheck &&
+      issue != null &&
+      issue.isNotEmpty) {
+    return 'bet-rank-${issueCompareKey(issue)}';
+  }
+  if (m.type == ChatMessageType.winCheck &&
+      issue != null &&
+      issue.isNotEmpty) {
+    return 'win-list-${issueCompareKey(issue)}';
   }
   if (m.type == ChatMessageType.system && issue != null && issue.isNotEmpty) {
     if (m.content.contains('封盘线') || m.content.contains('停止战斗')) {

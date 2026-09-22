@@ -1,6 +1,6 @@
 /// 本地预设头像：后台只存编码（如 av01），App 映射到 assets。
 abstract final class AvatarCatalog {
-  static const int count = 58;
+  static const int count = 42;
   static const String codePrefix = 'av';
 
   /// av01 … av58

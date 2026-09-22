@@ -1,4 +1,5 @@
 // 房主端列表解析 helpers（页面统一用 API 数据，不再使用静态假列表）
+import 'package:flutter/material.dart';
 
 class _Member {
   const _Member(
@@ -171,20 +172,54 @@ List<Map<String, dynamic>> hostRowsOf(dynamic data) {
 }
 
 /// Format numeric API fields for host UI display.
+/// 避免 BigDecimal JSON 出现 `0E-8` 等科学计数法。
 String hostNumStr(dynamic value, {int fraction = 0}) {
   if (value == null) return '0';
+  num? n;
   if (value is num) {
-    if (fraction <= 0) {
-      return value == value.roundToDouble() ? '${value.toInt()}' : value.toString();
-    }
-    return value.toStringAsFixed(fraction);
+    n = value;
+  } else {
+    n = num.tryParse('$value');
   }
-  final parsed = num.tryParse('$value');
-  if (parsed == null) return '$value';
+  if (n == null) return '$value';
+  if (n == 0) return fraction <= 0 ? '0' : (0).toStringAsFixed(fraction);
+
   if (fraction <= 0) {
-    return parsed == parsed.roundToDouble() ? '${parsed.toInt()}' : parsed.toString();
+    if (n == n.roundToDouble()) return '${n.toInt()}';
+    // 去掉尾随 0，避免科学计数法
+    var s = n.toStringAsFixed(8);
+    s = s.replaceFirst(RegExp(r'\.?0+$'), '');
+    return s.isEmpty ? '0' : s;
   }
-  return parsed.toStringAsFixed(fraction);
+  return n.toStringAsFixed(fraction);
+}
+
+/// 盈亏：盈利 `+` 绿色，亏损 `-` 红色，零为中性色无符号。
+class HostSignedPnl {
+  const HostSignedPnl({required this.text, required this.color});
+
+  final String text;
+  final Color color;
+
+  static const green = Color(0xFF2E9E5B);
+  static const red = Color(0xFFE53935);
+
+  factory HostSignedPnl.of(
+    dynamic value, {
+    int fraction = 2,
+    Color zeroColor = const Color(0xFF222222),
+  }) {
+    final raw = hostNumStr(value, fraction: fraction);
+    final n = double.tryParse(raw.replaceAll(',', '')) ?? 0;
+    if (n > 0) {
+      final t = raw.startsWith('+') ? raw : '+$raw';
+      return HostSignedPnl(text: t, color: green);
+    }
+    if (n < 0) {
+      return HostSignedPnl(text: raw, color: red);
+    }
+    return HostSignedPnl(text: raw, color: zeroColor);
+  }
 }
 
 /// 操作日志 action 码 → 中文（接口仍返回英文码，展示侧翻译）
