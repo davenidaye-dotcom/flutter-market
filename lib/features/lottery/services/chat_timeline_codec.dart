@@ -16,7 +16,7 @@ List<Map<String, dynamic>> buildTimelinePayload(Map<String, dynamic> raw) {
   final timeline = buildChatTimeline(
     messages,
     gameId: gameId,
-    syntheticSeals: true,
+    syntheticSeals: false,
   );
   return timeline.map(_messageToJson).toList(growable: false);
 }

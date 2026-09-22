@@ -443,7 +443,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return ChatPushCache.instance.timelineForGame(
       roomId,
       gameId,
-      syntheticSeals: true,
+      syntheticSeals: false,
     );
   }
 
@@ -451,7 +451,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return ChatPushCache.instance.freshTimelineForGame(
       roomId,
       gameId,
-      syntheticSeals: true,
+      syntheticSeals: false,
     );
   }
 
@@ -459,7 +459,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return ChatPushCache.instance.timelineForGameAsync(
       roomId,
       gameId,
-      syntheticSeals: true,
+      syntheticSeals: false,
     );
   }
 
@@ -503,7 +503,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     // 相对顶栏 previousIssue 落后则不算暖，必须 HTTP 回补（防 3844 当 3952 用）。
     if (_cacheNeedsDrawBackfill(gameId)) return false;
     final timeline =
-        cache.timelineForGame(roomId, gameId, syntheticSeals: true);
+        cache.timelineForGame(roomId, gameId, syntheticSeals: false);
     final g = _engine.gameById(gameId) ?? state.gameById(gameId);
     if (g != null &&
         !isDrawTimelineFresh(
@@ -566,10 +566,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         return rank(a).compareTo(rank(b));
       });
     for (final m in ordered) {
-      if (m.type == ChatMessageType.system &&
-          (m.content.contains('封盘') || m.content.contains('停止战斗'))) {
-        continue;
-      }
       final issue = extractIssue(m);
       // 无对应开奖卡片的中奖核对先挂起，避免核对先于开奖上屏。
       if (m.type == ChatMessageType.winCheck &&
@@ -944,10 +940,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       // 回补只由 _finalizeDrawChatPush 负责，避免与 scheduleReconcile 双路 HTTP。
       _pushDrawChat(gid, draw.issue, draw.ranks);
     }
-    for (final seal in result.seals) {
-      final gid = seal.gameId.isNotEmpty ? seal.gameId : gameId;
-      _pushSealFromEngine(gid, seal);
-    }
     if (result.changed) {
       _publishGames();
       _bumpUiTick();
@@ -968,29 +960,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     for (final draw in result.draws) {
       _pushDrawChat(draw.gameId, draw.issue, draw.ranks);
     }
-    for (final seal in result.seals) {
-      _pushSealFromEngine(seal.gameId, seal);
-    }
     if (result.changed) {
       _publishGames();
     }
     _bumpUiTick();
-  }
-
-  void _pushSealFromEngine(String gameId, SealRevealEvent seal) {
-    if (_chatBootstrapping.contains(gameId)) return;
-    if (seal.kind == 'warn') {
-      final game = _engine.gameById(gameId);
-      final remain = game != null
-          ? LotteryPeriodRules.sealSecondsOf(game)
-          : LotteryPeriodRules.defaultSealSeconds;
-      _applySealEvent('SEAL_WARN', gameId, {
-        'issueNo': seal.issue,
-        'remainSeconds': remain,
-      });
-    } else {
-      _applySealEvent('SEALED', gameId, {'issueNo': seal.issue});
-    }
   }
 
   void _bumpUiTick() {
@@ -1155,12 +1128,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       final openAtMs = _toInt(payload['openAtEpochMs']);
       var sealAtMs = _toInt(payload['sealAtEpochMs']);
       var sealSeconds = _toInt(payload['sealSeconds']);
-      // 互相补齐：有配置无时刻 / 有时刻无配置
+      // 包里没有 sealSeconds 时，用开奖/封盘时刻差补配置。不反过来用秒数改写 sealAt。
       if (sealSeconds <= 0 && openAtMs > 0 && sealAtMs > 0 && openAtMs > sealAtMs) {
         sealSeconds = ((openAtMs - sealAtMs) / 1000).round();
-      }
-      if (sealAtMs <= 0 && openAtMs > 0 && sealSeconds > 0) {
-        sealAtMs = openAtMs - sealSeconds * 1000;
       }
       final lastRanks = _parseRanks(payload['lastRanks'] ?? payload['ranks']);
       final lastIssue = payload['lastIssueNo']?.toString() ?? '';
@@ -1179,6 +1149,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'SEAL_WARN' || type == 'SEALED') {
+      _applySealEvent(type, gameType, payload);
       return;
     }
 
@@ -1453,49 +1424,27 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     String gameType,
     Map<String, dynamic> payload,
   ) {
-    if (type == 'SEAL_WARN') {
-      final warnIssue = payload['issueNo']?.toString() ?? '';
-      final remain = _toInt(payload['remainSeconds']);
-      final fullIssue = warnIssue.trim();
-      final key = warnIssue.isNotEmpty
-          ? sealWarnChatMessageId(gameType, warnIssue)
-          : 'seal-warn-$gameType-0';
-      _pushChatOnce(
-        key,
-        gameType,
-        ChatMessageModel(
-          id: key,
-          sender: '机器人',
-          content:
-              '注意：距离封盘时间还有${remain > 0 ? remain : LotteryPeriodRules.defaultSealSeconds}秒，封盘之后将不能再投注！',
-          time: _nowTime(),
-          type: ChatMessageType.system,
-          isAdmin: true,
-          issueNo: fullIssue.isNotEmpty ? fullIssue : null,
-        ),
-        persist: false,
-      );
-      return;
-    }
-
-    final sealedIssue = payload['issueNo']?.toString() ?? '';
-    final fullIssue = sealedIssue.trim();
-    final key = sealedIssue.isNotEmpty
-        ? sealedChatMessageId(gameType, sealedIssue)
-        : 'sealed-$gameType-0';
+    final text = (payload['text'] ?? payload['content'] ?? '').toString().trim();
+    if (text.isEmpty) return;
+    final issue = (payload['issueNo']?.toString() ?? '').trim();
+    final key = issue.isEmpty
+        ? '${type.toLowerCase()}-$gameType-0'
+        : (type == 'SEAL_WARN'
+            ? sealWarnChatMessageId(gameType, issue)
+            : sealedChatMessageId(gameType, issue));
+    final sender = (payload['senderName'] ?? '机器人').toString().trim();
     _pushChatOnce(
       key,
       gameType,
       ChatMessageModel(
         id: key,
-        sender: '机器人',
-        content: '======停止战斗====== =======封盘线=======',
+        sender: sender.isEmpty || sender == '管理员' ? '机器人' : sender,
+        content: text,
         time: _nowTime(),
         type: ChatMessageType.system,
         isAdmin: true,
-        issueNo: fullIssue.isNotEmpty ? fullIssue : null,
+        issueNo: issue.isNotEmpty ? issue : null,
       ),
-      persist: false,
     );
   }
 

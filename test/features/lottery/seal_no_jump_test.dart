@@ -5,7 +5,7 @@ import 'package:letou_app/features/lottery/engine/lottery_period_engine.dart';
 import 'package:letou_app/features/lottery/utils/lottery_period_ui.dart';
 
 void main() {
-  test('同期内迟到的更远 sealAt/openAt 不得抬高距封盘', () {
+  test('同期内后到的 sealAt/openAt 按服务端时刻更新距封盘', () {
     final engine = LotteryPeriodEngine();
     final t0 = DateTime(2099, 6, 1, 12, 0, 0);
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
@@ -38,7 +38,7 @@ void main() {
     final midSeal = LotteryPeriodHelper.bettingCountdownSeconds(mid, t15);
     expect(midSeal, 30);
 
-    // 模拟公开期数/HTTP 带来更远 open+seal（以前会把距封盘抬到 50+）
+    // 与 web mergePeriod 一致：后到的 sealAt/openAt 覆盖，距封盘跟着变。
     final laterOpen = t0.add(const Duration(seconds: 95)).millisecondsSinceEpoch;
     engine.onPeriodTick(
       'JS_SC',
@@ -50,19 +50,17 @@ void main() {
       now: t15,
     );
     final after = engine.displayGame('JS_SC', t15);
-    final afterSeal = LotteryPeriodHelper.bettingCountdownSeconds(after, t15);
-    expect(afterSeal, lessThanOrEqualTo(midSeal + 1));
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(after, t15), 50);
+    expect(LotteryPeriodHelper.openRemainSeconds(after, t15), 80);
 
     engine.applySealConfig(
       'JS_SC',
-      sealSeconds: 30,
+      sealSeconds: 10,
       sealAtEpochMs: t0.add(const Duration(seconds: 70)).millisecondsSinceEpoch,
       now: t15,
     );
     final afterEnrich = engine.displayGame('JS_SC', t15);
-    expect(
-      LotteryPeriodHelper.bettingCountdownSeconds(afterEnrich, t15),
-      lessThanOrEqualTo(midSeal + 1),
-    );
+    // sealSeconds=10 不得把 sealAt 改回 open-10；仍用刚写入的 sealAt。
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(afterEnrich, t15), 55);
   });
 }

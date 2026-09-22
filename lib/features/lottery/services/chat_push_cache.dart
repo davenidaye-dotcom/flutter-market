@@ -167,13 +167,21 @@ class ChatPushCache {
     required ChatMessageModel message,
   }) {
     final normalized = normalizeStoredChatMessage(message, gameId: gameId);
-    final logicalKey = _logicalDedupeKey(gameId, normalized) ?? dedupeKey;
+    final logicalKey = _logicalDedupeKey(gameId, normalized) ??
+        _sealLogicalId(gameId, normalized.id.isNotEmpty ? normalized.id : dedupeKey) ??
+        dedupeKey;
     _keysByRoom.putIfAbsent(roomId, () => <String>{});
     _bufferByRoom.putIfAbsent(roomId, () => <_CachedChatPush>[]);
     // 只清「同逻辑期」但旧长号 dedupeKey 的别名，不删已存在的 logicalKey 本身
     _purgeAliasDuplicates(roomId, gameId, normalized, logicalKey);
     final keys = _keysByRoom[roomId]!;
     if (keys.contains(logicalKey)) {
+      if (_isSealDedupeKey(logicalKey) &&
+          _replaceStoredContent(roomId, logicalKey, normalized)) {
+        _invalidateGameCache(roomId, gameId);
+        _schedulePersist(roomId);
+        return true;
+      }
       if ((normalized.type == ChatMessageType.betReceipt ||
               normalized.type == ChatMessageType.betListCheck ||
               normalized.type == ChatMessageType.winCheck) &&
@@ -199,6 +207,70 @@ class ChatPushCache {
     _invalidateGameCache(roomId, gameId);
     _schedulePersist(roomId);
     return true;
+  }
+
+  /// `sealed-JS_SC-34163647` 与 `sealed-JS_SC-3647` 视为同一条封盘。
+  String? _sealLogicalId(String gameId, String id) {
+    final warn = 'seal-warn-$gameId-';
+    final line = 'sealed-$gameId-';
+    final String issue;
+    final String prefix;
+    if (id.startsWith(warn)) {
+      issue = id.substring(warn.length);
+      prefix = warn;
+    } else if (id.startsWith(line)) {
+      issue = id.substring(line.length);
+      prefix = line;
+    } else {
+      return null;
+    }
+    final key = issueCompareKey(issue);
+    if (key <= 0) return id;
+    return '$prefix$key';
+  }
+
+  bool _isSealDedupeKey(String key) =>
+      key.startsWith('seal-warn-') ||
+      key.startsWith('sealed-') ||
+      key.startsWith('hist-seal-');
+
+  /// 同一封盘键已在缓存时，用后端新正文覆盖（本地旧文案不再占坑）。
+  bool _replaceStoredContent(
+    String roomId,
+    String logicalKey,
+    ChatMessageModel incoming,
+  ) {
+    if (incoming.content.trim().isEmpty) return false;
+    var changed = false;
+
+    bool patch(List<_CachedChatPush>? list) {
+      if (list == null) return false;
+      var found = false;
+      for (var i = 0; i < list.length; i++) {
+        final entry = list[i];
+        if (entry.dedupeKey != logicalKey) continue;
+        found = true;
+        final existing = entry.push.message;
+        if (existing.content == incoming.content) continue;
+        list[i] = _CachedChatPush(
+          dedupeKey: logicalKey,
+          push: LotteryChatPush(
+            gameId: entry.push.gameId,
+            message: existing.copyWith(
+              content: incoming.content,
+              issueNo: incoming.issueNo ?? existing.issueNo,
+              time: incoming.time.isNotEmpty ? incoming.time : existing.time,
+            ),
+          ),
+        );
+        changed = true;
+      }
+      return found;
+    }
+
+    patch(_bufferByRoom[roomId]);
+    patch(_liveByRoom[roomId]);
+    return changed;
   }
 
   /// 本地先插的确认卡文案较短时，用服务端 BET_RECEIPT 覆盖。
@@ -360,7 +432,6 @@ class ChatPushCache {
   }
 
   /// 封盘写入内存 live 区（不占开奖 trim 配额、不落盘），并参与 timeline。
-  /// 仅记 dedupe 不存消息会导致：大厅已 emit → 进聊天 dedupe 挡住 → 只能等开奖 synthetic。
   bool emitLive({
     required String roomId,
     required String dedupeKey,
@@ -368,11 +439,18 @@ class ChatPushCache {
     required ChatMessageModel message,
   }) {
     final normalized = normalizeStoredChatMessage(message, gameId: gameId);
-    final logicalKey = _logicalDedupeKey(gameId, normalized) ?? dedupeKey;
+    final logicalKey = _logicalDedupeKey(gameId, normalized) ??
+        _sealLogicalId(gameId, normalized.id.isNotEmpty ? normalized.id : dedupeKey) ??
+        dedupeKey;
     final keys = _keysByRoom.putIfAbsent(roomId, () => <String>{});
     final live = _liveByRoom.putIfAbsent(roomId, () => <_CachedChatPush>[]);
     final alreadyLive = live.any((e) => e.dedupeKey == logicalKey);
     if (keys.contains(logicalKey)) {
+      if (_isSealDedupeKey(logicalKey) &&
+          _replaceStoredContent(roomId, logicalKey, normalized)) {
+        _timelineCache.remove('$roomId:$gameId');
+        return true;
+      }
       // key 已有：只补 live 体给 timeline，返回 false 避免每秒重推闪屏
       if (!alreadyLive) {
         live.add(
@@ -622,18 +700,18 @@ class ChatPushCache {
   List<ChatMessageModel> freshTimelineForGame(
     String roomId,
     String gameId, {
-    bool syntheticSeals = true,
+    bool syntheticSeals = false,
   }) {
     _timelineCache.remove('$roomId:$gameId');
     return timelineForGame(roomId, gameId, syntheticSeals: syntheticSeals);
   }
 
   /// 封盘 + 开奖合并后的聊天时间线（旧→新）。
-  /// 默认按历史开奖补封盘（仅展示，不写 buffer）。
+  /// 封盘文案只用已入库的后端消息，不在本地补写。
   List<ChatMessageModel> timelineForGame(
     String roomId,
     String gameId, {
-    bool syntheticSeals = true,
+    bool syntheticSeals = false,
   }) {
     final cacheKey = '$roomId:$gameId';
     final cached = _timelineCache[cacheKey];
@@ -652,7 +730,7 @@ class ChatPushCache {
   Future<List<ChatMessageModel>> timelineForGameAsync(
     String roomId,
     String gameId, {
-    bool syntheticSeals = true,
+    bool syntheticSeals = false,
   }) async {
     final cacheKey = '$roomId:$gameId';
     _timelineCache.remove(cacheKey);

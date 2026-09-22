@@ -304,6 +304,8 @@ void main() {
       seconds: 60,
       openAtEpochMs:
           t0.add(const Duration(seconds: 60)).millisecondsSinceEpoch,
+      sealAtEpochMs: t0.add(const Duration(seconds: 50)).millisecondsSinceEpoch,
+      sealSeconds: 10,
       now: t0,
     );
     final betting = engine.displayGame('JS_SC', t0);

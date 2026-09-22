@@ -49,12 +49,10 @@ class _GameSlot {
   bool wsSynced = false;
   DateTime? openDeadline;
   int? prevCd;
-  String? sealWarnIssue;
-  String? sealLineIssue;
 }
 
-/// 期态（简单）：本地 openAt 递减 → cd>seal 距封盘 / cd≤seal 封盘 / cd=0 开奖中；
-/// seal 取自后台 sealSeconds（默认 10）；WS 换期包一到立即结束开奖中并刷新球号、期号。
+/// 期态：距封盘用 sealAtEpochMs，封盘中用 openAtEpochMs，与 web `lotteryFeed` 同一套时刻。
+/// 聊天封盘线不在这里生成，只消费后端 WS / 历史消息。
 final class LotteryPeriodEngine {
   /// 兼容旧测试引用；开奖中最短展示由 WS 换期包到达决定，不再人为 hold。
   static const revealHold = Duration(milliseconds: 800);
@@ -103,38 +101,24 @@ final class LotteryPeriodEngine {
   void mergeHttpSnapshot(List<LotteryGameModel> list, DateTime now) {
     for (final g in list) {
       final existing = _slots[g.id];
-      if (existing != null && existing.wsSynced) {
+      if (existing != null) {
         existing.model = existing.model.copyWith(
           name: g.name.isNotEmpty ? g.name : existing.model.name,
+          currentIssue: g.currentIssue.isNotEmpty
+              ? _pickNewer(g.currentIssue, existing.model.currentIssue)
+              : existing.model.currentIssue,
           sealSeconds: g.sealSeconds ?? existing.model.sealSeconds,
+          openAtEpochMs: g.openAtEpochMs ?? existing.model.openAtEpochMs,
+          sealAtEpochMs: g.sealAtEpochMs ?? existing.model.sealAtEpochMs,
         );
-        // sealAt 只跟已采纳 openAt 对齐，禁止 HTTP 把距封盘抬高。
-        _alignSealAt(
-          existing,
-          preferredSealAtMs: null,
-          now: now,
-          allowSealIncrease: false,
-        );
+        final openAt = g.openAtEpochMs;
+        if (openAt != null && openAt > 0) {
+          existing.openDeadline = DateTime.fromMillisecondsSinceEpoch(openAt);
+          existing.model = existing.model.copyWith(openAtEpochMs: openAt);
+        }
         _mergeHttpDraw(existing, g);
         _recoverStuckCountdown(existing, g, now);
         continue;
-      }
-      if (existing != null && existing.openDeadline != null) {
-        final httpDeadline = _deadlineFromModel(g, now);
-        if (httpDeadline != null) {
-          final curLeft = _secondsLeft(existing, now);
-          final httpLeft = mathMax(0, httpDeadline.difference(now).inSeconds);
-          if (curLeft > 0 && httpLeft > curLeft) {
-            existing.model = existing.model.copyWith(
-              name: g.name.isNotEmpty ? g.name : existing.model.name,
-              currentIssue: g.currentIssue.isNotEmpty
-                  ? _pickNewer(g.currentIssue, existing.model.currentIssue)
-                  : existing.model.currentIssue,
-            );
-            _mergeHttpDraw(existing, g);
-            continue;
-          }
-        }
       }
       final slot = _GameSlot(g);
       slot.openDeadline = _deadlineFromModel(g, now);
@@ -239,59 +223,33 @@ final class LotteryPeriodEngine {
     final clock = now ?? DateTime.now();
     final slot = existing;
 
-    if (sealAtEpochMs != null || sealSeconds != null) {
-      // 只先写入 sealSeconds 配置；sealAt 必须在 _syncCountdown 采纳 openAt 后再对齐，
-      // 否则会用「未采纳的更远 openAt」算出更远 sealAt → 距封盘从 30s 跳回 50s。
-      final sealSec = sealSeconds ?? slot.model.sealSeconds;
-      if (sealSec != null && sealSec > 0) {
-        slot.model = slot.model.copyWith(sealSeconds: sealSec);
-      }
+    if (sealSeconds != null && sealSeconds > 0) {
+      slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
     }
 
     final first = !slot.wsSynced;
     if (first) slot.wsSynced = true;
 
-    final cdBefore = _secondsLeft(slot, clock);
-    final httpAnchored = first && slot.openDeadline != null;
-    var allowWsIncrease = first &&
-        (!httpAnchored || _wsMayCorrectHttpOnFirstTick(slot, seconds, clock));
-    var issueChanged = false;
-
     if (issue.isNotEmpty) {
       final newer = _pickNewer(issue, slot.model.currentIssue);
-      issueChanged = !_sameIssue(newer, slot.model.currentIssue);
+      final issueChanged = !_sameIssue(newer, slot.model.currentIssue);
       if (issueChanged || first) {
         // 与 PC mergePeriod 一致：PERIOD_TICK/SNAPSHOT 的 issueNo 以服务端为准。
-        // 旧逻辑要求本地 CD≤0 才换期，开奖已出但本机倒计时未归零时会卡在旧期（顶栏 1598、聊天已开 1598）。
         slot.model = slot.model.copyWith(currentIssue: newer);
-      }
-      if (issueChanged) {
-        // 换期后必须允许倒计时按新 openAt 抬升，否则仍停在旧 deadline。
-        allowWsIncrease = true;
       }
     }
 
+    // 时刻以本包为准，与 web mergePeriod 一样后来的包覆盖。不用 sealSeconds 回写 sealAt。
     _syncCountdown(
       slot,
       seconds: seconds,
       openAtMs: openAtEpochMs,
       now: clock,
-      force: issueChanged ||
-          (cdBefore <= 0 && seconds > 0) ||
-          (first && slot.openDeadline == null && seconds > 0) ||
-          (cdBefore <= 0 &&
-              openAtEpochMs != null &&
-              openAtEpochMs > clock.millisecondsSinceEpoch),
-      allowIncrease: allowWsIncrease,
+      force: first && slot.openDeadline == null,
     );
-
-    // 用「已采纳」的 openAt 对齐 sealAt（web: sealAt = openAt - sealGap）。
-    _alignSealAt(
-      slot,
-      preferredSealAtMs: issueChanged || first ? sealAtEpochMs : null,
-      now: clock,
-      allowSealIncrease: issueChanged || first,
-    );
+    if (sealAtEpochMs != null && sealAtEpochMs > 0) {
+      slot.model = slot.model.copyWith(sealAtEpochMs: sealAtEpochMs);
+    }
 
     var draws = const <DrawRevealEvent>[];
     final resolvedLastIssue = lastIssue ?? '';
@@ -306,8 +264,7 @@ final class LotteryPeriodEngine {
       );
     }
 
-    final seals = _emitSealChat(gameId, slot, clock);
-    return PeriodTickResult(draws: draws, seals: seals, changed: true);
+    return PeriodTickResult(draws: draws, changed: true);
   }
 
   PeriodTickResult onDrawResult(
@@ -329,25 +286,16 @@ final class LotteryPeriodEngine {
 
   PeriodTickResult onSecondTick(DateTime now) {
     var changed = false;
-    final seals = <SealRevealEvent>[];
 
-    for (final entry in _slots.entries) {
-      final gameId = entry.key;
-      final slot = entry.value;
+    for (final slot in _slots.values) {
       final cd = _secondsLeft(slot, now);
       if (slot.prevCd != cd) {
         slot.prevCd = cd;
         changed = true;
       }
-
-      final s = _emitSealChat(gameId, slot, now);
-      if (s.isNotEmpty) {
-        seals.addAll(s);
-        changed = true;
-      }
     }
 
-    return PeriodTickResult(seals: seals, changed: changed);
+    return PeriodTickResult(changed: changed);
   }
 
   void patchGame(LotteryGameModel patch, DateTime now) {
@@ -492,39 +440,7 @@ final class LotteryPeriodEngine {
     return [DrawRevealEvent(gameId: gameId, issue: issue, ranks: ranks)];
   }
 
-  List<SealRevealEvent> _emitSealChat(
-    String gameId,
-    _GameSlot slot,
-    DateTime now,
-  ) {
-    final issue = slot.model.currentIssue;
-    if (issue.isEmpty) return const [];
-
-    final cd = _secondsLeft(slot, now);
-    final sealLine = LotteryPeriodRules.sealSecondsOf(slot.model);
-    final warnLine = sealLine * 2;
-    final sealRemain = LotteryPeriodHelper.sealRemainSeconds(
-      slot.model.copyWith(countdownSeconds: cd),
-      now,
-    );
-    final out = <SealRevealEvent>[];
-
-    // 预警：进入「封盘前 2×sealSeconds」窗口（与旧 20s/10s 比例一致）
-    if (cd > 0 &&
-        sealRemain > 0 &&
-        sealRemain <= warnLine &&
-        slot.sealWarnIssue != issue) {
-      slot.sealWarnIssue = issue;
-      out.add(SealRevealEvent(gameId: gameId, kind: 'warn', issue: issue));
-    }
-    if (cd > 0 && sealRemain <= 0 && slot.sealLineIssue != issue) {
-      slot.sealLineIssue = issue;
-      out.add(SealRevealEvent(gameId: gameId, kind: 'sealed', issue: issue));
-    }
-    return out;
-  }
-
-  /// 仅补 seal 配置（不碰倒计时锚点）。公开期数 HTTP 用这个，禁止走 onPeriodTick。
+  /// 写入服务端封盘配置。有 sealAt 就用该时刻，不用 sealSeconds 回写。
   void applySealConfig(
     String gameId, {
     int? sealSeconds,
@@ -533,187 +449,30 @@ final class LotteryPeriodEngine {
   }) {
     final slot = _slots[gameId];
     if (slot == null) return;
-    final clock = now ?? DateTime.now();
     if (sealSeconds != null && sealSeconds > 0) {
       slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
     }
-    _alignSealAt(
-      slot,
-      preferredSealAtMs: sealAtEpochMs,
-      now: clock,
-      allowSealIncrease: false,
-    );
+    if (sealAtEpochMs != null && sealAtEpochMs > 0) {
+      slot.model = slot.model.copyWith(sealAtEpochMs: sealAtEpochMs);
+    }
   }
 
-  /// 用已采纳的 openAt 对齐 sealAt；禁止同期内把距封盘抬高。
-  void _alignSealAt(
-    _GameSlot slot, {
-    int? preferredSealAtMs,
-    required DateTime now,
-    required bool allowSealIncrease,
-  }) {
-    final open = slot.model.openAtEpochMs ??
-        slot.openDeadline?.millisecondsSinceEpoch;
-    var sealSec = slot.model.sealSeconds;
-    var sealAt = preferredSealAtMs ?? slot.model.sealAtEpochMs;
-
-    if ((sealSec == null || sealSec <= 0) &&
-        open != null &&
-        open > 0 &&
-        sealAt != null &&
-        sealAt > 0 &&
-        open > sealAt) {
-      final gap = ((open - sealAt) / 1000).round();
-      if (gap >= 1 && gap <= LotteryPeriodRules.maxSealSeconds) {
-        sealSec = gap;
-      }
-    }
-
-    if (open != null &&
-        open > 0 &&
-        sealSec != null &&
-        sealSec > 0 &&
-        (sealAt == null || sealAt <= 0)) {
-      sealAt = open - sealSec * 1000;
-    }
-
-    // 有 open+gap 时，sealAt 必须以当前 open 为准（防 HTTP 带来更远 sealAt）。
-    if (open != null && open > 0 && sealSec != null && sealSec > 0) {
-      final derived = open - sealSec * 1000;
-      if (sealAt == null || sealAt <= 0) {
-        sealAt = derived;
-      } else if (!allowSealIncrease && sealAt > derived + 1500) {
-        sealAt = derived;
-      } else if (allowSealIncrease) {
-        // 换期：优先服务端 sealAt，否则 derived
-        if (preferredSealAtMs == null || preferredSealAtMs <= 0) {
-          sealAt = derived;
-        }
-      }
-    }
-
-    if (sealAt == null && sealSec == null) return;
-
-    final prevSeal = slot.model.sealAtEpochMs ?? 0;
-    if (!allowSealIncrease &&
-        sealAt != null &&
-        sealAt > 0 &&
-        prevSeal > 0 &&
-        sealAt > prevSeal + 1500) {
-      // 同期内 sealAt 变远 → 距封盘回跳，拒绝
-      sealAt = prevSeal;
-    }
-
-    slot.model = slot.model.copyWith(
-      sealAtEpochMs: sealAt,
-      sealSeconds: sealSec,
-    );
-  }
-
+  /// 有 openAt 就改开奖终点（允许变远）。没有时刻时，仅在本地还没有终点时用秒数播种。
   void _syncCountdown(
     _GameSlot slot, {
     required int seconds,
     int? openAtMs,
     required DateTime now,
-    required bool force,
-    bool allowIncrease = false,
+    bool force = false,
   }) {
-    final prevOpenAt = slot.model.openAtEpochMs;
-    final openAtChanged =
-        openAtMs != null && openAtMs > 0 && prevOpenAt != openAtMs;
-
-    if (openAtMs != null &&
-        openAtMs > 0 &&
-        !force &&
-        !openAtChanged &&
-        slot.openDeadline != null &&
-        slot.model.openAtEpochMs == openAtMs) {
-      final expired = openAtMs <= now.millisecondsSinceEpoch;
-      if (!expired) return;
-    }
-
-    DateTime? target;
     if (openAtMs != null && openAtMs > 0) {
-      final fromOpenAt = DateTime.fromMillisecondsSinceEpoch(openAtMs);
-      final openAtLeft = mathMax(0, fromOpenAt.difference(now).inSeconds);
-      if (openAtLeft > 0) {
-        target = fromOpenAt;
-      } else if (seconds > 0) {
-        final localLeft = _secondsLeft(slot, now);
-        if (force || localLeft <= 0 || seconds <= localLeft + 2) {
-          target = now.add(Duration(seconds: seconds));
-        } else {
-          return;
-        }
-      } else {
-        return;
-      }
-    } else if (seconds > 0) {
-      if (!force) {
-        final prev = slot.openDeadline;
-        if (prev != null) return;
-      }
-      target = now.add(Duration(seconds: seconds));
-    } else {
+      slot.openDeadline = DateTime.fromMillisecondsSinceEpoch(openAtMs);
+      slot.model = slot.model.copyWith(openAtEpochMs: openAtMs);
       return;
     }
-
-    final prev = slot.openDeadline;
-    if (force || prev == null || openAtChanged) {
-      if (_applyDeadlineIfMonotonic(
-        slot,
-        target,
-        now,
-        allowIncrease: allowIncrease,
-      )) {
-        if (openAtMs != null && openAtMs > 0) {
-          slot.model = slot.model.copyWith(openAtEpochMs: openAtMs);
-        }
-      }
-      return;
-    }
-
-    final prevLeft = mathMax(0, prev.difference(now).inSeconds);
-    final newLeft = mathMax(0, target.difference(now).inSeconds);
-    if (newLeft > prevLeft + 1) return;
-    if (prevLeft > newLeft + 2) {
-      if (_applyDeadlineIfMonotonic(slot, target, now) &&
-          openAtMs != null &&
-          openAtMs > 0) {
-        slot.model = slot.model.copyWith(openAtEpochMs: openAtMs);
-      }
-    }
-  }
-
-  bool _wsMayCorrectHttpOnFirstTick(
-    _GameSlot slot,
-    int wsSeconds,
-    DateTime now,
-  ) {
-    final httpLeft = _secondsLeft(slot, now);
-    if (httpLeft <= 0) return wsSeconds > 0;
-    if (wsSeconds <= httpLeft) return false;
-    if (httpLeft <= LotteryPeriodRules.sealSecondsOf(slot.model) &&
-        wsSeconds > LotteryPeriodRules.sealSecondsOf(slot.model) + 5) {
-      return true;
-    }
-    return wsSeconds <= httpLeft + 3;
-  }
-
-  bool _applyDeadlineIfMonotonic(
-    _GameSlot slot,
-    DateTime target,
-    DateTime now, {
-    bool allowIncrease = false,
-  }) {
-    final newLeft = mathMax(0, target.difference(now).inSeconds);
-    final prev = slot.openDeadline;
-    if (prev != null) {
-      final prevLeft = mathMax(0, prev.difference(now).inSeconds);
-      if (prevLeft > 0 && newLeft > prevLeft && !allowIncrease) return false;
-    }
-    slot.openDeadline = target;
-    return true;
+    if (seconds <= 0) return;
+    if (!force && slot.openDeadline != null) return;
+    slot.openDeadline = now.add(Duration(seconds: seconds));
   }
 
   int _secondsLeft(_GameSlot slot, DateTime now) {

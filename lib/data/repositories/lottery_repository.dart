@@ -152,12 +152,9 @@ class LotteryRepository {
     return grouped;
   }
 
-  /// 封盘/开奖 roomId 为空，本房消息必须等于当前房。
-  bool _visibleInRoom(Map raw, String roomId) {
-    final id = raw['roomId']?.toString().trim() ?? '';
-    if (id.isEmpty || id == 'null') return true;
-    return roomId.isEmpty || id == roomId.trim();
-  }
+  /// 会员/房主消息接口已按登录房间过滤。路由 roomId 是房间号，
+  /// 消息 roomId 是数字主键，不再按字符串相等丢掉下注和核对卡。
+  bool _visibleInRoom(Map raw, String roomId) => true;
 
   ChatMessageModel _parseChatMessage(Map<String, dynamic> m) {
     final msgType = m['msgType']?.toString().toUpperCase() ?? 'CHAT';
