@@ -7,6 +7,7 @@ import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../wallet/widgets/date_range_filter.dart';
 import '../widgets/agent_ui.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// 交收下钻 — GET /agent/reports；会员明细 — GET /agent/reports/tickets
 class AgentReportQueryPage extends ConsumerStatefulWidget {
@@ -23,8 +24,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   bool _showGamePicker = false;
   bool _loading = false;
   String? _error;
-  DateTime _start = DateTime.now();
-  DateTime _end = DateTime.now();
+  late DateTime _start;
+  late DateTime _end;
+  List<DateRangeQuickItem> _quickItems = DateRangeFilter.buildQuickItems();
   Map<String, dynamic> _summary = {};
   List<Map<String, dynamic>> _rows = [];
   List<Map<String, String>> _gameOptions = [];
@@ -65,9 +67,10 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   @override
   void initState() {
     super.initState();
-    final range = DateRangeFilter.rangeForQuick(0);
-    _start = range.$1;
-    _end = range.$2;
+    _quickItems = DateRangeFilter.buildQuickItems();
+    _quick = 0;
+    _start = _quickItems[0].start;
+    _end = _quickItems[0].end;
     Future.microtask(() async {
       await _loadGames();
       await _load();
@@ -104,11 +107,12 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   void _onQuick(int i) {
-    final range = DateRangeFilter.rangeForQuick(i);
+    if (i < 0 || i >= _quickItems.length) return;
+    final it = _quickItems[i];
     setState(() {
       _quick = i;
-      _start = range.$1;
-      _end = range.$2;
+      _start = it.start;
+      _end = it.end;
     });
     _load();
   }
@@ -225,9 +229,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                     spacing: 6.w,
                     runSpacing: 6.h,
                     children: [
-                      for (var i = 0; i < DateRangeFilter.quickLabels.length; i++)
+                      for (var i = 0; i < _quickItems.length; i++)
                         AgentReportQuickBtn(
-                          label: DateRangeFilter.quickLabels[i],
+                          label: _quickItems[i].label,
                           active: _quick == i,
                           onTap: () => _onQuick(i),
                         ),
@@ -312,7 +316,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 children: const [
                                   SizedBox(height: 120),
-                                  Center(child: CircularProgressIndicator()),
+                                  const AppPageLoading(),
                                 ],
                               )
                             : _error != null && _rows.isEmpty

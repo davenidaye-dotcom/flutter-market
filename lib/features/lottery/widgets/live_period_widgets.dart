@@ -177,7 +177,7 @@ class LiveFlipCountdown extends ConsumerWidget {
   final String gameId;
   final bool tickEnabled;
   final Color digitColor;
-  /// true = 显示距封盘（总秒数 - 10）
+  /// true = 显示距封盘（总秒数 − 提前封盘秒数）
   final bool bettingMode;
 
   @override
@@ -188,13 +188,16 @@ class LiveFlipCountdown extends ConsumerWidget {
     final notifier = ref.read(roomLotteryLiveProvider(roomId).notifier);
     var sec = notifier.countdownFor(gameId);
     if (bettingMode) {
+      final game = notifier.displayGameFor(gameId);
       sec = LotteryPeriodHelper.bettingCountdownSeconds(
-        LotteryGameModel(
-          id: gameId,
-          name: '',
-          currentIssue: '',
-          countdownSeconds: sec,
-        ),
+        (game ??
+                LotteryGameModel(
+                  id: gameId,
+                  name: '',
+                  currentIssue: '',
+                  countdownSeconds: sec,
+                ))
+            .copyWith(countdownSeconds: sec),
       );
     }
     return FlipCountdown(seconds: sec, digitColor: digitColor);
@@ -270,7 +273,8 @@ class LiveHallGameCountdown extends ConsumerWidget {
     final notifier = ref.read(roomLotteryLiveProvider(roomId).notifier);
     final game = notifier.displayGameFor(gameId);
     if (game == null) return const SizedBox.shrink();
-    final phase = LotteryPeriodHelper.phaseOf(game);
+    final now = DateTime.now();
+    final phase = LotteryPeriodHelper.phaseOf(game, now);
 
     return switch (phase) {
       LotteryDisplayPhase.drawing => SizedBox(
@@ -303,7 +307,11 @@ class LiveHallGameCountdown extends ConsumerWidget {
                 ),
               ),
               SizedBox(width: 8.w),
-              FlipCountdown(seconds: game.countdownSeconds, compact: true),
+              FlipCountdown(
+                // 封盘中：距开奖
+                seconds: LotteryPeriodHelper.openRemainSeconds(game, now),
+                compact: true,
+              ),
             ],
           ),
         ),
@@ -315,7 +323,8 @@ class LiveHallGameCountdown extends ConsumerWidget {
               Text('距封盘', style: TextStyle(fontSize: 12.sp, height: 1)),
               SizedBox(width: 8.w),
               FlipCountdown(
-                seconds: LotteryPeriodHelper.bettingCountdownSeconds(game),
+                seconds:
+                    LotteryPeriodHelper.bettingCountdownSeconds(game, now),
                 compact: true,
               ),
             ],

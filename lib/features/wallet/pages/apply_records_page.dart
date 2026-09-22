@@ -8,6 +8,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// \u4e0a\u4e0b\u5206\u8bb0\u5f55\uff08\u7533\u8bf7\u8bb0\u5f55\uff09
 class ApplyRecordsPage extends ConsumerStatefulWidget {
@@ -73,6 +74,7 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                 quickIndex: quickIndex,
                 start: start,
                 end: end,
+                quickItems: quickItems,
                 onQuickTap: onQuickTap,
                 onPickStart: () => pickDate(isStart: true),
                 onPickEnd: () => pickDate(isStart: false),
@@ -99,7 +101,7 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                         const Divider(height: 1, color: AppColors.divider),
                         Expanded(
                           child: _loading
-                              ? const Center(child: CircularProgressIndicator())
+                              ? const AppPageLoading()
                               : _rows.isEmpty
                                   ? const Center(child: AppEmptyHint())
                                   : ListView.separated(

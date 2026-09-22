@@ -49,19 +49,26 @@ class _CachedChatPush {
 }
 
 /// 封盘/开奖等聊天推送的本地缓存（内存 + SharedPreferences）。
-/// 每房间、每彩种最多保留 [maxPerGame] 条，超出删该彩种最旧的。
+/// 保留最近约 [chatHistoryIssueLimit] 期的开奖 + 下注/核对，勿用「总共 20 条」裁光核对。
 class ChatPushCache {
   ChatPushCache._();
 
   static final ChatPushCache instance = ChatPushCache._();
 
-  static const maxPerGame = 20;
-  /// 聊天历史按期数，后端默认/最大 15 期，不要当成消息条数去拉 50。
+  /// 聊天历史按期数（与后端 CHAT_HISTORY_ISSUE_COUNT 对齐）。
   static const chatHistoryIssueLimit = 15;
-  /// 聊天 ListView 最多渲染条数：20 期 ×（封盘预警+封盘线+开奖）+ 余量
-  static const maxVisibleChatMessages = maxPerGame * 3 + 10;
+  /// 每彩种开奖卡片上限。
+  static const maxDrawsPerGame = chatHistoryIssueLimit;
+  /// 每彩种用户下注文案上限（多期合计）。
+  static const maxUserBetsPerGame = 120;
+  /// 确认卡 + 竞猜核对 + 中奖核对（约 15 期 × 数条）。
+  static const maxRobotMsgsPerGame = 120;
+  /// 兼容旧名：总预算仅作 others 配额参考，不再拿它裁掉核对。
+  static const maxPerGame = maxDrawsPerGame + maxUserBetsPerGame + maxRobotMsgsPerGame;
+  /// 聊天 ListView 最多渲染条数
+  static const maxVisibleChatMessages = 220;
   /// 进房预拉、聊天同步：每彩种最新开奖条数
-  static const drawHistoryLimit = maxPerGame;
+  static const drawHistoryLimit = maxDrawsPerGame;
   static const serverDrawLimit = drawHistoryLimit;
   static const _prefPrefix = 'flyroom_chat_cache_';
 
@@ -130,20 +137,25 @@ class ChatPushCache {
     return false;
   }
 
-  /// 开奖期号是否不连续（比完整期号，不用后四位）。
+  /// 开奖期号是否不连续。
   bool hasDrawGap(String roomId, String gameId) {
-    final nums = <int>[];
+    final nums = <int>{};
     for (final m in bufferedForGame(roomId, gameId)) {
       if (m.type != ChatMessageType.resultCard) continue;
       final issue = extractIssue(m);
       if (issue == null || issue.isEmpty) continue;
-      final n = int.tryParse(issue.trim()) ?? 0;
-      if (n >= 10000) nums.add(n);
+      final full = int.tryParse(issue.trim()) ?? 0;
+      if (full > 0) {
+        nums.add(full);
+      } else {
+        final key = issueCompareKey(issue);
+        if (key > 0) nums.add(key);
+      }
     }
     if (nums.length < 2) return false;
-    nums.sort();
-    for (var i = 1; i < nums.length; i++) {
-      if (nums[i] - nums[i - 1] > 1) return true;
+    final sorted = nums.toList()..sort();
+    for (var i = 1; i < sorted.length; i++) {
+      if (sorted[i] - sorted[i - 1] > 1) return true;
     }
     return false;
   }
@@ -491,7 +503,8 @@ class ChatPushCache {
     return rows;
   }
 
-  /// 用服务端开奖记录刷新缓存：去掉比 API 更旧的磁盘/WS 开奖，避免 4133 与 4284 并存。
+  /// 用服务端开奖记录刷新缓存：同逻辑期以 API 重写；丢弃窗口之前的旧期；
+  /// 窗口内 API 缺期但本地/WS 已有的开奖保留（可补洞，gap 检测另算）。
   void syncDrawsFromApi({
     required String roomId,
     required String gameId,
@@ -503,18 +516,23 @@ class ChatPushCache {
     final buffer = _bufferByRoom[roomId]!;
 
     var minFull = 1 << 62;
+    var minKey = 1 << 62;
     final apiIssueKeys = <int>{};
     for (final draw in draws) {
       final issue = extractIssue(draw);
       if (issue != null && issue.isNotEmpty) {
         final key = issueCompareKey(issue);
         final full = int.tryParse(issue.trim()) ?? 0;
-        if (key > 0) apiIssueKeys.add(key);
+        if (key > 0) {
+          apiIssueKeys.add(key);
+          if (key < minKey) minKey = key;
+        }
         if (full >= 10000 && full < minFull) minFull = full;
       }
     }
     if (apiIssueKeys.isEmpty) return;
     if (minFull == 1 << 62) minFull = 0;
+    if (minKey == 1 << 62) minKey = 0;
 
     final kept = <_CachedChatPush>[];
     for (final entry in List<_CachedChatPush>.from(buffer)) {
@@ -524,11 +542,18 @@ class ChatPushCache {
         final issueKey =
             issue != null && issue.isNotEmpty ? issueCompareKey(issue) : 0;
         final full = issue != null ? (int.tryParse(issue.trim()) ?? 0) : 0;
+        // 同逻辑期：丢掉本地副本，后面用 API 重写（长号升级）。
         if (issueKey > 0 && apiIssueKeys.contains(issueKey)) {
           keys.remove(entry.dedupeKey);
           continue;
         }
+        // 长号：早于 API 最旧一期 → 丢。
         if (minFull > 0 && full >= 10000 && full < minFull) {
+          keys.remove(entry.dedupeKey);
+          continue;
+        }
+        // 短号：逻辑期早于 API 窗口 → 丢；窗口内缺期保留（WS 补洞）。
+        if (issueKey > 0 && minKey > 0 && issueKey < minKey) {
           keys.remove(entry.dedupeKey);
           continue;
         }
@@ -765,7 +790,7 @@ class ChatPushCache {
     _bufferByRoom[roomId] = newBuffer;
   }
 
-  /// 优先保留开奖卡片，封盘类系统消息可裁，避免占满 20 条配额。
+  /// 按类型分别限额：开奖 15、核对/确认卡、下注各自保留，禁止 20 条总配额把核对裁光。
   List<_CachedChatPush> _trimGameEntries(
     List<_CachedChatPush> entries,
     Set<String> keys,
@@ -791,24 +816,19 @@ class ChatPushCache {
             !isUserBetChatMessage(e.push.message))
         .toList();
 
-    final keptDraws = draws.length > maxPerGame
-        ? draws.sublist(draws.length - maxPerGame)
+    final keptDraws = draws.length > maxDrawsPerGame
+        ? draws.sublist(draws.length - maxDrawsPerGame)
         : draws;
-    const maxUserBets = 10;
-    const maxRobot = 10;
-    final keptUserBets = userBets.length > maxUserBets
-        ? userBets.sublist(userBets.length - maxUserBets)
+    final keptUserBets = userBets.length > maxUserBetsPerGame
+        ? userBets.sublist(userBets.length - maxUserBetsPerGame)
         : userBets;
-    final keptRobot = robotMsgs.length > maxRobot
-        ? robotMsgs.sublist(robotMsgs.length - maxRobot)
+    final keptRobot = robotMsgs.length > maxRobotMsgsPerGame
+        ? robotMsgs.sublist(robotMsgs.length - maxRobotMsgsPerGame)
         : robotMsgs;
-    final slotsForOthers =
-        maxPerGame - keptDraws.length - keptUserBets.length - keptRobot.length;
-    final keptOthers = slotsForOthers <= 0
-        ? const <_CachedChatPush>[]
-        : others.sublist(
-            others.length > slotsForOthers ? others.length - slotsForOthers : 0,
-          );
+    const maxOthers = 40;
+    final keptOthers = others.length > maxOthers
+        ? others.sublist(others.length - maxOthers)
+        : others;
 
     final keptSet = <_CachedChatPush>{
       ...keptDraws,

@@ -4,7 +4,7 @@ import 'bet_repeat_helper.dart';
 import 'draw_history_rows.dart';
 
 /// 将封盘消息插入对应期号的开奖结果之前，按时间线旧→新排序。
-/// 同一期内固定：下注 → 投注成功 → 封盘预警 → 封盘线 → 竞猜核对 → 开奖 → 中奖核对。
+/// 同一期内：下注区(同注单 CHAT→RECEIPT 成对) → 封盘预警 → 封盘线 → 竞猜核对 → 开奖 → 中奖核对。
 List<ChatMessageModel> buildChatTimeline(
   List<ChatMessageModel> messages, {
   String gameId = '',
@@ -77,7 +77,16 @@ List<ChatMessageModel> buildChatTimeline(
       if (byPhase != 0) return byPhase;
       return _stableTieBreak(a, b);
     });
-  return list;
+  // 无开奖卡片的中奖核对不上屏（防核对插在开奖上方 / 磁盘孤儿）。
+  return list
+      .where((m) {
+        if (m.type != ChatMessageType.winCheck) return true;
+        final issue = extractIssue(m);
+        if (issue == null || issue.isEmpty) return true;
+        final key = issueCompareKey(issue);
+        return key > 0 && draws.containsKey(key);
+      })
+      .toList(growable: false);
 }
 
 /// 历史兜底封盘文案，与 Java tickGame 推送一致。
@@ -143,11 +152,11 @@ int _compareMessagesByIssue(ChatMessageModel a, ChatMessageModel b) {
   return compareIssueNo(ia, ib);
 }
 
-/// 同一期内顺序：下注 → 投注成功 → 封盘预警 → 封盘线 → 竞猜核对 → 开奖 → 中奖核对
+/// 同一期内相位：下注区(0，CHAT/RECEIPT 同相按注单成对) → 封盘预警 → 封盘线 → 竞猜 → 开奖 → 中奖
 int _phaseOrder(ChatMessageModel message) {
   return switch (message.type) {
     ChatMessageType.text => 0,
-    ChatMessageType.betReceipt => 1,
+    ChatMessageType.betReceipt => 0,
     ChatMessageType.system => _systemPhase(message),
     ChatMessageType.betListCheck => 4,
     ChatMessageType.resultCard => 5,
@@ -163,8 +172,46 @@ int _systemPhase(ChatMessageModel message) {
   return 2;
 }
 
-/// 同相位稳定次序：有 HH:mm 按时间，再按 id。
+bool _isBettingMessage(ChatMessageModel m) =>
+    m.type == ChatMessageType.text || m.type == ChatMessageType.betReceipt;
+
+/// 从 `bet-chat-{game}-{orderId}` / `bet-receipt-{game}-{orderId}` 取注单键。
+String? _betOrderKey(ChatMessageModel m) {
+  final match =
+      RegExp(r'^bet-(?:chat|receipt)-[^-]+-(.+)$').firstMatch(m.id.trim());
+  if (match == null) return null;
+  final raw = match.group(1)?.trim();
+  return (raw == null || raw.isEmpty) ? null : raw;
+}
+
+int _betTypeRank(ChatMessageModel m) =>
+    m.type == ChatMessageType.betReceipt ? 1 : 0;
+
+/// 同相位稳定次序：下注区按注单成对(CHAT→RECEIPT)；其余按时间再按 id。
 int _stableTieBreak(ChatMessageModel a, ChatMessageModel b) {
+  if (_isBettingMessage(a) && _isBettingMessage(b)) {
+    final ao = _betOrderKey(a);
+    final bo = _betOrderKey(b);
+    if (ao != null && bo != null && ao != bo) {
+      final an = int.tryParse(ao);
+      final bn = int.tryParse(bo);
+      if (an != null && bn != null) return an.compareTo(bn);
+      return ao.compareTo(bo);
+    }
+    if (ao != null && bo != null && ao == bo) {
+      final byType = _betTypeRank(a).compareTo(_betTypeRank(b));
+      if (byType != 0) return byType;
+    }
+    // 一边无 orderId：先按时间，再让有 orderId 的相对稳定
+    final at = _timeSortKey(a.time);
+    final bt = _timeSortKey(b.time);
+    if (at != bt) return at.compareTo(bt);
+    if (ao != null && bo == null) return -1;
+    if (ao == null && bo != null) return 1;
+    final byType = _betTypeRank(a).compareTo(_betTypeRank(b));
+    if (byType != 0) return byType;
+    return a.id.compareTo(b.id);
+  }
   final at = _timeSortKey(a.time);
   final bt = _timeSortKey(b.time);
   if (at != bt) return at.compareTo(bt);

@@ -8,20 +8,21 @@ import '../../../wallet/widgets/date_range_filter.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// 彩票回水记录 — GET /owner/manage/welfare?type=COMMISSION
+/// 彩票回水记录 — GET /owner/room/rebate/records（仅 kind=REBATE）
 class HostRebateRecordsPage extends ConsumerStatefulWidget {
   const HostRebateRecordsPage({super.key, required this.roomId});
 
   final String roomId;
 
   @override
-  ConsumerState<HostRebateRecordsPage> createState() => _HostRebateRecordsPageState();
+  ConsumerState<HostRebateRecordsPage> createState() =>
+      _HostRebateRecordsPageState();
 }
 
 class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
     with DateRangePageMixin {
   List<Map<String, dynamic>> _rows = [];
-  String _total = '0.00';
+  int _total = 0;
   bool _loading = false;
 
   @override
@@ -36,27 +37,16 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getWelfare(
-            type: 'COMMISSION',
+      final data = await ref.read(ownerRepositoryProvider).getRebateRecords(
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
+            pageSize: 200,
           );
       if (!mounted) return;
-      final detail = data['detail'];
-      final rows = <Map<String, dynamic>>[];
-      if (detail is List) {
-        for (final e in detail) {
-          if (e is! Map) continue;
-          final m = Map<String, dynamic>.from(e);
-          // 文档：本页只要回水，看 changeType=REBATE
-          final ct = '${m['changeType'] ?? ''}'.toUpperCase();
-          if (ct.isNotEmpty && ct != 'REBATE' && ct != 'COMMISSION') continue;
-          rows.add(m);
-        }
-      }
+      final rows = hostRowsOf(data);
       setState(() {
-        _total = hostNumStr(data['commissionRebate'], fraction: 2);
         _rows = rows;
+        _total = int.tryParse('${data['total'] ?? rows.length}') ?? rows.length;
         _loading = false;
       });
     } catch (e) {
@@ -64,6 +54,38 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
       setState(() => _loading = false);
       AppToast.error(e.toString());
     }
+  }
+
+  String _who(Map<String, dynamic> r) {
+    final nick = '${r['nickname'] ?? ''}'.trim();
+    final user = '${r['username'] ?? ''}'.trim();
+    if (nick.isNotEmpty) return nick;
+    if (user.isNotEmpty) return user;
+    return '${r['accountId'] ?? ''}'.trim();
+  }
+
+  String _desc(Map<String, dynamic> r) {
+    final remark = '${r['remark'] ?? ''}'.trim();
+    if (remark.isNotEmpty) return remark;
+    final label = '${r['claimSourceLabel'] ?? ''}'.trim();
+    if (label.isNotEmpty) return label;
+    final src = '${r['claimSource'] ?? ''}'.toUpperCase();
+    return switch (src) {
+      'SELF' => '自行领取',
+      'OWNER' => '房主一键',
+      'SYSTEM' => '系统自动',
+      _ => '回水',
+    };
+  }
+
+  String _time(Map<String, dynamic> r) {
+    final raw = '${r['claimedAt'] ?? r['createdAt'] ?? ''}'.trim();
+    if (raw.length >= 16) {
+      // 2026-09-22 22:40:00 → 09-22 22:40
+      final m = RegExp(r'(\d{2})-(\d{2})\s+(\d{2}:\d{2})').firstMatch(raw);
+      if (m != null) return '${m.group(1)}-${m.group(2)} ${m.group(3)}';
+    }
+    return raw;
   }
 
   @override
@@ -77,55 +99,90 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
             quickIndex: quickIndex,
             start: start,
             end: end,
+            quickItems: quickItems,
             onQuickTap: onQuickTap,
             onPickStart: () => pickDate(isStart: true),
             onPickEnd: () => pickDate(isStart: false),
             onQuery: onQuery,
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '合计 $_total',
-                style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
-              ),
-            ),
-          ),
           SizedBox(height: 8.h),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : _rows.isEmpty
                     ? Center(
-                        child: Text('暂无回水记录', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
+                        child: Text(
+                          '暂无回水记录',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: AppColors.textHint,
+                          ),
+                        ),
                       )
                     : ListView.separated(
                         padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
-                        itemCount: _rows.length,
-                        separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                        itemCount: _rows.length + 1,
+                        separatorBuilder: (_, i) => i >= _rows.length - 1
+                            ? const SizedBox.shrink()
+                            : SizedBox(height: 10.h),
                         itemBuilder: (_, i) {
+                          if (i == _rows.length) {
+                            return Padding(
+                              padding: EdgeInsets.only(top: 12.h, bottom: 8.h),
+                              child: Center(
+                                child: Text(
+                                  '没有更多了，共 $_total 条',
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: AppColors.textHint,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
                           final r = _rows[i];
-                          final who = '${r['accountId'] ?? ''}'.trim();
-                          final remark = '${r['remark'] ?? ''}'.trim();
                           return HostWhiteCard(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  remark.isEmpty ? '回水' : remark,
-                                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        _who(r),
+                                        style: TextStyle(
+                                          fontSize: 15.sp,
+                                          fontWeight: FontWeight.w700,
+                                          color: const Color(0xFF222222),
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      hostNumStr(r['amount'], fraction: 2),
+                                      style: TextStyle(
+                                        fontSize: 16.sp,
+                                        fontWeight: FontWeight.w700,
+                                        color: const Color(0xFF2E7D32),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                SizedBox(height: 4.h),
+                                SizedBox(height: 6.h),
                                 Text(
-                                  '${hostNumStr(r['amount'], fraction: 2)}   ${r['createdAt'] ?? ''}',
-                                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                                ),
-                                if (who.isNotEmpty)
-                                  Text(
-                                    '账号 $who',
-                                    style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                                  _desc(r),
+                                  style: TextStyle(
+                                    fontSize: 13.sp,
+                                    color: const Color(0xFF333333),
                                   ),
+                                ),
+                                SizedBox(height: 6.h),
+                                Text(
+                                  _time(r),
+                                  style: TextStyle(
+                                    fontSize: 12.sp,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
                               ],
                             ),
                           );

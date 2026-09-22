@@ -241,7 +241,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: const [
                             SizedBox(height: 120),
-                            Center(child: CircularProgressIndicator()),
+                            const AppPageLoading(),
                           ],
                         )
                       : ListView(

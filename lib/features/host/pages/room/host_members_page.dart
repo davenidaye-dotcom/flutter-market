@@ -5,14 +5,24 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../../shared/widgets/user_avatar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 import 'host_member_detail_page.dart';
+import 'host_robot_create_page.dart';
+import 'host_robot_settings_page.dart';
 
-/// 房间成员 — 统计卡片 + Tab + 搜索 + 卡片列表（对齐竞品截图）
+/// 房间成员 — 统计卡片 + Tab + 搜索 + 卡片列表
+/// Tab：全部 / 在线 / 机器人(气氛号) / 试玩号
 class HostMembersPage extends ConsumerStatefulWidget {
-  const HostMembersPage({super.key, required this.roomId});
+  const HostMembersPage({
+    super.key,
+    required this.roomId,
+    this.initialFilter = 0,
+  });
   final String roomId;
+  /// 0全部 1在线 2机器人 3试玩号
+  final int initialFilter;
 
   @override
   ConsumerState<HostMembersPage> createState() => _HostMembersPageState();
@@ -21,7 +31,7 @@ class HostMembersPage extends ConsumerStatefulWidget {
 class _HostMembersPageState extends ConsumerState<HostMembersPage> {
   static const _tabs = ['全部', '在线', '机器人', '试玩号'];
 
-  int _filter = 0;
+  late int _filter;
   final _search = TextEditingController();
   List<HostMember> _rows = [];
   bool _loading = true;
@@ -30,6 +40,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
   @override
   void initState() {
     super.initState();
+    _filter = widget.initialFilter.clamp(0, _tabs.length - 1);
     Future.microtask(_load);
   }
 
@@ -51,10 +62,12 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final kw = _search.text.trim();
-      final results = await Future.wait([
-        repo.getMembers(keyword: kw, memberType: _memberType, pageSize: 100),
-        repo.getMembers(memberType: 'ALL', pageSize: 1),
-      ]);
+      // 顶部四块统计永远用「全部」summary；机器人 Tab 列表走 atmosphere
+      final statsFuture = repo.getMembers(memberType: 'ALL', pageSize: 1);
+      final listFuture = _filter == 2
+          ? repo.getAtmosphereList(keyword: kw, pageSize: 100)
+          : repo.getMembers(keyword: kw, memberType: _memberType, pageSize: 100);
+      final results = await Future.wait([listFuture, statsFuture]);
       if (!mounted) return;
       final data = results[0];
       final statsData = results[1];
@@ -76,69 +89,46 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
   }
 
   Future<void> _createRobots() async {
-    final ctrl = TextEditingController(text: '1');
-    final nickCtrl = TextEditingController(text: '机器人');
-    final ok = await hostFormSheet(
+    await pushHostPage(
       context,
-      title: '新增机器人',
-      confirmText: '创建',
-      buildFields: (ctx, setSheet) => Column(
-        children: [
-          EmulatorSafeTextField(
-            controller: nickCtrl,
-            decoration: InputDecoration(
-              hintText: '昵称前缀',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
-            ),
-          ),
-          SizedBox(height: 10.h),
-          EmulatorSafeTextField(
-            controller: ctrl,
-            keyboardType: TextInputType.number,
-            decoration: InputDecoration(
-              hintText: '数量(1-20)',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
-            ),
-          ),
-        ],
-      ),
+      HostRobotCreatePage(roomId: widget.roomId),
     );
-    final count = int.tryParse(ctrl.text.trim()) ?? 1;
-    final nick = nickCtrl.text.trim();
-    ctrl.dispose();
-    nickCtrl.dispose();
-    if (!ok) return;
-    try {
-      await ref.read(ownerRepositoryProvider).createRobot({
-        'nickname': nick.isEmpty ? '机器人' : nick,
-        'count': count.clamp(1, 20),
-      });
-      AppToast.success('已创建');
-      setState(() => _filter = 2);
-      await _load();
-    } catch (e) {
-      AppToast.error(e.toString());
-    }
+    if (!mounted) return;
+    setState(() => _filter = 2);
+    await _load();
   }
 
+  bool _isTrialLike(HostMember m) =>
+      m.isTrial ||
+      m.roleLabel.contains('假人') ||
+      m.roleLabel.contains('试玩');
+
   String _badge(HostMember m) {
-    if (m.isMood) return '启用中';
-    if (m.isTrial) return '试玩号';
+    if (m.isMood) return m.disabled ? '已停用' : '启用中';
+    if (_isTrialLike(m)) return '试玩号';
     if (m.isAgent) return '代理';
-    if (m.disabled) return m.statusLabel;
+    if (m.disabled) {
+      final label = m.statusLabel;
+      if (label.contains('假人')) return '试玩号';
+      return label;
+    }
     return '会员';
   }
 
   Color _badgeFg(HostMember m) {
-    if (m.isMood) return const Color(0xFF2E7D32);
-    if (m.isTrial) return const Color(0xFFC62828);
+    if (m.isMood) {
+      return m.disabled ? const Color(0xFF757575) : const Color(0xFF2E7D32);
+    }
+    if (_isTrialLike(m)) return const Color(0xFFC62828);
     if (m.disabled) return const Color(0xFF757575);
     return const Color(0xFF616161);
   }
 
   Color _badgeBg(HostMember m) {
-    if (m.isMood) return const Color(0xFFE8F5E9);
-    if (m.isTrial) return const Color(0xFFFFEBEE);
+    if (m.isMood) {
+      return m.disabled ? const Color(0xFFEEEEEE) : const Color(0xFFE8F5E9);
+    }
+    if (_isTrialLike(m)) return const Color(0xFFFFEBEE);
     if (m.disabled) return const Color(0xFFEEEEEE);
     return const Color(0xFFF0F0F0);
   }
@@ -248,7 +238,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
           SizedBox(height: 12.h),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : _rows.isEmpty
                     ? Center(
                         child: Text('暂无数据', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
@@ -277,10 +267,23 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                             badgeFg: _badgeFg(m),
                             badgeBg: _badgeBg(m),
                             onTap: () async {
-                              await pushHostPage(
-                                context,
-                                HostMemberDetailPage(roomId: widget.roomId, memberId: m.id),
-                              );
+                              if (m.isMood) {
+                                await pushHostPage(
+                                  context,
+                                  HostRobotSettingsPage(
+                                    roomId: widget.roomId,
+                                    accountId: m.id,
+                                  ),
+                                );
+                              } else {
+                                await pushHostPage(
+                                  context,
+                                  HostMemberDetailPage(
+                                    roomId: widget.roomId,
+                                    memberId: m.id,
+                                  ),
+                                );
+                              }
                               if (mounted) await _load();
                             },
                           );
@@ -391,7 +394,6 @@ class _MemberCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nick = member.nickname.isNotEmpty ? member.nickname : member.username;
-    final initial = nick.isNotEmpty ? nick.characters.first : '?';
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12.r),
@@ -402,11 +404,7 @@ class _MemberCard extends StatelessWidget {
           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
           child: Row(
             children: [
-              CircleAvatar(
-                radius: 22.r,
-                backgroundColor: const Color(0xFFBDE0FE),
-                child: Text(initial, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600)),
-              ),
+              UserAvatar(codeOrUrl: member.avatar, radius: 22.r),
               SizedBox(width: 10.w),
               Expanded(
                 child: Column(

@@ -275,7 +275,7 @@ class _HostAgentsPageState extends ConsumerState<HostAgentsPage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : _rows.isEmpty
                     ? Center(
                         child: Text('暂无代理', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),

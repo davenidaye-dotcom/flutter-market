@@ -9,7 +9,8 @@ void main() {
 
   setUp(() {
     engine = LotteryPeriodEngine();
-    t0 = DateTime(2026, 8, 30, 12, 0, 0);
+    // 远端固定时刻：避免墙钟越过 fixture 后 gameById(_toDisplay 默认 now) 整批假「开奖中」。
+    t0 = DateTime(2099, 6, 1, 12, 0, 0);
     engine.bootstrap(
       [
         LotteryGameModel(
@@ -31,14 +32,30 @@ void main() {
     expect(engine.countdownFor('JS_SC', t0), 75);
     final g = engine.displayGame('JS_SC', t0);
     expect(g.isDrawing, isFalse);
-    expect(LotteryPeriodHelper.phaseOf(g), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.phaseOf(g, t0), LotteryDisplayPhase.betting);
   });
 
-  test('sealed phase when countdown <= 10', () {
+  test('sealed phase uses configured sealSeconds (not fake default 10)', () {
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 75,
+      openAtEpochMs: t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch,
+      sealSeconds: 30,
+      sealAtEpochMs: t0.add(const Duration(seconds: 45)).millisecondsSinceEpoch,
+      now: t0,
+    );
+    final duringSeal = t0.add(const Duration(seconds: 50));
+    expect(engine.countdownFor('JS_SC', duringSeal), 25);
+    final g = engine.displayGame('JS_SC', duringSeal);
+    expect(LotteryPeriodHelper.phaseOf(g, duringSeal), LotteryDisplayPhase.sealed);
+  });
+
+  test('without seal config stays betting (no fake 10s seal window)', () {
     final t = t0.add(const Duration(seconds: 66));
     expect(engine.countdownFor('JS_SC', t), 9);
     final g = engine.displayGame('JS_SC', t);
-    expect(LotteryPeriodHelper.phaseOf(g), LotteryDisplayPhase.sealed);
+    expect(LotteryPeriodHelper.phaseOf(g, t), LotteryDisplayPhase.betting);
   });
 
   test('first period tick with lastIssue adopts draw on sync', () {
@@ -55,7 +72,7 @@ void main() {
     expect(g.previousIssue, '34136341');
   });
 
-  test('early draw while betting is ignored until cd zero', () {
+  test('DRAW_RESULT applies immediately even while local countdown positive', () {
     engine.onPeriodTick(
       'JS_SC',
       issue: '34136341',
@@ -63,30 +80,16 @@ void main() {
       openAtEpochMs: t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch,
       now: t0,
     );
-    engine.onDrawResult(
+    final mid = engine.onDrawResult(
       'JS_SC',
       issue: '34136341',
       ranks: const [9, 8, 7, 6, 5, 4, 3, 2, 1, 10],
       now: t0.add(const Duration(seconds: 1)),
     );
+    expect(mid.draws, isNotEmpty);
     var g = engine.gameById('JS_SC')!;
-    expect(g.previousIssue, '34136340');
-
-    final atZero = t0.add(const Duration(seconds: 75));
-    final tick = engine.onPeriodTick(
-      'JS_SC',
-      issue: '34136342',
-      seconds: 75,
-      openAtEpochMs: atZero.add(const Duration(seconds: 75)).millisecondsSinceEpoch,
-      lastIssue: '34136341',
-      lastRanks: const [9, 8, 7, 6, 5, 4, 3, 2, 1, 10],
-      now: atZero,
-    );
-    expect(tick.draws, isNotEmpty);
-    g = engine.gameById('JS_SC')!;
     expect(g.previousIssue, '34136341');
     expect(g.previousResults, const [9, 8, 7, 6, 5, 4, 3, 2, 1, 10]);
-    expect(g.isDrawing, isFalse);
   });
 
   test('draw for closing current issue adopts after rollover tick', () {
@@ -228,7 +231,8 @@ void main() {
     );
     expect(engine.countdownFor('JS_SC', atZero), 8);
     final g = engine.displayGame('JS_SC', atZero);
-    expect(LotteryPeriodHelper.phaseOf(g), LotteryDisplayPhase.sealed);
+    // openAt 已到点 → 封盘/开奖窗口（与 sealSeconds 无关）
+    expect(LotteryPeriodHelper.phaseOf(g, atZero), LotteryDisplayPhase.sealed);
     expect(g.isDrawing, isFalse);
   });
 
@@ -277,10 +281,12 @@ void main() {
           currentIssue: '34136361',
           previousIssue: '34136360',
           countdownSeconds: 8,
-          status: LotteryPeriodHelper.statusFromCountdown(8),
+          status: LotteryPeriodHelper.statusFromCountdown(8, sealSeconds: 10),
           previousResults: const [8, 2, 1, 7, 10, 5, 4, 6, 9, 3],
           openAtEpochMs:
               t0.add(const Duration(seconds: 8)).millisecondsSinceEpoch,
+          sealSeconds: 10,
+          sealAtEpochMs: t0.millisecondsSinceEpoch,
         ),
       ],
       t0,
@@ -290,7 +296,7 @@ void main() {
     expect(g.currentIssue, '34136361');
     expect(g.previousIssue, '34136360');
     expect(g.isDrawing, isFalse);
-    expect(LotteryPeriodHelper.phaseOf(g), LotteryDisplayPhase.sealed);
+    expect(LotteryPeriodHelper.phaseOf(g, t0), LotteryDisplayPhase.sealed);
 
     engine.onPeriodTick(
       'JS_SC',
@@ -489,8 +495,9 @@ void main() {
     expect(
       LotteryPeriodHelper.bettingCountdownSeconds(
         engine.displayGame('JS_SC', t5),
+        t5,
       ),
-      60,
+      70, // 无 seal 配置时距封盘=距开奖，禁止假 10s
     );
   });
 
@@ -731,6 +738,20 @@ void main() {
   });
 
   test('patchGame restores countdown when ws synced and cd zero', () {
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'AZXY10',
+          name: '澳洲幸运10',
+          currentIssue: '21355057',
+          previousIssue: '21355056',
+          countdownSeconds: 300,
+          openAtEpochMs:
+              t0.add(const Duration(seconds: 300)).millisecondsSinceEpoch,
+        ),
+      ],
+      t0,
+    );
     engine.onPeriodTick(
       'AZXY10',
       issue: '21355057',
@@ -835,6 +856,19 @@ void main() {
 
   test('stale older lastIssue during betting does not regress previous', () {
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'AZXY10',
+          name: '澳洲幸运10',
+          currentIssue: '21355068',
+          previousIssue: '21355066',
+          countdownSeconds: 75,
+          openAtEpochMs: openAt,
+        ),
+      ],
+      t0,
+    );
     engine.onPeriodTick(
       'AZXY10',
       issue: '21355068',
@@ -863,6 +897,19 @@ void main() {
 
   test('patchGame does not regress previous issue from http snapshot', () {
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'AZXY10',
+          name: '澳洲幸运10',
+          currentIssue: '21355068',
+          previousIssue: '21355066',
+          countdownSeconds: 75,
+          openAtEpochMs: openAt,
+        ),
+      ],
+      t0,
+    );
     engine.onPeriodTick(
       'AZXY10',
       issue: '21355068',
@@ -891,6 +938,19 @@ void main() {
 
   test('future openAt on ws tick ends drawing even when seconds is zero', () {
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'AZXY10',
+          name: '澳洲幸运10',
+          currentIssue: '21355068',
+          previousIssue: '21355067',
+          countdownSeconds: 75,
+          openAtEpochMs: openAt,
+        ),
+      ],
+      t0,
+    );
     engine.onPeriodTick(
       'AZXY10',
       issue: '21355068',

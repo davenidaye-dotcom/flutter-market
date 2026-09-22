@@ -120,7 +120,7 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : _rows.isEmpty
                     ? Center(
                         child: Text(

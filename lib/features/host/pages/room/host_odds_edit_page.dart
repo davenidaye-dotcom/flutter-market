@@ -245,7 +245,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : ListView(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [

@@ -6,6 +6,8 @@ import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../../shared/widgets/stable_screen_metrics.dart';
 
+export '../../../shared/widgets/app_page_loading.dart';
+
 /// 房主二级页通用壳（全屏，无底部 Tab）
 class HostSubPageScaffold extends StatelessWidget {
   const HostSubPageScaffold({

@@ -7,6 +7,7 @@ import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// Agent account list / create
 class AgentAccountManagePage extends ConsumerStatefulWidget {
@@ -220,7 +221,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                     child: Container(
                       decoration: BoxDecoration(border: Border.all(color: const Color(0xFFAAAAAA))),
                       child: _loading
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const AppPageLoading()
                           : _error != null
                               ? Center(
                                   child: GestureDetector(

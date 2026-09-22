@@ -140,7 +140,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
               ),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const AppPageLoading()
                     : ListView(
                   padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 16.h),
                   children: [

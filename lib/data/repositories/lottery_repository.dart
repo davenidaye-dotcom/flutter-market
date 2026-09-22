@@ -42,20 +42,63 @@ class LotteryRepository {
       final openAtEpochMs = openAtRaw is int
           ? openAtRaw
           : int.tryParse('$openAtRaw');
-      return LotteryGameModel(
+      final sealAtRaw = m['sealAtEpochMs'];
+      final sealAtEpochMs = sealAtRaw is int
+          ? sealAtRaw
+          : int.tryParse('$sealAtRaw');
+      final sealRaw = m['sealSeconds'];
+      final sealSeconds = sealRaw is int
+          ? sealRaw
+          : int.tryParse('$sealRaw');
+      final model = LotteryGameModel(
         id: m['gameType']?.toString() ?? '',
         name: m['gameName']?.toString() ?? m['gameType']?.toString() ?? '',
         currentIssue: m['latestIssueNo']?.toString() ?? '',
         previousIssue: m['lastIssueNo']?.toString(),
         countdownSeconds: seconds,
-        status: !enabled
-            ? LotteryStatus.closed
-            : LotteryPeriodHelper.statusFromCountdown(seconds),
         previousResults: previousResults,
         isDrawing: enabled && seconds <= 0,
         openAtEpochMs: openAtEpochMs,
+        sealAtEpochMs: sealAtEpochMs,
+        sealSeconds: sealSeconds,
+      );
+      return model.copyWith(
+        status: !enabled
+            ? LotteryStatus.closed
+            : LotteryPeriodHelper.statusFromCountdown(
+                seconds,
+                sealSeconds: LotteryPeriodRules.sealSecondsOf(model),
+              ),
       );
     }).where((g) => g.id.isNotEmpty && g.status != LotteryStatus.closed).toList();
+  }
+
+  /// 与 plus-ui 同源：公开期数含 sealAt / sealSeconds（member games 可能缺）。
+  Future<({int? openAt, int? sealAt, int? sealSeconds, int countdown})?>
+      getPublicPeriod(String gameType) async {
+    if (gameType.isEmpty) return null;
+    try {
+      final data = await _client.get(
+        '/public/lottery/period',
+        query: {'gameType': gameType},
+      );
+      if (data is! Map) return null;
+      final m = Map<String, dynamic>.from(data);
+      int? toInt(dynamic v) {
+        if (v is int) return v;
+        if (v is num) return v.toInt();
+        return int.tryParse('$v');
+      }
+
+      return (
+        openAt: toInt(m['openAtEpochMs']),
+        sealAt: toInt(m['sealAtEpochMs']),
+        sealSeconds: toInt(m['sealSeconds']),
+        countdown: toInt(m['countdownSeconds']) ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<List<ChatMessageModel>> getChatMessages({

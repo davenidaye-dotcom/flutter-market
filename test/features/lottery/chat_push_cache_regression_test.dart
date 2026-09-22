@@ -75,10 +75,10 @@ void main() {
       final draws = buffered.where((m) => m.type == ChatMessageType.resultCard);
 
       expect(draws.length, greaterThan(0));
-      expect(draws.length, lessThanOrEqualTo(ChatPushCache.maxPerGame));
+      expect(draws.length, lessThanOrEqualTo(ChatPushCache.maxDrawsPerGame));
       expect(
         buffered.length,
-        lessThanOrEqualTo(ChatPushCache.maxPerGame + 10),
+        lessThanOrEqualTo(ChatPushCache.maxPerGame),
       );
     });
 
@@ -105,7 +105,7 @@ void main() {
           .where((m) => m.id.startsWith('bet-chat-'));
 
       expect(bets.length, greaterThan(0));
-      expect(bets.length, lessThanOrEqualTo(10));
+      expect(bets.length, lessThanOrEqualTo(ChatPushCache.maxUserBetsPerGame));
     });
 
     test('syncDrawsFromApi 写入开奖并可在时间线展示', () {
@@ -198,26 +198,17 @@ void main() {
       );
     });
 
-    test('trim 裁掉封盘后仍保留 seal dedupe key，不会被 PERIOD_TICK 重推', () {
-      for (var i = 4700; i < 4720; i++) {
+    test('trim 裁掉过量封盘后仍保留 seal dedupe key，不会被 PERIOD_TICK 重推', () {
+      for (var i = 0; i < 60; i++) {
         cache.pushOnce(
           roomId: roomId,
-          dedupeKey: 'draw-$gameId-$i',
+          dedupeKey: 'sealed-$gameId-$i',
           gameId: gameId,
-          message: drawCard(gameId, '$i', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+          message: sealedLine(gameId, '$i'),
         );
       }
-      final sealKey = 'sealed-$gameId-4720';
-      expect(
-        cache.pushOnce(
-          roomId: roomId,
-          dedupeKey: sealKey,
-          gameId: gameId,
-          message: sealedLine(gameId, '4720'),
-        ),
-        isTrue,
-      );
-      // 20 开奖占满配额后封盘消息会被裁掉
+      const sealKey = 'sealed-$gameId-0';
+      // others 上限 40：最旧封盘会出 buffer，但 dedupe key 必须留下
       expect(
         cache
             .bufferedForGame(roomId, gameId)
@@ -230,7 +221,7 @@ void main() {
           roomId: roomId,
           dedupeKey: sealKey,
           gameId: gameId,
-          message: sealedLine(gameId, '4720'),
+          message: sealedLine(gameId, '0'),
         ),
         isFalse,
         reason: 'key 必须留下，否则每秒重推导致聊天闪屏',
@@ -306,7 +297,7 @@ void main() {
       expect(cache.hasDrawGap(roomId, gameId), isTrue);
     });
 
-    test('连续开 25 期后 buffer 保留最新 20 期且时间线可展示', () {
+    test('连续开 25 期后 buffer 保留最新 15 期开奖且时间线可展示', () {
       for (var issue = 5250; issue <= 5274; issue++) {
         cache.pushOnce(
           roomId: roomId,
@@ -323,8 +314,8 @@ void main() {
           .whereType<String>()
           .toList();
 
-      expect(drawIssues.length, ChatPushCache.maxPerGame);
-      expect(drawIssues.first, '5255');
+      expect(drawIssues.length, ChatPushCache.maxDrawsPerGame);
+      expect(drawIssues.first, '5260');
       expect(drawIssues.last, '5274');
 
       final timeline = cache.timelineForGame(
@@ -338,11 +329,61 @@ void main() {
           .whereType<String>()
           .toList();
 
-      expect(timelineDraws.length, ChatPushCache.maxPerGame);
+      expect(timelineDraws.length, ChatPushCache.maxDrawsPerGame);
       expect(timelineDraws.last, '5274');
       expect(
         timeline.length,
         lessThanOrEqualTo(ChatPushCache.maxVisibleChatMessages),
+      );
+    });
+
+    test('15 期开奖 + 核对不会因 trim 丢光 BET_RANK/WIN_LIST', () {
+      for (var issue = 5260; issue <= 5274; issue++) {
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: 'draw-$gameId-$issue',
+          gameId: gameId,
+          message: drawCard(gameId, '$issue', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        );
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: 'bet-rank-$gameId-$issue',
+          gameId: gameId,
+          message: ChatMessageModel(
+            id: 'bet-rank-$gameId-$issue',
+            sender: '机器人',
+            content: '$issue期已封盘\n竞猜列表核对',
+            time: '12:00',
+            type: ChatMessageType.betListCheck,
+            issueNo: '$issue',
+          ),
+        );
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: 'win-list-$gameId-$issue',
+          gameId: gameId,
+          message: ChatMessageModel(
+            id: 'win-list-$gameId-$issue',
+            sender: '机器人',
+            content: '$issue期已开奖\n中奖列表核对',
+            time: '12:01',
+            type: ChatMessageType.winCheck,
+            issueNo: '$issue',
+          ),
+        );
+      }
+      final buf = cache.bufferedForGame(roomId, gameId);
+      expect(
+        buf.where((m) => m.type == ChatMessageType.betListCheck).length,
+        15,
+      );
+      expect(
+        buf.where((m) => m.type == ChatMessageType.winCheck).length,
+        15,
+      );
+      expect(
+        buf.where((m) => m.type == ChatMessageType.resultCard).length,
+        15,
       );
     });
   });

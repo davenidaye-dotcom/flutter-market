@@ -73,6 +73,7 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
             quickIndex: quickIndex,
             start: start,
             end: end,
+            quickItems: quickItems,
             onQuickTap: onQuickTap,
             onPickStart: () => pickDate(isStart: true),
             onPickEnd: () => pickDate(isStart: false),
@@ -81,7 +82,7 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
           SizedBox(height: 12.h),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : GridView.builder(
                     padding: EdgeInsets.all(16.w),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(

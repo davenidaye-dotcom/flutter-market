@@ -8,6 +8,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import 'room_shell_page.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// Room intro — GET /member/rooms/intro
 class RoomIntroPage extends ConsumerStatefulWidget {
@@ -242,7 +243,7 @@ class _RoomIntroPageState extends ConsumerState<RoomIntroPage> {
           if (_loading)
             Padding(
               padding: EdgeInsets.symmetric(vertical: 48.h),
-              child: const Center(child: CircularProgressIndicator()),
+              child: const AppPageLoading(),
             )
           else
             Text(

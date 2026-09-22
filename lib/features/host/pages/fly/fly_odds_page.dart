@@ -106,7 +106,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
     return HostSubPageScaffold(
       title: '飞单赔率设置',
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : Column(
               children: [
                 Padding(

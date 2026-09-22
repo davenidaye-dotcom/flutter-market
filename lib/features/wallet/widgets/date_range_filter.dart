@@ -1,6 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/utils/business_day.dart';
+
+class DateRangeQuickItem {
+  const DateRangeQuickItem({
+    required this.label,
+    required this.start,
+    required this.end,
+  });
+
+  final String label;
+  final DateTime start;
+  final DateTime end;
+}
 
 /// 快捷日期 + 起止日期 + 查询（上下分/福利/竞猜/代理共用）
 class DateRangeFilter extends StatelessWidget {
@@ -13,6 +26,7 @@ class DateRangeFilter extends StatelessWidget {
     required this.onPickStart,
     required this.onPickEnd,
     required this.onQuery,
+    this.quickItems,
   });
 
   final int quickIndex;
@@ -22,45 +36,68 @@ class DateRangeFilter extends StatelessWidget {
   final VoidCallback onPickStart;
   final VoidCallback onPickEnd;
   final VoidCallback onQuery;
-
-  static const quickLabels = ['今天', '昨天', '上周', '本周', '上月', '本月'];
+  final List<DateRangeQuickItem>? quickItems;
 
   static String format(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// 按业务日生成快捷项（与房间/期数报表同一套日切规则）。
+  /// 「今日」= 当前业务日，「昨日」= 上一业务日（日切前当前业务日仍是日历昨日）。
+  static List<DateRangeQuickItem> buildQuickItems({DateTime? now}) {
+    final n = now ?? DateTime.now();
+    final biz = BusinessDay.of(n);
+    final items = <DateRangeQuickItem>[];
+
+    items.add(DateRangeQuickItem(label: '今日', start: biz, end: biz));
+    final y = biz.subtract(const Duration(days: 1));
+    items.add(DateRangeQuickItem(label: '昨日', start: y, end: y));
+
+    // 上周
+    final monday = biz.subtract(Duration(days: biz.weekday - 1));
+    final lastMonday = monday.subtract(const Duration(days: 7));
+    final lastSunday = monday.subtract(const Duration(days: 1));
+    items.add(DateRangeQuickItem(label: '上周', start: lastMonday, end: lastSunday));
+
+    // 本周
+    items.add(DateRangeQuickItem(label: '本周', start: monday, end: biz));
+
+    // 上月
+    final firstThis = DateTime(biz.year, biz.month, 1);
+    final lastMonthEnd = firstThis.subtract(const Duration(days: 1));
+    final lastMonthStart = DateTime(lastMonthEnd.year, lastMonthEnd.month, 1);
+    items.add(DateRangeQuickItem(
+      label: '上月',
+      start: lastMonthStart,
+      end: lastMonthEnd,
+    ));
+
+    // 本月
+    items.add(DateRangeQuickItem(
+      label: '本月',
+      start: DateTime(biz.year, biz.month, 1),
+      end: biz,
+    ));
+
+    return items;
+  }
+
+  /// 兼容旧调用：当前业务日下的快捷标签列表。
+  static List<String> get quickLabels =>
+      buildQuickItems().map((e) => e.label).toList();
+
   /// 根据快捷项计算起止日期（含当天）
   static (DateTime, DateTime) rangeForQuick(int index, {DateTime? now}) {
-    final n = now ?? DateTime.now();
-    final today = DateTime(n.year, n.month, n.day);
-    switch (index) {
-      case 1: // 昨天
-        final y = today.subtract(const Duration(days: 1));
-        return (y, y);
-      case 2: // 上周
-        final weekday = today.weekday;
-        final thisMonday = today.subtract(Duration(days: weekday - 1));
-        final lastMonday = thisMonday.subtract(const Duration(days: 7));
-        final lastSunday = thisMonday.subtract(const Duration(days: 1));
-        return (lastMonday, lastSunday);
-      case 3: // 本周
-        final weekday = today.weekday;
-        final monday = today.subtract(Duration(days: weekday - 1));
-        return (monday, today);
-      case 4: // 上月
-        final firstThis = DateTime(today.year, today.month, 1);
-        final lastMonthEnd = firstThis.subtract(const Duration(days: 1));
-        final lastMonthStart = DateTime(lastMonthEnd.year, lastMonthEnd.month, 1);
-        return (lastMonthStart, lastMonthEnd);
-      case 5: // 本月
-        return (DateTime(today.year, today.month, 1), today);
-      case 0:
-      default:
-        return (today, today);
+    final items = buildQuickItems(now: now);
+    if (index < 0 || index >= items.length) {
+      final biz = BusinessDay.of(now ?? DateTime.now());
+      return (biz, biz);
     }
+    return (items[index].start, items[index].end);
   }
 
   @override
   Widget build(BuildContext context) {
+    final items = quickItems ?? buildQuickItems();
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Column(
@@ -69,10 +106,10 @@ class DateRangeFilter extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                for (var i = 0; i < quickLabels.length; i++) ...[
+                for (var i = 0; i < items.length; i++) ...[
                   if (i > 0) SizedBox(width: 8.w),
                   _Chip(
-                    label: quickLabels[i],
+                    label: items[i].label,
                     active: quickIndex == i,
                     onTap: () => onQuickTap(i),
                   ),
@@ -198,21 +235,24 @@ mixin DateRangePageMixin<T extends StatefulWidget> on State<T> {
   int quickIndex = 0;
   late DateTime start;
   late DateTime end;
+  List<DateRangeQuickItem> quickItems = DateRangeFilter.buildQuickItems();
 
   @override
   void initState() {
     super.initState();
-    final r = DateRangeFilter.rangeForQuick(0);
-    start = r.$1;
-    end = r.$2;
+    quickItems = DateRangeFilter.buildQuickItems();
+    quickIndex = 0;
+    start = quickItems[0].start;
+    end = quickItems[0].end;
   }
 
   void onQuickTap(int i) {
-    final r = DateRangeFilter.rangeForQuick(i);
+    if (i < 0 || i >= quickItems.length) return;
+    final it = quickItems[i];
     setState(() {
       quickIndex = i;
-      start = r.$1;
-      end = r.$2;
+      start = it.start;
+      end = it.end;
     });
     onQuery();
   }

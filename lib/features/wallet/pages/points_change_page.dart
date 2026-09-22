@@ -9,6 +9,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
 import '../utils/draw_snapshot_utils.dart';
 import '../widgets/compact_draw_snapshot_row.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// Points change records
 class PointsChangePage extends ConsumerStatefulWidget {
@@ -140,7 +141,7 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                         const Divider(height: 1, color: AppColors.divider),
                         Expanded(
                           child: _loading
-                              ? const Center(child: CircularProgressIndicator())
+                              ? const AppPageLoading()
                               : _rows.isEmpty
                                   ? Center(
                                       child: Text(

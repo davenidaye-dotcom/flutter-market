@@ -7,6 +7,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import 'room_shell_page.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// Online CS chat for member room.
 class CustomerServicePage extends ConsumerStatefulWidget {
@@ -103,7 +104,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
                   valueListenable: _loadingNotifier,
                   builder: (_, loading, __) {
                     if (loading) {
-                      return const Center(child: CircularProgressIndicator());
+                      return const AppPageLoading();
                     }
                     return ValueListenableBuilder<List<Map<String, dynamic>>>(
                       valueListenable: _messagesNotifier,

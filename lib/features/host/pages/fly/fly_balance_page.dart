@@ -153,7 +153,7 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
           ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : _rows.isEmpty
                     ? Center(
                         child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)),

@@ -118,7 +118,7 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 120),
-                  Center(child: CircularProgressIndicator()),
+                  const AppPageLoading(),
                 ],
               )
             : _games.isEmpty

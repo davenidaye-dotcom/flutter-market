@@ -7,6 +7,7 @@ import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../wallet/widgets/date_range_filter.dart';
 import '../data/host_mock.dart';
 import '../providers/host_pending_audit_provider.dart';
 import '../widgets/host_ui.dart';
@@ -23,18 +24,23 @@ class HostAuditPage extends ConsumerStatefulWidget {
 }
 
 class _HostAuditPageState extends ConsumerState<HostAuditPage> {
-  int _day = 0; // 今天 / 昨天
+  int _day = 0;
   int _status = 1; // 全部 / 未审核 / 已通过 / 已拒绝
   List<HostAuditItem> _items = [];
   bool _loading = true;
   bool _acting = false;
+  List<DateRangeQuickItem> _dayItems = [];
 
   static const _statusKeys = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
-  static const _dayKeys = ['TODAY', 'YESTERDAY'];
+
+  List<DateRangeQuickItem> _buildDayItems() => DateRangeFilter.buildQuickItems()
+      .where((e) => e.label == '今日' || e.label == '昨日')
+      .toList();
 
   @override
   void initState() {
     super.initState();
+    _dayItems = _buildDayItems();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
@@ -42,12 +48,17 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
     if (!fromPull && mounted) setState(() => _loading = true);
     try {
       final repo = ref.read(ownerRepositoryProvider);
-      final day = _dayKeys[_day.clamp(0, 1)];
+      final dayItem = _dayItems[_day.clamp(0, _dayItems.length - 1)];
+      final start = DateRangeFilter.format(dayItem.start);
+      final end = DateRangeFilter.format(dayItem.end);
       final status = _statusKeys[_status.clamp(0, 3)];
       final results = await Future.wait([
-        repo.getApplications('up', day: day, status: status, pageSize: 50),
-        repo.getApplications('down', day: day, status: status, pageSize: 50),
-        repo.getApplications('enter', day: day, status: status, pageSize: 50),
+        repo.getApplications('up',
+            startDate: start, endDate: end, status: status, pageSize: 50),
+        repo.getApplications('down',
+            startDate: start, endDate: end, status: status, pageSize: 50),
+        repo.getApplications('enter',
+            startDate: start, endDate: end, status: status, pageSize: 50),
       ]);
       final merged = <HostAuditItem>[
         ...hostRowsOf(results[0]).map((e) => hostAuditFromMap(e, AuditType.up)),
@@ -114,15 +125,13 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                   children: [
                     Row(
                       children: [
-                        _chip('今天', _day == 0, () {
-                          setState(() => _day = 0);
-                          _load();
-                        }),
-                        SizedBox(width: 8.w),
-                        _chip('昨天', _day == 1, () {
-                          setState(() => _day = 1);
-                          _load();
-                        }),
+                        for (var i = 0; i < _dayItems.length; i++) ...[
+                          if (i > 0) SizedBox(width: 8.w),
+                          _chip(_dayItems[i].label, _day == i, () {
+                            setState(() => _day = i);
+                            _load();
+                          }),
+                        ],
                       ],
                     ),
                     SizedBox(height: 8.h),
@@ -169,7 +178,7 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                               physics: const AlwaysScrollableScrollPhysics(),
                               children: const [
                                 SizedBox(height: 120),
-                                Center(child: CircularProgressIndicator()),
+                                const AppPageLoading(),
                               ],
                             )
                           : _items.isEmpty

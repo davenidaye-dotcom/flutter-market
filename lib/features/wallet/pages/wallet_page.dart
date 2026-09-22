@@ -16,6 +16,7 @@ import 'apply_records_page.dart';
 import 'bet_records_page.dart';
 import 'points_change_page.dart';
 import 'welfare_report_page.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 class WalletPage extends ConsumerStatefulWidget {
   const WalletPage({super.key, required this.roomId});
@@ -154,7 +155,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                         child: _loading
                             ? SizedBox(
                                 height: 160.h,
-                                child: const Center(child: CircularProgressIndicator()),
+                                child: const AppPageLoading(),
                               )
                             : _error != null
                                 ? SizedBox(

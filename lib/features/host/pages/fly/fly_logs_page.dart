@@ -48,7 +48,7 @@ class _FlyLogsPageState extends ConsumerState<FlyLogsPage> {
     return HostSubPageScaffold(
       title: '飞盘日志',
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : _rows.isEmpty
               ? Center(child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)))
               : ListView.separated(

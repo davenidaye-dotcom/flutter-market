@@ -22,6 +22,7 @@ import '../../../shared/widgets/user_avatar.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -261,7 +262,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   if (_historyLoading)
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 24.h),
-                      child: const Center(child: CircularProgressIndicator()),
+                      child: const AppPageLoading(),
                     )
                   else
                     _HistoryGrid(

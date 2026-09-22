@@ -13,6 +13,8 @@ class LotteryGameModel {
     this.previousResults = const [],
     this.isDrawing = false,
     this.openAtEpochMs,
+    this.sealAtEpochMs,
+    this.sealSeconds,
   });
 
   final String id;
@@ -25,6 +27,10 @@ class LotteryGameModel {
   final bool isDrawing;
   /// 服务端当前期开奖时刻（ms），用于对齐剩余倒计时
   final int? openAtEpochMs;
+  /// 服务端当前期封盘时刻（ms）
+  final int? sealAtEpochMs;
+  /// 提前封盘秒数（后台配置）；有 sealAt/openAt 时优先用时刻差
+  final int? sealSeconds;
 
   LotteryGameModel copyWith({
     String? id,
@@ -36,6 +42,8 @@ class LotteryGameModel {
     List<int>? previousResults,
     bool? isDrawing,
     int? openAtEpochMs,
+    int? sealAtEpochMs,
+    int? sealSeconds,
   }) {
     return LotteryGameModel(
       id: id ?? this.id,
@@ -47,6 +55,8 @@ class LotteryGameModel {
       previousResults: previousResults ?? this.previousResults,
       isDrawing: isDrawing ?? this.isDrawing,
       openAtEpochMs: openAtEpochMs ?? this.openAtEpochMs,
+      sealAtEpochMs: sealAtEpochMs ?? this.sealAtEpochMs,
+      sealSeconds: sealSeconds ?? this.sealSeconds,
     );
   }
 
@@ -76,6 +86,8 @@ class LotteryGameModel {
         status == other.status &&
         isDrawing == other.isDrawing &&
         openAtEpochMs == other.openAtEpochMs &&
+        sealAtEpochMs == other.sealAtEpochMs &&
+        sealSeconds == other.sealSeconds &&
         listEquals(previousResults, other.previousResults);
   }
 
@@ -89,6 +101,8 @@ class LotteryGameModel {
         status,
         isDrawing,
         openAtEpochMs,
+        sealAtEpochMs,
+        sealSeconds,
         Object.hashAll(previousResults),
       );
 

@@ -163,7 +163,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
               ),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const AppPageLoading()
                     : _sessions.isEmpty
                         ? Center(
                             child: Text(
@@ -341,7 +341,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
               PageAppBar(title: widget.session.name, onBack: widget.onBack),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const AppPageLoading()
                     : ListView.builder(
                         padding: EdgeInsets.all(16.w),
                         itemCount: _msgs.length,

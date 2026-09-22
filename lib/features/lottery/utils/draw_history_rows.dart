@@ -239,6 +239,7 @@ String stableChatItemKey(ChatMessageModel message) {
 }
 
 /// 缓存时间线是否仍接近当前期（防磁盘旧开奖先闪现）。
+/// 必须比完整期号：后四位会把更早的 34134131 当成比 34162601 更新。
 bool isDrawTimelineFresh(
   List<ChatMessageModel> timeline,
   String currentIssue, {
@@ -248,13 +249,15 @@ bool isDrawTimelineFresh(
       ? previousIssue
       : currentIssue;
   if (targetIssue.isEmpty) return true;
-  final targetKey = issueCompareKey(targetIssue);
+  final targetKey = int.tryParse(targetIssue.trim()) ?? 0;
+  if (targetKey <= 0) return true;
   var maxKey = 0;
   for (final m in timeline) {
     if (m.type != ChatMessageType.resultCard) continue;
     final issue = _rawIssueOf(m);
     if (issue == null || issue.isEmpty) continue;
-    maxKey = math.max(maxKey, issueCompareKey(issue));
+    final n = int.tryParse(issue.trim()) ?? 0;
+    if (n > maxKey) maxKey = n;
   }
   if (maxKey == 0) return false;
   // 聊天至少应包含最近一期开奖；落后超过 1 期则强制 HTTP 回补
@@ -328,6 +331,19 @@ List<HistoryDrawRow> mergeDrawHistoryRows({
   if (liveHead != null) merged.add(liveHead);
   for (final row in base) {
     if (liveHead != null && sameIssueNo(row.issue, liveHead.issue)) continue;
+    // 最新在前：与上一行断档则停（比完整期号，避免后四位误判）。
+    if (merged.isNotEmpty) {
+      final prevN = int.tryParse(merged.last.issue.trim()) ?? 0;
+      final rowN = int.tryParse(row.issue.trim()) ?? 0;
+      if (prevN >= 10000 && rowN >= 10000 && prevN - rowN > 1) break;
+      if (prevN > 0 &&
+          rowN > 0 &&
+          prevN < 10000 &&
+          rowN < 10000 &&
+          prevN - rowN > 1) {
+        break;
+      }
+    }
     merged.add(row);
     if (merged.length >= maxRows) break;
   }

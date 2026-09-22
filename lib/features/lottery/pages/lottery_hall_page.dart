@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -11,6 +13,7 @@ import '../providers/lottery_live_provider.dart';
 import '../widgets/announcement_marquee.dart';
 import '../widgets/live_period_widgets.dart';
 import 'chat_bet_page.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// 彩种列表 — Shell IndexedStack 保活 + 房间实时态共享
 class LotteryHallPage extends ConsumerStatefulWidget {
@@ -37,8 +40,13 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
   void initState() {
     super.initState();
     // 房主壳此前未预拉；大厅自身兜底 ensureLoaded，避免 ready 一直 false
-    Future.microtask(() {
-      ref.read(roomLotteryLiveProvider(widget.roomId).notifier).ensureLoaded();
+    Future.microtask(() async {
+      final live =
+          ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+      await live.ensureLoaded();
+      // 进房即预热磁盘 + 各彩种 15 期，点开下注页才能秒画。
+      unawaited(live.ensureChatBufferLoaded());
+      unawaited(live.ensureDrawHistoryPreloaded());
     });
   }
 
@@ -248,7 +256,7 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
                 ),
                 Expanded(
                   child: !ready
-                      ? const Center(child: CircularProgressIndicator())
+                      ? const AppPageLoading()
                       : loadError != null
                           ? Center(
                               child: Column(

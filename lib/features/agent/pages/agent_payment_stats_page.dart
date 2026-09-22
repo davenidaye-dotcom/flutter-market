@@ -9,6 +9,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../../lottery/utils/lottery_period_ui.dart';
 import '../data/agent_mock.dart';
 import '../widgets/agent_ui.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// 收付统计 — 竞品「收付统计页面.png」
 class AgentPaymentStatsPage extends ConsumerStatefulWidget {
@@ -28,6 +29,7 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
   String _issueNo = '';
   String _statusText = '';
   int _countdownSeconds = 0;
+  int _sealSeconds = LotteryPeriodRules.defaultSealSeconds;
   Timer? _tickTimer;
   int _pollSeconds = 0;
 
@@ -64,7 +66,7 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
         _statusText = _localStatusText(_countdownSeconds);
       });
       _pollSeconds++;
-      final pollEvery = _countdownSeconds <= LotteryPeriodRules.sealWarnSeconds ? 2 : 5;
+      final pollEvery = _countdownSeconds <= _sealSeconds ? 2 : 5;
       if (_pollSeconds >= pollEvery) {
         _pollSeconds = 0;
         _load(silent: true);
@@ -74,7 +76,10 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
 
   String _localStatusText(int seconds) {
     if (seconds <= 0) return '开奖中';
-    if (seconds <= LotteryPeriodRules.sealWarnSeconds) return '封盘中';
+    final seal = (_sealSeconds > 0)
+        ? _sealSeconds
+        : LotteryPeriodRules.defaultSealSeconds;
+    if (seconds <= seal) return '封盘中';
     return '投注中';
   }
 
@@ -100,8 +105,20 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
         _games = games;
         _columns = columns;
         _issueNo = data['issueNo']?.toString() ?? '';
-        _statusText = data['statusText']?.toString() ?? _localStatusText(_countdownSeconds);
         _countdownSeconds = (data['countdownSeconds'] as num?)?.toInt() ?? 0;
+        final sealRaw = data['sealSeconds'];
+        final openAt = (data['openAtEpochMs'] as num?)?.toInt() ?? 0;
+        final sealAt = (data['sealAtEpochMs'] as num?)?.toInt() ?? 0;
+        if (openAt > sealAt && sealAt > 0) {
+          _sealSeconds = ((openAt - sealAt) / 1000).round().clamp(
+                1,
+                LotteryPeriodRules.maxSealSeconds,
+              );
+        } else if (sealRaw is num && sealRaw.toInt() > 0) {
+          _sealSeconds = sealRaw.toInt().clamp(1, LotteryPeriodRules.maxSealSeconds);
+        }
+        _statusText =
+            data['statusText']?.toString() ?? _localStatusText(_countdownSeconds);
         _gameIndex = idx.clamp(0, games.isEmpty ? 0 : games.length - 1);
         _loading = false;
       });
@@ -175,7 +192,7 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
             child: AgentBorderBox(
               padding: EdgeInsets.zero,
               child: _loading && _columns.isEmpty
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const AppPageLoading()
                   : _columns.isEmpty
                       ? Center(
                           child: Text(

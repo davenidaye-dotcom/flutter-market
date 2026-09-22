@@ -158,6 +158,41 @@ class OwnerRepository {
     await _client.post('/owner/room/members/robots', data: body);
   }
 
+  // --- 气氛号 / 机器人（playMode=ATMOSPHERE）---
+
+  Future<Map<String, dynamic>> getAtmosphereList({
+    String? keyword,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    final data = await _client.get('/owner/room/atmosphere', query: {
+      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getAtmosphere(String accountId) async {
+    final data = await _client.get('/owner/room/atmosphere/$accountId');
+    return _asMap(data);
+  }
+
+  Future<void> updateAtmosphere(
+    String accountId,
+    Map<String, dynamic> body,
+  ) async {
+    await _client.put('/owner/room/atmosphere/$accountId', data: body);
+  }
+
+  Future<Map<String, dynamic>> createAtmosphere(
+    Map<String, dynamic> body,
+  ) async {
+    final data = await _client.post('/owner/room/atmosphere', data: body);
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return {};
+  }
+
   Future<List<Map<String, dynamic>>> getAgents({
     String? keyword,
     int pageNum = 1,
@@ -671,6 +706,52 @@ class OwnerRepository {
     final data = await _client.post('/owner/room/rebate/batch-advance', data: {
       'accountIds': accountIds,
       if (remark != null && remark.isNotEmpty) 'remark': remark,
+    });
+    return _asMap(data);
+  }
+
+  /// 未回水按单明细 — GET /owner/room/rebate/lines
+  Future<Map<String, dynamic>> getRebateLines({
+    String? accountId,
+    String? startDate,
+    String? endDate,
+    bool unpaidOnly = true,
+  }) async {
+    final data = await _client.get('/owner/room/rebate/lines', query: {
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+      'unpaidOnly': unpaidOnly,
+    });
+    return _asMap(data);
+  }
+
+  /// 彩票回水记录 — GET /owner/room/rebate/records（kind=REBATE）
+  Future<Map<String, dynamic>> getRebateRecords({
+    String? startDate,
+    String? endDate,
+    String? accountId,
+    int pageNum = 1,
+    int pageSize = 50,
+  }) async {
+    final data = await _client.get('/owner/room/rebate/records', query: {
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMap(data);
+  }
+
+  /// 彩票回水报表 — GET /owner/room/rebate/report
+  Future<Map<String, dynamic>> getRebateReport({
+    String? startDate,
+    String? endDate,
+  }) async {
+    final data = await _client.get('/owner/room/rebate/report', query: {
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
     });
     return _asMap(data);
   }

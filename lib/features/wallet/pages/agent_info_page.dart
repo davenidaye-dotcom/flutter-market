@@ -7,6 +7,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// Agent info for player — GET /member/agent-info
 class AgentInfoPage extends ConsumerStatefulWidget {
@@ -69,6 +70,7 @@ class _AgentInfoPageState extends ConsumerState<AgentInfoPage>
                 quickIndex: quickIndex,
                 start: start,
                 end: end,
+                quickItems: quickItems,
                 onQuickTap: onQuickTap,
                 onPickStart: () => pickDate(isStart: true),
                 onPickEnd: () => pickDate(isStart: false),
@@ -80,7 +82,7 @@ class _AgentInfoPageState extends ConsumerState<AgentInfoPage>
                   padding: EdgeInsets.symmetric(horizontal: 12.w),
                   child: ReportCard(
                     child: _loading
-                        ? const Center(child: CircularProgressIndicator())
+                        ? const AppPageLoading()
                         : Column(
                             children: [
                               Padding(

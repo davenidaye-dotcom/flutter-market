@@ -85,7 +85,7 @@ class _HostAtmospherePageState extends ConsumerState<HostAtmospherePage> {
     return HostSubPageScaffold(
       title: '\u6c14\u6c1b\u53f7\u8bbe\u7f6e',
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : ListView(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [

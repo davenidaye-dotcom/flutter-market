@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/lottery_ball.dart';
 
 class HistoryDrawRow {
@@ -132,13 +133,7 @@ class HistoryDrawPanel extends StatelessWidget {
 
   Widget _buildBody(List<HistoryDrawRow> displayRows, double pad) {
     if (loading && displayRows.isEmpty) {
-      return const Center(
-        child: SizedBox(
-          width: 22,
-          height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
+      return const AppPageLoading();
     }
     if (error) {
       return GestureDetector(

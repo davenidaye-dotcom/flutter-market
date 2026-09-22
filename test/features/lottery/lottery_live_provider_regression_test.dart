@@ -25,7 +25,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    final base = DateTime(2026, 8, 30, 12, 0, 0);
+    final base = DateTime.now();
     openAtMs = base.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
     final fakeLottery = FakeLotteryRepository(
       games: [

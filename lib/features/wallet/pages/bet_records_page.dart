@@ -10,6 +10,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
 import '../utils/draw_snapshot_utils.dart';
 import '../widgets/compact_draw_snapshot_row.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// \u7ade\u731c\u8bb0\u5f55
 class BetRecordsPage extends ConsumerStatefulWidget {
@@ -204,6 +205,7 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage>
                 quickIndex: quickIndex,
                 start: start,
                 end: end,
+                quickItems: quickItems,
                 onQuickTap: onQuickTap,
                 onPickStart: () => pickDate(isStart: true),
                 onPickEnd: () => pickDate(isStart: false),
@@ -242,7 +244,7 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage>
                   padding: EdgeInsets.symmetric(horizontal: 12.w),
                   child: ReportCard(
                     child: _loading
-                        ? const Center(child: CircularProgressIndicator())
+                        ? const AppPageLoading()
                         : _rows.isEmpty
                             ? const Center(child: AppEmptyHint())
                             : ListView.separated(

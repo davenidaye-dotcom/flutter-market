@@ -144,6 +144,7 @@ class _HostMemberReportPageState extends ConsumerState<HostMemberReportPage>
               quickIndex: quickIndex,
               start: start,
               end: end,
+              quickItems: quickItems,
               onQuickTap: onQuickTap,
               onPickStart: () => pickDate(isStart: true),
               onPickEnd: () => pickDate(isStart: false),
@@ -160,7 +161,7 @@ class _HostMemberReportPageState extends ConsumerState<HostMemberReportPage>
           SizedBox(height: 12.h),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : _rows.isEmpty
                     ? Center(
                         child: Text(

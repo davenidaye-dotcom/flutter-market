@@ -88,7 +88,7 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
     return HostSubPageScaffold(
       title: '彩种管理',
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : _games.isEmpty
               ? Center(
                   child: Text(

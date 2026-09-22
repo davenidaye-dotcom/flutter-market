@@ -230,7 +230,7 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
     return HostSubPageScaffold(
       title: '玩家信息',
       body: _loading || member == null
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : ListView(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [

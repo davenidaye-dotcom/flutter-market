@@ -4,7 +4,9 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../wallet/widgets/date_range_filter.dart';
 import '../widgets/agent_ui.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 class AgentQuotaChangePage extends ConsumerStatefulWidget {
   const AgentQuotaChangePage({super.key, required this.roomId});
@@ -23,8 +25,9 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
   int _totalPages = 0;
   int _total = 0;
   bool _loading = false;
-  DateTime _start = DateTime.now();
-  DateTime _end = DateTime.now();
+  late DateTime _start;
+  late DateTime _end;
+  List<DateRangeQuickItem> _dayQuick = const [];
   List<Map<String, dynamic>> _rows = [];
   Map<String, dynamic> _summary = {};
 
@@ -70,14 +73,20 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
     }
   }
 
-  String _fmt(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  String _fmt(DateTime d) => DateRangeFilter.format(d);
+
+  List<DateRangeQuickItem> _dayQuickItems() {
+    return DateRangeFilter.buildQuickItems()
+        .where((e) => e.label == '今日' || e.label == '昨日')
+        .toList();
+  }
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _start = _end = DateTime(now.year, now.month, now.day);
+    _dayQuick = _dayQuickItems();
+    _quick = 0;
+    _start = _end = _dayQuick[0].start;
     Future.microtask(_load);
   }
 
@@ -260,31 +269,20 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
                         ),
                       ),
                       SizedBox(width: 4.w),
-                      AgentQuotaQuickBtn(
-                        label: '\u4eca\u5929',
-                        active: _quick == 0,
-                        blue: true,
-                        onTap: () {
-                          final n = DateTime.now();
-                          setState(() {
-                            _quick = 0;
-                            _start = _end = DateTime(n.year, n.month, n.day);
-                          });
-                        },
-                      ),
-                      SizedBox(width: 4.w),
-                      AgentQuotaQuickBtn(
-                        label: '\u6628\u5929',
-                        active: _quick == 1,
-                        onTap: () {
-                          final y =
-                              DateTime.now().subtract(const Duration(days: 1));
-                          setState(() {
-                            _quick = 1;
-                            _start = _end = DateTime(y.year, y.month, y.day);
-                          });
-                        },
-                      ),
+                      for (var i = 0; i < _dayQuick.length; i++) ...[
+                        if (i > 0) SizedBox(width: 4.w),
+                        AgentQuotaQuickBtn(
+                          label: _dayQuick[i].label,
+                          active: _quick == i,
+                          blue: i == 0,
+                          onTap: () {
+                            setState(() {
+                              _quick = i;
+                              _start = _end = _dayQuick[i].start;
+                            });
+                          },
+                        ),
+                      ],
                       SizedBox(width: 4.w),
                       AgentTealButton(
                         label: '\u67e5\u8be2',
@@ -302,7 +300,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
                         border: Border.all(color: const Color(0xFFCCCCCC)),
                       ),
                       child: _loading
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const AppPageLoading()
                           : _rows.isEmpty
                               ? Center(
                                   child: Text(

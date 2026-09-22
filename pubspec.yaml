@@ -41,6 +41,7 @@ flutter:
   assets:
     - assets/bootstrap/
     - assets/avatars/
+    - assets/icons/
 
 # 原生启动页：由 flutter_native_splash 生成 Android/iOS 配置，避免手写 MainActivity/主题导致黑屏
 flutter_native_splash:

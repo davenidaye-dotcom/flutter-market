@@ -5,6 +5,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 /// \u4e2a\u4eba\u4fe1\u606f \u2014 \u7ade\u54c1\u300c\u4ee3\u7406\u9996\u9875.jpg\u300d
 class AgentPersonalInfoPage extends ConsumerStatefulWidget {
@@ -126,7 +127,7 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
             child: AgentBorderBox(
               padding: EdgeInsets.zero,
               child: _loading && _items.isEmpty
-                  ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+                  ? const AppPageLoading()
                   : SingleChildScrollView(
                       child: Table(
                         border: TableBorder.all(color: const Color(0xFF333333), width: 0.8),

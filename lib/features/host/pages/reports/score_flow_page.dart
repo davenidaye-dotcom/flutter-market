@@ -78,6 +78,7 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
             quickIndex: quickIndex,
             start: start,
             end: end,
+            quickItems: quickItems,
             onQuickTap: onQuickTap,
             onPickStart: () => pickDate(isStart: true),
             onPickEnd: () => pickDate(isStart: false),
@@ -94,7 +95,7 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
             ),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppPageLoading()
                 : _rows.isEmpty
                     ? Center(
                         child: Text(

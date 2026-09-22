@@ -82,7 +82,7 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
     return HostSubPageScaffold(
       title: '\u57fa\u7840\u8bbe\u7f6e',
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : ListView(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [

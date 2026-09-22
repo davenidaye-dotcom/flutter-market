@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -5,34 +7,97 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../shared/widgets/flip_countdown.dart';
 
-/// 与后端 PlayCatalog.SEAL_WARN_SECONDS / 期态 tick 对齐。
-/// 服务端 countdownSeconds = 距开奖（openAt），封盘线 = 最后 10 秒。
+/// 对齐《App期数封盘与开奖时间_20260923》与 plus-ui `lotteryFeed.ts`。
+/// - `openAtEpochMs` = 本期开奖时刻（距开奖终点）
+/// - `sealAtEpochMs` = 封盘时刻（距封盘）
+/// - `sealSeconds` = 开奖前多少秒封盘（后台配置）
+/// 无 seal 配置时 **不要捏造 10s**（web `sealGapSeconds` 返回 0）。
 class LotteryPeriodRules {
-  static const sealWarnSeconds = 10;
+  /// 仅作文案/兼容默认；相位倒计时禁止拿它冒充后台配置。
+  static const defaultSealSeconds = 10;
+  static const maxSealSeconds = 119;
+
+  /// 兼容旧引用；请优先 [sealSecondsOf] / [sealRemainSeconds]。
+  static const sealWarnSeconds = defaultSealSeconds;
+
+  /// 是否已有可用的封盘配置（sealSeconds 或 open−seal 时刻差）。
+  static bool hasSealConfig(LotteryGameModel game) => sealSecondsOf(game) > 0;
+
+  /// 封盘提前量：对齐 web `sealGapSeconds`——优先 open−seal 时刻差，其次配置 sealSeconds。
+  static int sealSecondsOf(LotteryGameModel game) {
+    final open = game.openAtEpochMs ?? 0;
+    final seal = game.sealAtEpochMs ?? 0;
+    if (open > seal && seal > 0) {
+      final gap = ((open - seal) / 1000).round();
+      if (gap >= 1 && gap <= maxSealSeconds) return gap;
+    }
+    final configured = game.sealSeconds ?? 0;
+    if (configured >= 1 && configured <= maxSealSeconds) return configured;
+    return 0;
+  }
+
+  static int _remainToEpochMs(int epochMs, DateTime now) {
+    if (epochMs <= 0) return 0;
+    return math.max(0, ((epochMs - now.millisecondsSinceEpoch) / 1000).floor());
+  }
 }
 
 enum LotteryDisplayPhase { betting, sealed, drawing }
 
 abstract final class LotteryPeriodHelper {
-  static LotteryDisplayPhase phaseOf(LotteryGameModel game) {
+  /// 距开奖：文档 §4.1——优先 `openAtEpochMs` 本地算，勿靠 countdown 自减。
+  static int openRemainSeconds(LotteryGameModel game, [DateTime? now]) {
+    final clock = now ?? DateTime.now();
+    final openAt = game.openAtEpochMs ?? 0;
+    if (openAt > 0) {
+      return LotteryPeriodRules._remainToEpochMs(openAt, clock);
+    }
+    return math.max(0, game.countdownSeconds);
+  }
+
+  /// 距封盘：文档 §4.2 + web `sealRemainSeconds`——优先 `sealAtEpochMs`。
+  static int sealRemainSeconds(LotteryGameModel game, [DateTime? now]) {
+    final clock = now ?? DateTime.now();
+    final sealAt = game.sealAtEpochMs ?? 0;
+    if (sealAt > 0) {
+      return LotteryPeriodRules._remainToEpochMs(sealAt, clock);
+    }
+    final open = game.openAtEpochMs ?? 0;
+    final gap = LotteryPeriodRules.sealSecondsOf(game);
+    if (open > 0 && gap > 0) {
+      return LotteryPeriodRules._remainToEpochMs(open - gap * 1000, clock);
+    }
+    final openLeft = openRemainSeconds(game, clock);
+    if (gap > 0) return math.max(0, openLeft - gap);
+    return openLeft;
+  }
+
+  static LotteryDisplayPhase phaseOf(LotteryGameModel game, [DateTime? now]) {
     if (game.isDrawing || game.status == LotteryStatus.drawing) {
       return LotteryDisplayPhase.drawing;
     }
-    if (game.countdownSeconds <= 0) {
-      // 露出结束到下一帧 WS 之间 CD 可能仍为 0，不应一直「开奖中」
+    final clock = now ?? DateTime.now();
+    final openLeft = openRemainSeconds(game, clock);
+    if (openLeft <= 0) {
+      // 开奖时刻已到：短暂「封盘中/开奖中」由 isDrawing 区分
       return LotteryDisplayPhase.sealed;
     }
-    if (game.status == LotteryStatus.sealed ||
-        game.countdownSeconds <= LotteryPeriodRules.sealWarnSeconds) {
+    final sealAt = game.sealAtEpochMs ?? 0;
+    final gap = LotteryPeriodRules.sealSecondsOf(game);
+    // 无 sealAt / sealSeconds 前不进「封盘中」（防 HTTP 缺字段假窗口）
+    if (sealAt <= 0 && gap <= 0) {
+      return LotteryDisplayPhase.betting;
+    }
+    // 文档：now ≥ sealAt → 已封盘
+    if (sealRemainSeconds(game, clock) <= 0) {
       return LotteryDisplayPhase.sealed;
     }
     return LotteryDisplayPhase.betting;
   }
 
-  /// 下注中显示「距封盘」秒数（= 距开奖 - 10）
-  static int bettingCountdownSeconds(LotteryGameModel game) {
-    return (game.countdownSeconds - LotteryPeriodRules.sealWarnSeconds)
-        .clamp(0, 99999);
+  /// 下注中「距封盘」倒计时。
+  static int bettingCountdownSeconds(LotteryGameModel game, [DateTime? now]) {
+    return sealRemainSeconds(game, now);
   }
 
   static bool showDrawingPlaceholders(LotteryGameModel game) {
@@ -40,15 +105,17 @@ abstract final class LotteryPeriodHelper {
         game.previousResults.isEmpty;
   }
 
-  static bool canBetNow(LotteryGameModel game) {
-    return phaseOf(game) == LotteryDisplayPhase.betting;
+  static bool canBetNow(LotteryGameModel game, [DateTime? now]) {
+    return phaseOf(game, now) == LotteryDisplayPhase.betting;
   }
 
-  static LotteryStatus statusFromCountdown(int seconds, {bool hasResult = true}) {
+  static LotteryStatus statusFromCountdown(
+    int seconds, {
+    int sealSeconds = 0,
+    bool hasResult = true,
+  }) {
     if (seconds <= 0) return LotteryStatus.drawing;
-    if (seconds <= LotteryPeriodRules.sealWarnSeconds) {
-      return LotteryStatus.sealed;
-    }
+    if (sealSeconds > 0 && seconds <= sealSeconds) return LotteryStatus.sealed;
     return LotteryStatus.open;
   }
 }
@@ -92,7 +159,8 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final phase = LotteryPeriodHelper.phaseOf(game);
+    final now = DateTime.now();
+    final phase = LotteryPeriodHelper.phaseOf(game, now);
     final issue = showIssue ? (issuePrefix ?? '') : '';
     final baseIssue = TextStyle(
       fontSize: 12.sp,
@@ -132,7 +200,8 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
               ),
               SizedBox(width: 8.w),
               FlipCountdown(
-                seconds: game.countdownSeconds,
+                // 封盘中：距开奖（openAt）
+                seconds: LotteryPeriodHelper.openRemainSeconds(game, now),
                 compact: compactCountdown,
               ),
             ],
@@ -148,7 +217,8 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
               ),
               SizedBox(width: 8.w),
               FlipCountdown(
-                seconds: LotteryPeriodHelper.bettingCountdownSeconds(game),
+                seconds:
+                    LotteryPeriodHelper.bettingCountdownSeconds(game, now),
                 compact: compactCountdown,
               ),
             ],

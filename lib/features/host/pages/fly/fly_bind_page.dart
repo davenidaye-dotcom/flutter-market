@@ -123,7 +123,7 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
     return HostSubPageScaffold(
       title: '绑定代理会员',
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppPageLoading()
           : ListView(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [

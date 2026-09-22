@@ -9,6 +9,7 @@ class _Member {
     this.userId,
     this.roleLabel,
     this.points, {
+    this.avatar,
     this.online = false,
     this.isMood = false,
     this.isTrial = false,
@@ -23,6 +24,8 @@ class _Member {
   final String userId;
   final String roleLabel;
   final int points;
+  /// 头像编码 avNN 或 URL
+  final String? avatar;
   final bool online;
   final bool isMood;
   final bool isTrial;
@@ -122,7 +125,7 @@ HostMember hostMemberFromMap(Map<String, dynamic> m) {
   final role = (m['roleLabel'] ?? m['role'] ?? '普通用户').toString();
   final online = m['online'] == true || (m['presence']?.toString().toUpperCase() == 'IN');
   final isAgent = m['isAgent'] == true || role.contains('代理');
-  // 以后端 playMode 为准：ATMOSPHERE=机器人，TRIAL=试玩号
+  // 以后端 playMode 为准：ATMOSPHERE=机器人/气氛号，TRIAL=试玩号
   final playMode = (m['playMode'] ?? '').toString().toUpperCase();
   final isMood = playMode == 'ATMOSPHERE' ||
       m['isRobot'] == true ||
@@ -138,6 +141,7 @@ HostMember hostMemberFromMap(Map<String, dynamic> m) {
       status == 'BAN_ENTER' ||
       status == 'DISABLED' ||
       m['disabled'] == true;
+  final avatar = (m['avatar'] ?? m['avatarUrl'] ?? '').toString().trim();
   return HostMember(
     id,
     nick.isEmpty ? user : nick,
@@ -145,6 +149,7 @@ HostMember hostMemberFromMap(Map<String, dynamic> m) {
     id,
     role,
     pts,
+    avatar: avatar.isEmpty ? null : avatar,
     online: online,
     isMood: isMood,
     isTrial: isTrial,

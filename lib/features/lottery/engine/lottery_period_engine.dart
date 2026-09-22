@@ -53,8 +53,8 @@ class _GameSlot {
   String? sealLineIssue;
 }
 
-/// 期态（简单）：本地 openAt 递减 → cd>10 距封盘 / cd≤10 封盘 / cd=0 开奖中；
-/// WS 换期包（seconds>0 + 新 issue）一到立即结束开奖中并刷新球号、期号。
+/// 期态（简单）：本地 openAt 递减 → cd>seal 距封盘 / cd≤seal 封盘 / cd=0 开奖中；
+/// seal 取自后台 sealSeconds（默认 10）；WS 换期包一到立即结束开奖中并刷新球号、期号。
 final class LotteryPeriodEngine {
   /// 兼容旧测试引用；开奖中最短展示由 WS 换期包到达决定，不再人为 hold。
   static const revealHold = Duration(milliseconds: 800);
@@ -106,6 +106,14 @@ final class LotteryPeriodEngine {
       if (existing != null && existing.wsSynced) {
         existing.model = existing.model.copyWith(
           name: g.name.isNotEmpty ? g.name : existing.model.name,
+          sealSeconds: g.sealSeconds ?? existing.model.sealSeconds,
+        );
+        // sealAt 只跟已采纳 openAt 对齐，禁止 HTTP 把距封盘抬高。
+        _alignSealAt(
+          existing,
+          preferredSealAtMs: null,
+          now: now,
+          allowSealIncrease: false,
         );
         _mergeHttpDraw(existing, g);
         _recoverStuckCountdown(existing, g, now);
@@ -218,6 +226,8 @@ final class LotteryPeriodEngine {
     required String issue,
     required int seconds,
     int? openAtEpochMs,
+    int? sealAtEpochMs,
+    int? sealSeconds,
     String? lastIssue,
     List<int> lastRanks = const [],
     DateTime? now,
@@ -228,6 +238,15 @@ final class LotteryPeriodEngine {
 
     final clock = now ?? DateTime.now();
     final slot = existing;
+
+    if (sealAtEpochMs != null || sealSeconds != null) {
+      // 只先写入 sealSeconds 配置；sealAt 必须在 _syncCountdown 采纳 openAt 后再对齐，
+      // 否则会用「未采纳的更远 openAt」算出更远 sealAt → 距封盘从 30s 跳回 50s。
+      final sealSec = sealSeconds ?? slot.model.sealSeconds;
+      if (sealSec != null && sealSec > 0) {
+        slot.model = slot.model.copyWith(sealSeconds: sealSec);
+      }
+    }
 
     final first = !slot.wsSynced;
     if (first) slot.wsSynced = true;
@@ -266,6 +285,14 @@ final class LotteryPeriodEngine {
       allowIncrease: allowWsIncrease,
     );
 
+    // 用「已采纳」的 openAt 对齐 sealAt（web: sealAt = openAt - sealGap）。
+    _alignSealAt(
+      slot,
+      preferredSealAtMs: issueChanged || first ? sealAtEpochMs : null,
+      now: clock,
+      allowSealIncrease: issueChanged || first,
+    );
+
     var draws = const <DrawRevealEvent>[];
     final resolvedLastIssue = lastIssue ?? '';
     if (resolvedLastIssue.isNotEmpty && lastRanks.isNotEmpty) {
@@ -295,7 +322,8 @@ final class LotteryPeriodEngine {
     final clock = now ?? DateTime.now();
     if (!slot.wsSynced) slot.wsSynced = true;
 
-    final draws = _ingestDraw(gameId, slot, issue, ranks, clock);
+    // DRAW_RESULT 是服务端权威：本地 CD 未归零也必须立刻出号（勿等 tick，否则 WIN_LIST 先上屏）。
+    final draws = _ingestDraw(gameId, slot, issue, ranks, clock, force: true);
     return PeriodTickResult(draws: draws, changed: draws.isNotEmpty);
   }
 
@@ -358,6 +386,8 @@ final class LotteryPeriodEngine {
       previousIssue: nextPrevIssue,
       previousResults: nextResults,
       openAtEpochMs: patch.openAtEpochMs ?? slot.model.openAtEpochMs,
+      sealAtEpochMs: patch.sealAtEpochMs ?? slot.model.sealAtEpochMs,
+      sealSeconds: patch.sealSeconds ?? slot.model.sealSeconds,
     );
     final cdBefore = _secondsLeft(slot, now);
     if (slot.wsSynced && cdBefore > 0) return;
@@ -388,15 +418,20 @@ final class LotteryPeriodEngine {
     final clock = now ?? DateTime.now();
     final cd = _secondsLeft(s, clock);
     final drawing = cd <= 0;
-
-    return s.model.copyWith(
+    final openAt = s.model.openAtEpochMs ??
+        s.openDeadline?.millisecondsSinceEpoch;
+    final display = s.model.copyWith(
       countdownSeconds: cd,
       isDrawing: drawing,
+      openAtEpochMs: openAt,
+    );
+    final sealed = !drawing &&
+        LotteryPeriodHelper.sealRemainSeconds(display, clock) <= 0;
+
+    return display.copyWith(
       status: drawing
           ? LotteryStatus.drawing
-          : (cd <= LotteryPeriodRules.sealWarnSeconds
-              ? LotteryStatus.sealed
-              : LotteryStatus.open),
+          : (sealed ? LotteryStatus.sealed : LotteryStatus.open),
     );
   }
 
@@ -466,19 +501,113 @@ final class LotteryPeriodEngine {
     if (issue.isEmpty) return const [];
 
     final cd = _secondsLeft(slot, now);
-    const warnLine = LotteryPeriodRules.sealWarnSeconds * 2;
-    const sealLine = LotteryPeriodRules.sealWarnSeconds;
+    final sealLine = LotteryPeriodRules.sealSecondsOf(slot.model);
+    final warnLine = sealLine * 2;
+    final sealRemain = LotteryPeriodHelper.sealRemainSeconds(
+      slot.model.copyWith(countdownSeconds: cd),
+      now,
+    );
     final out = <SealRevealEvent>[];
 
-    if (cd > 0 && cd <= warnLine && slot.sealWarnIssue != issue) {
+    // 预警：进入「封盘前 2×sealSeconds」窗口（与旧 20s/10s 比例一致）
+    if (cd > 0 &&
+        sealRemain > 0 &&
+        sealRemain <= warnLine &&
+        slot.sealWarnIssue != issue) {
       slot.sealWarnIssue = issue;
       out.add(SealRevealEvent(gameId: gameId, kind: 'warn', issue: issue));
     }
-    if (cd > 0 && cd <= sealLine && slot.sealLineIssue != issue) {
+    if (cd > 0 && sealRemain <= 0 && slot.sealLineIssue != issue) {
       slot.sealLineIssue = issue;
       out.add(SealRevealEvent(gameId: gameId, kind: 'sealed', issue: issue));
     }
     return out;
+  }
+
+  /// 仅补 seal 配置（不碰倒计时锚点）。公开期数 HTTP 用这个，禁止走 onPeriodTick。
+  void applySealConfig(
+    String gameId, {
+    int? sealSeconds,
+    int? sealAtEpochMs,
+    DateTime? now,
+  }) {
+    final slot = _slots[gameId];
+    if (slot == null) return;
+    final clock = now ?? DateTime.now();
+    if (sealSeconds != null && sealSeconds > 0) {
+      slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
+    }
+    _alignSealAt(
+      slot,
+      preferredSealAtMs: sealAtEpochMs,
+      now: clock,
+      allowSealIncrease: false,
+    );
+  }
+
+  /// 用已采纳的 openAt 对齐 sealAt；禁止同期内把距封盘抬高。
+  void _alignSealAt(
+    _GameSlot slot, {
+    int? preferredSealAtMs,
+    required DateTime now,
+    required bool allowSealIncrease,
+  }) {
+    final open = slot.model.openAtEpochMs ??
+        slot.openDeadline?.millisecondsSinceEpoch;
+    var sealSec = slot.model.sealSeconds;
+    var sealAt = preferredSealAtMs ?? slot.model.sealAtEpochMs;
+
+    if ((sealSec == null || sealSec <= 0) &&
+        open != null &&
+        open > 0 &&
+        sealAt != null &&
+        sealAt > 0 &&
+        open > sealAt) {
+      final gap = ((open - sealAt) / 1000).round();
+      if (gap >= 1 && gap <= LotteryPeriodRules.maxSealSeconds) {
+        sealSec = gap;
+      }
+    }
+
+    if (open != null &&
+        open > 0 &&
+        sealSec != null &&
+        sealSec > 0 &&
+        (sealAt == null || sealAt <= 0)) {
+      sealAt = open - sealSec * 1000;
+    }
+
+    // 有 open+gap 时，sealAt 必须以当前 open 为准（防 HTTP 带来更远 sealAt）。
+    if (open != null && open > 0 && sealSec != null && sealSec > 0) {
+      final derived = open - sealSec * 1000;
+      if (sealAt == null || sealAt <= 0) {
+        sealAt = derived;
+      } else if (!allowSealIncrease && sealAt > derived + 1500) {
+        sealAt = derived;
+      } else if (allowSealIncrease) {
+        // 换期：优先服务端 sealAt，否则 derived
+        if (preferredSealAtMs == null || preferredSealAtMs <= 0) {
+          sealAt = derived;
+        }
+      }
+    }
+
+    if (sealAt == null && sealSec == null) return;
+
+    final prevSeal = slot.model.sealAtEpochMs ?? 0;
+    if (!allowSealIncrease &&
+        sealAt != null &&
+        sealAt > 0 &&
+        prevSeal > 0 &&
+        sealAt > prevSeal + 1500) {
+      // 同期内 sealAt 变远 → 距封盘回跳，拒绝
+      sealAt = prevSeal;
+    }
+
+    slot.model = slot.model.copyWith(
+      sealAtEpochMs: sealAt,
+      sealSeconds: sealSec,
+    );
   }
 
   void _syncCountdown(
@@ -564,8 +693,8 @@ final class LotteryPeriodEngine {
     final httpLeft = _secondsLeft(slot, now);
     if (httpLeft <= 0) return wsSeconds > 0;
     if (wsSeconds <= httpLeft) return false;
-    if (httpLeft <= LotteryPeriodRules.sealWarnSeconds &&
-        wsSeconds > LotteryPeriodRules.sealWarnSeconds + 5) {
+    if (httpLeft <= LotteryPeriodRules.sealSecondsOf(slot.model) &&
+        wsSeconds > LotteryPeriodRules.sealSecondsOf(slot.model) + 5) {
       return true;
     }
     return wsSeconds <= httpLeft + 3;

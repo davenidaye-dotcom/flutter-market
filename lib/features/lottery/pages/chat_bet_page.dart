@@ -43,6 +43,7 @@ import '../widgets/live_period_widgets.dart';
 import '../widgets/long_dragon_panel.dart';
 import '../widgets/switch_game_dialog.dart';
 import 'market_bet_page.dart';
+import '../../../shared/widgets/app_page_loading.dart';
 
 enum _BottomPanel { none, keypad, menu, quickBet }
 enum _TopPanel { none, betSlip, longDragon }
@@ -658,13 +659,14 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   void _hydrateMessagesFromCacheIfReady() {
+    _messagesLoadingNotifier.value = false;
     final cache = ChatPushCache.instance;
     final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
-    if (!cache.hasDrawsForGame(widget.roomId, _gameId) &&
-        !live.isChatTimelineWarm(_gameId)) {
-      return;
-    }
-    _messagesLoadingNotifier.value = false;
+    final hasBuffered =
+        cache.bufferedForGame(widget.roomId, _gameId).isNotEmpty ||
+        cache.hasDrawsForGame(widget.roomId, _gameId) ||
+        live.isChatTimelineWarm(_gameId);
+    if (!hasBuffered) return;
     _lastTimelineSig = null;
     _syncMessagesFromCache(forceScroll: true);
   }
@@ -677,26 +679,29 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _betCtrl.addListener(_scheduleBetDraftSave);
     _gameId = widget.gameId;
     _gameIdNotifier.value = widget.gameId;
+    // 竞品路径：首帧绝不转圈；内存有货立刻画。
+    _messagesLoadingNotifier.value = false;
     _hydrateMessagesFromCacheIfReady();
     _scheduleDockLayoutSync();
     final subGen = ++_chatSubGen;
     Future.microtask(() async {
       if (_disposed || subGen != _chatSubGen) return;
       final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
-      await live.ensureLoaded();
+      // 磁盘缓冲先上屏，不等人房间全彩种 15 期预载。
+      await live.ensureChatBufferLoaded();
       if (_disposed || subGen != _chatSubGen) return;
-      await live.ensureDrawHistoryPreloaded();
-      if (_disposed || subGen != _chatSubGen) return;
-      // 15 期已在进房时拉过：这里只上屏，不盖转圈。
       _messagesLoadingNotifier.value = false;
       _hydrateMessagesFromCacheIfReady();
-      // 进聊天页强制刷积分（总资产页有数、顶栏常为 0 的主因之一是 ready 后未再拉钱包）
+
+      // 房间态 / 全彩种预拉全部后台，不挡首屏。
+      unawaited(live.ensureLoaded());
+      unawaited(live.ensureDrawHistoryPreloaded());
       unawaited(live.refreshWallet());
+
       if (_disposed || subGen != _chatSubGen) return;
       _chatPushSub?.cancel();
       _chatPushSub = live.chatPushes.listen((push) {
         if (_disposed || !mounted || push.gameId != _gameId) return;
-        // 全部走时间线（含他人 CHAT）：缓存已写入，禁止 append 造成短暂错序再重排。
         _applyTimelineFromCache();
       });
       if (_disposed || subGen != _chatSubGen) {
@@ -704,7 +709,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         _chatPushSub = null;
         return;
       }
-      unawaited(_loadMessages(showLoadingOverlay: false));
+      // 当前彩种后台核对，永不盖转圈。
+      unawaited(
+        _loadMessages(showLoadingOverlay: false, silent: true),
+      );
+      unawaited(_restoreBetDraft());
+      unawaited(_restoreBetSlipsFromServer());
     });
   }
 
@@ -773,7 +783,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     super.dispose();
   }
 
-  /// 切彩种：不先清空列表（避免白屏闪一下），有缓存则一步替换，无缓存则遮罩加载。
+  /// 切彩种：不转圈。有缓冲立刻换时间线；无缓冲暂留旧列表，后台静默拉完再替换。
   void _switchToGame(String gameId) {
     if (gameId == _gameId) return;
     _gameId = gameId;
@@ -782,47 +792,56 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _messageIds.clear();
     _longDragonLoadedGameId = null;
     _longDragonRowsNotifier.value = null;
-    // 切彩种收起面板，避免旧盘口残留；不整页重建
     _setPanel(_BottomPanel.none);
     _topPanelNotifier.value = _TopPanel.none;
     _historyExpandedNotifier.value = false;
     _fabSelectedNotifier.value = null;
+    _messagesLoadingNotifier.value = false;
 
     final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
     final warm = live.isChatTimelineWarm(gameId);
-    final hasBufferedDraws =
+    final hasBuffered =
+        ChatPushCache.instance.bufferedForGame(widget.roomId, gameId).isNotEmpty ||
         ChatPushCache.instance.hasDrawsForGame(widget.roomId, gameId);
-    if (warm || hasBufferedDraws) {
-      _messagesLoadingNotifier.value = false;
-      // 有缓存/已暖：立刻换时间线；仅缺口时静默补网，避免强制全量重拉卡顿
+    if (warm || hasBuffered) {
       _syncMessagesFromCache(forceScroll: true, skipLiveMerge: true);
-      unawaited(_loadMessages(forceReload: !warm, silent: true));
-      return;
+    } else {
+      // 冷切：清空旧彩种列表，勿把上一彩种内容留到新彩种（不转圈）。
+      _messagesNotifier.value = const [];
+      _messageIds.clear();
     }
-
-    // 无缓存：旧列表暂留，遮罩转圈，数据就绪后一次替换（不经过空白态）
-    _messagesLoadingNotifier.value = true;
-    unawaited(_loadMessages(forceReload: true));
+    unawaited(
+      _loadMessages(
+        forceReload: !warm,
+        silent: true,
+        showLoadingOverlay: false,
+      ),
+    );
   }
 
   Future<void> _loadMessages({
     bool silent = false,
     bool forceReload = false,
-    bool showLoadingOverlay = true,
+    bool showLoadingOverlay = false,
   }) {
-    return _msgLoadInflight ??= _loadMessagesImpl(
+    // 每次新开（含切彩）：靠 _msgLoadGen 丢弃过期结果，勿用 ??= 卡住后续彩种。
+    final future = _loadMessagesImpl(
       silent: silent,
       forceReload: forceReload,
       showLoadingOverlay: showLoadingOverlay,
-    ).whenComplete(() {
-      _msgLoadInflight = null;
+    );
+    _msgLoadInflight = future;
+    return future.whenComplete(() {
+      if (identical(_msgLoadInflight, future)) {
+        _msgLoadInflight = null;
+      }
     });
   }
 
   Future<void> _loadMessagesImpl({
     bool silent = false,
     bool forceReload = false,
-    bool showLoadingOverlay = true,
+    bool showLoadingOverlay = false,
   }) async {
     final gen = ++_msgLoadGen;
     final liveNotifier =
@@ -832,8 +851,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         !forceReload && liveNotifier.isChatTimelineWarm(_gameId);
     final hasCache = ChatPushCache.instance
         .hasDrawsForGame(widget.roomId, _gameId);
-    // 已有内容上屏时后台刷新，不把列表换成转圈（防闪）
     final hasVisibleMessages = _messagesNotifier.value.isNotEmpty;
+    // 竞品：有内容可画就不转圈；默认也不转圈（仅显式要求且空列表时才转）。
     if (showLoadingOverlay &&
         !silent &&
         !warm &&
@@ -857,13 +876,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         forceNetwork: forceReload || (!warm && !hasCache),
       );
 
+      if (!mounted || gen != _msgLoadGen) return;
+      _lastTimelineSig = null;
+      _syncMessagesFromCache(forceScroll: true);
+      _scheduleHistoryRowsRefresh();
+
       if (!silent) {
-        if (forceReload || (!warm && !hasCache)) {
-          await liveNotifier.timelineForGameAsync(_gameId);
-        }
-        if (!mounted || gen != _msgLoadGen) return;
-        _lastTimelineSig = null;
-        _syncMessagesFromCache(forceScroll: true);
         unawaited(_restoreBetDraft());
         unawaited(_restoreBetSlipsFromServer());
         _setPanel(_BottomPanel.none);
@@ -1031,7 +1049,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   void _onMenuItem(String label) {
-    _setPanel(_BottomPanel.none);
+    // 自助回水就地领取，保持下注菜单展开；其它项关闭菜单后再跳转/弹窗
+    if (label != '自助回水') {
+      _setPanel(_BottomPanel.none);
+    }
     final trialBlocked = const {'上分', '下分', '申请记录', '自助回水'};
     if (trialBlocked.contains(label) &&
         ref.read(roomLotteryLiveProvider(widget.roomId)).isTrialAccount) {
@@ -1445,9 +1466,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                 valueListenable: _messagesNotifier,
                                 builder: (_, messages, __) {
                                   if (loading && messages.isEmpty) {
-                                    return const Center(
-                                      child: CircularProgressIndicator(),
-                                    );
+                                    return const AppPageLoading();
                                   }
                                   final list = ListView.builder(
                                     reverse: true,
@@ -1482,9 +1501,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                       ColoredBox(
                                         color: Colors.white
                                             .withValues(alpha: 0.72),
-                                        child: const Center(
-                                          child: CircularProgressIndicator(),
-                                        ),
+                                        child: const AppPageLoading(),
                                       ),
                                     ],
                                   );
@@ -1699,7 +1716,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                   (_longDragonRowsNotifier.value?.isEmpty ?? true)) {
                                 return SizedBox(
                                   height: LongDragonPanel.panelHeight(context),
-                                  child: const Center(child: CircularProgressIndicator()),
+                                  child: const AppPageLoading(),
                                 );
                               }
                               return ValueListenableBuilder<List<LongDragonRow>?>(

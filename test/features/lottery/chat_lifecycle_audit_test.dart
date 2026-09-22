@@ -120,7 +120,7 @@ void main() {
   });
 
   group('buffer 裁剪', () {
-    test('25 期后保留最新 20 期开奖', () {
+    test('25 期后保留最新 15 期开奖', () {
       for (var i = 5250; i <= 5274; i++) {
         cache.pushOnce(
           roomId: roomId,
@@ -135,8 +135,8 @@ void main() {
           .map(extractIssue)
           .whereType<String>()
           .toList();
-      expect(issues.length, ChatPushCache.maxPerGame);
-      expect(issues.first, '5255');
+      expect(issues.length, ChatPushCache.maxDrawsPerGame);
+      expect(issues.first, '5260');
       expect(issues.last, '5274');
     });
   });

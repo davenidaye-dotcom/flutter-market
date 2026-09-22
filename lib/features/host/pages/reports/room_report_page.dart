@@ -160,6 +160,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
             quickIndex: quickIndex,
             start: start,
             end: end,
+            quickItems: quickItems,
             onQuickTap: onQuickTap,
             onCustomTap: pickCustomRange,
           ),

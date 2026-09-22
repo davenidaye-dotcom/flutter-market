@@ -54,11 +54,12 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
       start = widget.initialStart!;
       end = widget.initialEnd!;
       quickIndex = widget.initialQuickIndex;
-    } else if (widget.initialQuickIndex == 6) {
-      quickIndex = 6;
-      final r = ReportDateBar.rangeForQuick(6);
-      start = r.$1;
-      end = r.$2;
+    } else if (widget.initialQuickIndex >= 0 &&
+        widget.initialQuickIndex < quickItems.length &&
+        quickItems[widget.initialQuickIndex].omitDates) {
+      quickIndex = widget.initialQuickIndex;
+      start = quickItems[quickIndex].start;
+      end = quickItems[quickIndex].end;
     }
     _scroll.addListener(_onScroll);
     Future.microtask(() => _load(reset: true));
@@ -207,6 +208,7 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
             quickIndex: quickIndex,
             start: start,
             end: end,
+            quickItems: quickItems,
             onQuickTap: onQuickTap,
             onCustomTap: pickCustomRange,
           ),
