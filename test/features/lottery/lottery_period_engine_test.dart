@@ -308,9 +308,10 @@ void main() {
       sealSeconds: 10,
       now: t0,
     );
-    final betting = engine.displayGame('JS_SC', t0);
-    expect(LotteryPeriodHelper.phaseOf(betting), LotteryDisplayPhase.betting);
-    expect(betting.countdownSeconds, 60);
+    final held = engine.displayGame('JS_SC', t0);
+    // 同期已进入封盘窗口：更远的 openAt/sealAt 不能把封盘中抬成新的一整期。
+    expect(LotteryPeriodHelper.phaseOf(held, t0), LotteryDisplayPhase.sealed);
+    expect(LotteryPeriodHelper.openRemainSeconds(held, t0), 8);
   });
 
   test('ws newer issue advances even while local countdown positive', () {
@@ -653,7 +654,7 @@ void main() {
     expect(g.isDrawing, isFalse);
   });
 
-  test('http openAt anchor wins over stale ws first tick (live probe)', () {
+  test('before seal a later openAt replaces the http anchor', () {
     final httpOpenAt =
         t0.add(const Duration(seconds: 47)).millisecondsSinceEpoch;
     engine.bootstrap(
@@ -677,7 +678,8 @@ void main() {
       openAtEpochMs: staleWsOpenAt,
       now: t0,
     );
-    expect(engine.countdownFor('JS_SC', t0), 47);
+    // 未封盘：后来的 openAt 覆盖。本期没有 sealAt，不涉及封盘钉死。
+    expect(engine.countdownFor('JS_SC', t0), 64);
     final t5 = t0.add(const Duration(seconds: 5));
     engine.onPeriodTick(
       'JS_SC',
@@ -686,7 +688,7 @@ void main() {
       openAtEpochMs: staleWsOpenAt + 6000,
       now: t5,
     );
-    expect(engine.countdownFor('JS_SC', t5), 42);
+    expect(engine.countdownFor('JS_SC', t5), 65);
   });
 
   test('ws synced stuck drawing recovers from http snapshot', () {

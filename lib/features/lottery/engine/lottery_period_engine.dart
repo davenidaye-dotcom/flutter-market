@@ -102,22 +102,24 @@ final class LotteryPeriodEngine {
     for (final g in list) {
       final existing = _slots[g.id];
       if (existing != null) {
+        final advances = _incomingIssueAdvances(existing, g.currentIssue);
+        final pinned = !advances && _sealWindowPinned(existing, now);
         existing.model = existing.model.copyWith(
           name: g.name.isNotEmpty ? g.name : existing.model.name,
           currentIssue: g.currentIssue.isNotEmpty
               ? _pickNewer(g.currentIssue, existing.model.currentIssue)
               : existing.model.currentIssue,
           sealSeconds: g.sealSeconds ?? existing.model.sealSeconds,
-          openAtEpochMs: g.openAtEpochMs ?? existing.model.openAtEpochMs,
-          sealAtEpochMs: g.sealAtEpochMs ?? existing.model.sealAtEpochMs,
         );
-        final openAt = g.openAtEpochMs;
-        if (openAt != null && openAt > 0) {
-          existing.openDeadline = DateTime.fromMillisecondsSinceEpoch(openAt);
-          existing.model = existing.model.copyWith(openAtEpochMs: openAt);
+        if (!pinned) {
+          _applyEpochs(
+            existing,
+            openAtMs: g.openAtEpochMs,
+            sealAtMs: g.sealAtEpochMs,
+          );
         }
         _mergeHttpDraw(existing, g);
-        _recoverStuckCountdown(existing, g, now);
+        if (!pinned) _recoverStuckCountdown(existing, g, now);
         continue;
       }
       final slot = _GameSlot(g);
@@ -230,25 +232,32 @@ final class LotteryPeriodEngine {
     final first = !slot.wsSynced;
     if (first) slot.wsSynced = true;
 
+    final advances = _incomingIssueAdvances(slot, issue);
+    final pinned = !advances && _sealWindowPinned(slot, clock);
     if (issue.isNotEmpty) {
       final newer = _pickNewer(issue, slot.model.currentIssue);
-      final issueChanged = !_sameIssue(newer, slot.model.currentIssue);
-      if (issueChanged || first) {
-        // 与 PC mergePeriod 一致：PERIOD_TICK/SNAPSHOT 的 issueNo 以服务端为准。
+      if (advances || first) {
+        // PERIOD_TICK/SNAPSHOT 的 issueNo 以服务端为准。
         slot.model = slot.model.copyWith(currentIssue: newer);
       }
     }
 
-    // 时刻以本包为准，与 web mergePeriod 一样后来的包覆盖。不用 sealSeconds 回写 sealAt。
-    _syncCountdown(
-      slot,
-      seconds: seconds,
-      openAtMs: openAtEpochMs,
-      now: clock,
-      force: first && slot.openDeadline == null,
-    );
-    if (sealAtEpochMs != null && sealAtEpochMs > 0) {
-      slot.model = slot.model.copyWith(sealAtEpochMs: sealAtEpochMs);
+    // 封盘窗口内钉死本期 openAt/sealAt。未封盘时后来的包覆盖；只有 openAt 时封盘提前量跟着平移。
+    if (!pinned) {
+      _applyEpochs(
+        slot,
+        openAtMs: openAtEpochMs,
+        sealAtMs: sealAtEpochMs,
+      );
+      if (openAtEpochMs == null || openAtEpochMs <= 0) {
+        _syncCountdown(
+          slot,
+          seconds: seconds,
+          openAtMs: null,
+          now: clock,
+          force: first && slot.openDeadline == null,
+        );
+      }
     }
 
     var draws = const <DrawRevealEvent>[];
@@ -326,6 +335,8 @@ final class LotteryPeriodEngine {
         }
       }
     }
+    final advances = _incomingIssueAdvances(slot, patch.currentIssue);
+    final pinned = !advances && _sealWindowPinned(slot, now);
     slot.model = slot.model.copyWith(
       name: patch.name.isNotEmpty ? patch.name : slot.model.name,
       currentIssue: patch.currentIssue.isNotEmpty
@@ -333,9 +344,13 @@ final class LotteryPeriodEngine {
           : slot.model.currentIssue,
       previousIssue: nextPrevIssue,
       previousResults: nextResults,
-      openAtEpochMs: patch.openAtEpochMs ?? slot.model.openAtEpochMs,
-      sealAtEpochMs: patch.sealAtEpochMs ?? slot.model.sealAtEpochMs,
       sealSeconds: patch.sealSeconds ?? slot.model.sealSeconds,
+    );
+    if (pinned) return;
+    _applyEpochs(
+      slot,
+      openAtMs: patch.openAtEpochMs,
+      sealAtMs: patch.sealAtEpochMs,
     );
     final cdBefore = _secondsLeft(slot, now);
     if (slot.wsSynced && cdBefore > 0) return;
@@ -440,7 +455,7 @@ final class LotteryPeriodEngine {
     return [DrawRevealEvent(gameId: gameId, issue: issue, ranks: ranks)];
   }
 
-  /// 写入服务端封盘配置。有 sealAt 就用该时刻，不用 sealSeconds 回写。
+  /// 写入服务端封盘配置。封盘窗口内不改 sealAt。未封盘时有 sealAt 就用该时刻。
   void applySealConfig(
     String gameId, {
     int? sealSeconds,
@@ -449,11 +464,55 @@ final class LotteryPeriodEngine {
   }) {
     final slot = _slots[gameId];
     if (slot == null) return;
+    final clock = now ?? DateTime.now();
     if (sealSeconds != null && sealSeconds > 0) {
       slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
     }
+    if (_sealWindowPinned(slot, clock)) return;
     if (sealAtEpochMs != null && sealAtEpochMs > 0) {
       slot.model = slot.model.copyWith(sealAtEpochMs: sealAtEpochMs);
+    }
+  }
+
+  /// 本期已封盘且尚未到开奖：钉死 openAt/sealAt，避免封盘中倒计时被抬成一整期。
+  bool _sealWindowPinned(_GameSlot slot, DateTime now) {
+    final seal = slot.model.sealAtEpochMs ?? 0;
+    final open = slot.model.openAtEpochMs ??
+        slot.openDeadline?.millisecondsSinceEpoch ??
+        0;
+    if (seal <= 0 || open <= seal) return false;
+    final ms = now.millisecondsSinceEpoch;
+    return ms >= seal && ms < open;
+  }
+
+  bool _incomingIssueAdvances(_GameSlot slot, String issue) {
+    if (issue.isEmpty || slot.model.currentIssue.isEmpty) return false;
+    return !_sameIssue(issue, slot.model.currentIssue) &&
+        compareIssueNo(issue, slot.model.currentIssue) > 0;
+  }
+
+  /// 写入开奖/封盘时刻。只带 openAt 时，按原提前量平移 sealAt，避免封盘段被拉成一期总长。
+  void _applyEpochs(
+    _GameSlot slot, {
+    int? openAtMs,
+    int? sealAtMs,
+  }) {
+    final prevOpen = slot.model.openAtEpochMs ?? 0;
+    final prevSeal = slot.model.sealAtEpochMs ?? 0;
+    var sealAt = sealAtMs;
+    if (openAtMs != null &&
+        openAtMs > 0 &&
+        (sealAt == null || sealAt <= 0) &&
+        prevOpen > prevSeal &&
+        prevSeal > 0) {
+      sealAt = openAtMs - (prevOpen - prevSeal);
+    }
+    if (openAtMs != null && openAtMs > 0) {
+      slot.openDeadline = DateTime.fromMillisecondsSinceEpoch(openAtMs);
+      slot.model = slot.model.copyWith(openAtEpochMs: openAtMs);
+    }
+    if (sealAt != null && sealAt > 0) {
+      slot.model = slot.model.copyWith(sealAtEpochMs: sealAt);
     }
   }
 
