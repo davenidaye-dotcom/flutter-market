@@ -49,28 +49,16 @@ class _CachedChatPush {
 }
 
 /// 封盘/开奖等聊天推送的本地缓存（内存 + SharedPreferences）。
-/// 保留最近约 [chatHistoryIssueLimit] 期的开奖 + 下注/核对，勿用「总共 20 条」裁光核对。
+/// 不按条数裁剪。进房时由 [dropOlderThanIssue] 丢掉服务器窗口之外的更早期号。
 class ChatPushCache {
   ChatPushCache._();
 
   static final ChatPushCache instance = ChatPushCache._();
 
-  /// 聊天历史按期数（与后端 CHAT_HISTORY_ISSUE_COUNT 对齐）。
+  /// 聊天历史按期数（与后端 CHAT_HISTORY_ISSUE_COUNT 对齐，只用于请求窗口）。
   static const chatHistoryIssueLimit = 15;
-  /// 每彩种开奖卡片上限。
-  static const maxDrawsPerGame = chatHistoryIssueLimit;
-  /// 每彩种用户下注文案上限（多期合计）。
-  static const maxUserBetsPerGame = 120;
-  /// 投注成功确认卡。竞猜核对、中奖列表另计，不占这 120 条。
-  static const maxRobotMsgsPerGame = 120;
-  /// 每彩种竞猜列表核对、中奖列表各保留最近 15 期。
-  static const maxCheckCardsPerGame = chatHistoryIssueLimit;
-  /// 兼容旧名：总预算仅作 others 配额参考，不再拿它裁掉核对。
-  static const maxPerGame = maxDrawsPerGame + maxUserBetsPerGame + maxRobotMsgsPerGame;
-  /// 聊天 ListView 最多渲染条数
-  static const maxVisibleChatMessages = 220;
-  /// 进房预拉、聊天同步：每彩种最新开奖条数
-  static const drawHistoryLimit = maxDrawsPerGame;
+  /// 进房预拉、开奖历史表：每彩种向服务器要的最新开奖条数。
+  static const drawHistoryLimit = chatHistoryIssueLimit;
   static const serverDrawLimit = drawHistoryLimit;
   static const _prefPrefix = 'flyroom_chat_cache_';
 
@@ -206,7 +194,6 @@ class ChatPushCache {
         push: LotteryChatPush(gameId: gameId, message: normalized),
       ),
     );
-    _trimRoom(roomId);
     _invalidateGameCache(roomId, gameId);
     _schedulePersist(roomId);
     return true;
@@ -766,7 +753,6 @@ class ChatPushCache {
     }
 
     _bufferByRoom[roomId] = kept;
-    _trimRoom(roomId);
     _invalidateGameCache(roomId, gameId);
     _schedulePersist(roomId);
   }
@@ -912,7 +898,6 @@ class ChatPushCache {
       }
       _keysByRoom[roomId] = keys;
       _bufferByRoom[roomId] = buffer;
-      _trimRoom(roomId);
       _invalidateRoomCache(roomId);
     } catch (_) {
       _keysByRoom.putIfAbsent(roomId, () => <String>{});
@@ -920,148 +905,6 @@ class ChatPushCache {
     }
   }
 
-  void _trimRoom(String roomId) {
-    final buffer = _bufferByRoom[roomId];
-    final keys = _keysByRoom[roomId];
-    if (buffer == null || keys == null || buffer.isEmpty) return;
-
-    final byGame = <String, List<_CachedChatPush>>{};
-    for (final entry in buffer) {
-      byGame.putIfAbsent(entry.push.gameId, () => []).add(entry);
-    }
-
-    final newBuffer = <_CachedChatPush>[];
-    final newKeys = <String>{};
-
-    for (final list in byGame.values) {
-      final kept = _trimGameEntries(list, keys);
-      newBuffer.addAll(kept);
-      newKeys.addAll(kept.map((e) => e.dedupeKey));
-    }
-
-    newBuffer.sort((a, b) {
-      final ai = buffer.indexOf(a);
-      final bi = buffer.indexOf(b);
-      return ai.compareTo(bi);
-    });
-
-    keys.removeWhere((k) {
-      if (newKeys.contains(k)) return false;
-      // 封盘只占 dedupe、可不在 buffer：trim 后 key 仍必须留下
-      if (k.startsWith('seal-warn-') ||
-          k.startsWith('sealed-') ||
-          k.startsWith('hist-seal-')) {
-        return false;
-      }
-      return true;
-    });
-    _bufferByRoom[roomId] = newBuffer;
-  }
-
-  /// 按类型分别限额：开奖 15、核对/确认卡、下注各自保留，禁止 20 条总配额把核对裁光。
-  List<_CachedChatPush> _trimGameEntries(
-    List<_CachedChatPush> entries,
-    Set<String> keys,
-  ) {
-    final draws = entries
-        .where((e) => e.push.message.type == ChatMessageType.resultCard)
-        .toList();
-    final userBets = entries
-        .where((e) => isUserBetChatMessage(e.push.message))
-        .toList();
-    final robotMsgs = entries
-        .where((e) => e.push.message.type == ChatMessageType.betReceipt)
-        .toList();
-    final betRanks = entries
-        .where((e) => e.push.message.type == ChatMessageType.betListCheck)
-        .toList();
-    final winLists = entries
-        .where((e) => e.push.message.type == ChatMessageType.winCheck)
-        .toList();
-    final others = entries
-        .where((e) =>
-            e.push.message.type != ChatMessageType.resultCard &&
-            e.push.message.type != ChatMessageType.betReceipt &&
-            e.push.message.type != ChatMessageType.winCheck &&
-            e.push.message.type != ChatMessageType.betListCheck &&
-            !isUserBetChatMessage(e.push.message))
-        .toList();
-
-    final keptDraws = _tail(draws, maxDrawsPerGame);
-    final keptUserBets = _tail(userBets, maxUserBetsPerGame);
-    final keptRobot = _tail(robotMsgs, maxRobotMsgsPerGame);
-    final keptRanks = _tail(betRanks, maxCheckCardsPerGame);
-    final keptWins = _tail(winLists, maxCheckCardsPerGame);
-    const maxOthers = 40;
-    final keptOthers = others.length > maxOthers
-        ? others.sublist(others.length - maxOthers)
-        : others;
-
-    final keptSet = <_CachedChatPush>{
-      ...keptDraws,
-      ...keptUserBets,
-      ...keptRobot,
-      ...keptRanks,
-      ...keptWins,
-      ...keptOthers,
-    };
-    for (final e in entries) {
-      if (keptSet.contains(e)) continue;
-      // 封盘 dedupe key 必须保留：否则 PERIOD_TICK 会每秒重推 → 聊天闪屏
-      final k = e.dedupeKey;
-      if (k.startsWith('seal-warn-') ||
-          k.startsWith('sealed-') ||
-          k.startsWith('hist-seal-')) {
-        continue;
-      }
-      keys.remove(k);
-    }
-
-    final merged = [
-      ...keptDraws,
-      ...keptUserBets,
-      ...keptRobot,
-      ...keptRanks,
-      ...keptWins,
-      ...keptOthers,
-    ];
-    merged.sort((a, b) => entries.indexOf(a).compareTo(entries.indexOf(b)));
-    return merged;
-  }
-
-  static List<T> _tail<T>(List<T> items, int max) {
-    if (items.length <= max) return items;
-    return items.sublist(items.length - max);
-  }
-
-  /// 屏幕最多 [maxVisibleChatMessages] 条，但开奖卡、竞猜核对、中奖列表优先留下。
-  static List<ChatMessageModel> capVisibleTimeline(
-    List<ChatMessageModel> messages,
-  ) {
-    final max = maxVisibleChatMessages;
-    if (messages.length <= max) return messages;
-    final pinned = <int>[];
-    for (var i = 0; i < messages.length; i++) {
-      final type = messages[i].type;
-      if (type == ChatMessageType.resultCard ||
-          type == ChatMessageType.betListCheck ||
-          type == ChatMessageType.winCheck) {
-        pinned.add(i);
-      }
-    }
-    final keep = <int>{};
-    if (pinned.length >= max) {
-      keep.addAll(pinned.sublist(pinned.length - max));
-    } else {
-      keep.addAll(pinned);
-      var budget = max - pinned.length;
-      for (var i = messages.length - 1; i >= 0 && budget > 0; i--) {
-        if (keep.add(i)) budget--;
-      }
-    }
-    final ordered = keep.toList()..sort();
-    return [for (final i in ordered) messages[i]];
-  }
 
   void _schedulePersist(String roomId) {
     if (_persistSuspendCount > 0) return;

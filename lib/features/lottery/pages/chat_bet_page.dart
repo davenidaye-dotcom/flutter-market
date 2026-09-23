@@ -132,28 +132,65 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   String _accountId = '';
   String? _lastTimelineSig;
   bool _timelineSyncQueued = false;
+  bool _bottomJumpWait = false;
+  /// reverse 列表下标：stable key → itemBuilder 下标，插入新消息时复用已有格子。
+  final _childIndexByKey = <String, int>{};
 
   void _onScrollChanged() {
     if (!_scrollCtrl.hasClients) return;
     _pinnedToBottom = _scrollCtrl.offset <= 64;
   }
 
-  /// reverse ListView 下 offset 0 即底部；已在底部时不 jump，避免无意义回弹抖动。
+  /// 已在底部不跳。手指还在滑或惯性未停时不 jump，避免和滚动抢位置。
   void _scrollToBottom({bool animated = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollCtrl.hasClients) return;
-      if (_scrollCtrl.offset <= 1) return;
-      const target = 0.0;
-      if (animated) {
-        _scrollCtrl.animateTo(
-          target,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-        );
-      } else {
-        _scrollCtrl.jumpTo(target);
-      }
+      if (_disposed || !mounted) return;
+      _jumpToBottomIfPinned(animated: animated);
     });
+  }
+
+  void _jumpToBottomIfPinned({bool animated = false}) {
+    if (_disposed || !mounted || !_scrollCtrl.hasClients) return;
+    if (!_pinnedToBottom) return;
+    if (_scrollCtrl.offset <= 1) return;
+    if (_scrollCtrl.position.isScrollingNotifier.value) {
+      if (_bottomJumpWait) return;
+      _bottomJumpWait = true;
+      _scrollCtrl.position.isScrollingNotifier.addListener(_onScrollIdleForBottom);
+      return;
+    }
+    if (animated) {
+      _scrollCtrl.animateTo(
+        0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    } else {
+      _scrollCtrl.jumpTo(0);
+    }
+  }
+
+  void _onScrollIdleForBottom() {
+    if (_disposed || !mounted || !_scrollCtrl.hasClients) {
+      _bottomJumpWait = false;
+      return;
+    }
+    if (_scrollCtrl.position.isScrollingNotifier.value) return;
+    _scrollCtrl.position.isScrollingNotifier.removeListener(_onScrollIdleForBottom);
+    _bottomJumpWait = false;
+    _jumpToBottomIfPinned();
+  }
+
+  void _rebuildChildIndex(List<ChatMessageModel> messages) {
+    _childIndexByKey.clear();
+    for (var i = 0; i < messages.length; i++) {
+      _childIndexByKey[stableChatItemKey(messages[messages.length - 1 - i])] = i;
+    }
+  }
+
+  int? _findChildIndex(Key key) {
+    if (key is! ValueKey<String>) return null;
+    return _childIndexByKey[key.value];
   }
 
   String _timelineSig(List<ChatMessageModel> messages) {
@@ -179,21 +216,20 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   void _setMessages(List<ChatMessageModel> messages) {
-    final trimmed = ChatPushCache.capVisibleTimeline(messages);
-    final nextIds = trimmed.map((m) => m.id).toSet();
+    final nextIds = messages.map((m) => m.id).toSet();
     final prev = _messagesNotifier.value;
-    if (setEquals(nextIds, _messageIds) && trimmed.length == prev.length) {
+    if (setEquals(nextIds, _messageIds) && messages.length == prev.length) {
       var sameOrder = true;
-      for (var i = 0; i < trimmed.length; i++) {
-        if (trimmed[i].id != prev[i].id) {
+      for (var i = 0; i < messages.length; i++) {
+        if (messages[i].id != prev[i].id) {
           sameOrder = false;
           break;
         }
       }
       if (sameOrder) {
         var contentSame = true;
-        for (var i = 0; i < trimmed.length; i++) {
-          final a = trimmed[i];
+        for (var i = 0; i < messages.length; i++) {
+          final a = messages[i];
           final b = prev[i];
           if (a.content != b.content ||
               a.issueNo != b.issueNo ||
@@ -209,7 +245,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _messageIds
       ..clear()
       ..addAll(nextIds);
-    _messagesNotifier.value = trimmed;
+    _rebuildChildIndex(messages);
+    _messagesNotifier.value = messages;
   }
 
   /// 立刻上屏：无固定延时。仅把「同一时刻连发」的多条推送合并进下一次 microtask，
@@ -306,11 +343,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       gameId: _gameId,
       message: message,
     );
-    _lastTimelineSig = null;
-    _syncMessagesFromCache();
-    if (_pinnedToBottom) {
-      _scrollToBottom();
-    }
+    // 指令和确认卡、以及随后的 WS 回声，合并成一次时间线刷新。
+    _applyTimelineFromCache();
   }
 
   void _syncDockLayout() {
@@ -762,6 +796,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       ),
     );
     _gameIdNotifier.dispose();
+    if (_bottomJumpWait && _scrollCtrl.hasClients) {
+      _scrollCtrl.position.isScrollingNotifier.removeListener(_onScrollIdleForBottom);
+    }
     _scrollCtrl.removeListener(_onScrollChanged);
     _scrollCtrl.dispose();
     _betCtrl.dispose();
@@ -1471,9 +1508,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                   final list = ListView.builder(
                                     reverse: true,
                                     controller: _scrollCtrl,
-                                    cacheExtent: 400,
-                                    addAutomaticKeepAlives: true,
+                                    cacheExtent: 720,
+                                    addAutomaticKeepAlives: false,
                                     addRepaintBoundaries: true,
+                                    findChildIndexCallback: _findChildIndex,
                                     padding: EdgeInsets.fromLTRB(
                                       12.w,
                                       12.h,
@@ -1484,11 +1522,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     itemBuilder: (_, i) {
                                       final m =
                                           messages[messages.length - 1 - i];
-                                      return RepaintBoundary(
-                                        child: ChatMessageItem(
-                                          key: ValueKey(stableChatItemKey(m)),
-                                          message: m,
-                                        ),
+                                      return ChatMessageItem(
+                                        key: ValueKey(stableChatItemKey(m)),
+                                        message: m,
                                       );
                                     },
                                   );
