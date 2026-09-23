@@ -62,7 +62,7 @@ class _GameSlot {
 /// 聊天封盘线不在这里生成，只消费后端 WS / 历史消息。
 final class LotteryPeriodEngine {
   /// 开奖中超过这段时间，才接受服务端仍在未来的同期开奖时刻。
-  static const stuckDrawingGrace = Duration(seconds: 3);
+  static const stuckDrawingGrace = Duration(milliseconds: 500);
 
   final Map<String, _GameSlot> _slots = {};
 
@@ -263,7 +263,7 @@ final class LotteryPeriodEngine {
     }
 
     // 封盘后钉死到换期。同期未封盘时，开奖时刻只允许提前，不能把剩余拉长。
-    // 开奖中停过几秒后，服务端这一期的开奖时刻若还在未来，则采纳并退出开奖中。
+    // 开奖中停满 500 毫秒后，服务端这一期的开奖时刻若还在未来，则采纳并退出开奖中。
     if (!pinned) {
       _applyEpochs(
         slot,

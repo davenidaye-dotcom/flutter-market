@@ -259,7 +259,7 @@ void main() {
     expect(LotteryPeriodHelper.openRemainSeconds(next, nextAt), 75);
   });
 
-  test('开奖中停过几秒后，同期仍在未来的开奖时刻可以退出开奖中', () {
+  test('开奖中停满 500 毫秒后，同期仍在未来的开奖时刻可以退出开奖中', () {
     final engine = LotteryPeriodEngine();
     final t0 = DateTime(2099, 6, 1, 12, 0, 0);
     final openAt = t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch;
@@ -283,7 +283,7 @@ void main() {
     final drawing = engine.displayGame('JS_SC', opened);
     expect(LotteryPeriodHelper.phaseOf(drawing, opened), LotteryDisplayPhase.drawing);
 
-    final tooSoon = opened.add(const Duration(seconds: 1));
+    final tooSoon = opened.add(const Duration(milliseconds: 200));
     engine.onPeriodTick(
       'JS_SC',
       issue: '34136341',
