@@ -1,4 +1,5 @@
 import '../../core/network/api_client.dart';
+import '../../core/network/api_exception.dart';
 
 /// Owner portal APIs under `/owner/**`
 class OwnerRepository {
@@ -107,8 +108,14 @@ class OwnerRepository {
   }
 
   Future<void> updateMemberRebate(String accountId, num rebate) async {
-    await _client.put('/owner/room/members/$accountId/rebate', data: {
-      'rebateRatio': rebate,
+    final id = accountId.trim();
+    if (id.isEmpty) {
+      throw const ApiException(message: '会员账号无效');
+    }
+    // 固定用小数，避免 int/double 混用导致签名体与验签不一致
+    final ratio = rebate.toDouble();
+    await _client.put('/owner/room/members/$id/rebate', data: {
+      'rebateRatio': ratio,
     });
   }
 

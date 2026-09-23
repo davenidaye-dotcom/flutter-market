@@ -167,8 +167,17 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
       suffixText: '%',
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
     );
-    final v = num.tryParse(text ?? '');
-    if (v == null) return;
+    if (text == null) return;
+    final normalized = text.trim().replaceAll('%', '').replaceAll(',', '').replaceAll('，', '');
+    final v = double.tryParse(normalized);
+    if (v == null) {
+      AppToast.info('请输入有效比例');
+      return;
+    }
+    if (v < 0 || v > 100) {
+      AppToast.info('回水比例须为 0~100');
+      return;
+    }
     try {
       await ref.read(ownerRepositoryProvider).updateMemberRebate(widget.memberId, v);
       _rebateCtrl.text = hostNumStr(v, fraction: 2);
