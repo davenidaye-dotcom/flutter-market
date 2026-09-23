@@ -409,13 +409,13 @@ final class LotteryPeriodEngine {
       isDrawing: drawing,
       openAtEpochMs: openAt,
     );
-    final sealed = !drawing &&
-        LotteryPeriodHelper.sealRemainSeconds(display, clock) <= 0;
-
+    final phase = LotteryPeriodHelper.phaseOf(display, clock);
     return display.copyWith(
-      status: drawing
-          ? LotteryStatus.drawing
-          : (sealed ? LotteryStatus.sealed : LotteryStatus.open),
+      status: switch (phase) {
+        LotteryDisplayPhase.drawing => LotteryStatus.drawing,
+        LotteryDisplayPhase.sealed => LotteryStatus.sealed,
+        LotteryDisplayPhase.betting => LotteryStatus.open,
+      },
     );
   }
 
@@ -476,7 +476,7 @@ final class LotteryPeriodEngine {
     return [DrawRevealEvent(gameId: gameId, issue: issue, ranks: ranks)];
   }
 
-  /// 写入服务端封盘配置。封盘窗口内不改 sealAt。未封盘时有 sealAt 就用该时刻。
+  /// 写入服务端封盘配置。本期提前量已确定后不再改 sealAt。
   void applySealConfig(
     String gameId, {
     int? sealSeconds,
@@ -490,7 +490,7 @@ final class LotteryPeriodEngine {
       slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
     }
     _arm(slot, clock);
-    if (_epochsFrozen(slot, clock)) return;
+    if (_epochsFrozen(slot, clock) || _gapLocked(slot)) return;
     if (sealAtEpochMs != null && sealAtEpochMs > 0) {
       slot.model = slot.model.copyWith(sealAtEpochMs: sealAtEpochMs);
     }
@@ -510,6 +510,15 @@ final class LotteryPeriodEngine {
     if (issue.isEmpty || open <= now.millisecondsSinceEpoch) return;
     slot.armedOpenAtMs = open;
     slot.armedIssue = issue;
+  }
+
+  /// 本期开奖与封盘时刻都已在手：提前量固定，后到的 sealAt 不再改距封盘。
+  bool _gapLocked(_GameSlot slot) {
+    final open = slot.model.openAtEpochMs ?? 0;
+    final seal = slot.model.sealAtEpochMs ?? 0;
+    if (seal <= 0 || open <= seal) return false;
+    if (slot.armedIssue.isEmpty) return false;
+    return _sameIssue(slot.armedIssue, slot.model.currentIssue);
   }
 
   /// 本期已过封盘点：钉住 armed 的开奖时刻，开奖中也保持，直到期号前进。
@@ -547,12 +556,16 @@ final class LotteryPeriodEngine {
       return;
     }
     var sealAt = sealAtMs;
-    // 开奖时刻还在未来、包里又没带 sealAt：按原提前量平移，避免封盘段被拉成一期总长。
-    if (openAtMs != null &&
+    final gapLocked = sameIssue && prevOpen > prevSeal && prevSeal > 0;
+    if (gapLocked) {
+      final baseOpen = (openAtMs != null && openAtMs > 0) ? openAtMs : prevOpen;
+      sealAt = baseOpen - (prevOpen - prevSeal);
+    } else if (openAtMs != null &&
         openAtMs > now.millisecondsSinceEpoch &&
         (sealAt == null || sealAt <= 0) &&
         prevOpen > prevSeal &&
         prevSeal > 0) {
+      // 开奖时刻还在未来、包里又没带 sealAt：按原提前量平移。
       sealAt = openAtMs - (prevOpen - prevSeal);
     }
     if (openAtMs != null && openAtMs > 0) {

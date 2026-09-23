@@ -19,6 +19,7 @@ void main() {
       sealSeconds: 30,
     );
     expect(LotteryPeriodHelper.sealRemainSeconds(g, t0), 45);
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(g, t0), 45);
     expect(LotteryPeriodHelper.openRemainSeconds(g, t0), 75);
     expect(LotteryPeriodHelper.phaseOf(g, t0), LotteryDisplayPhase.betting);
   });

@@ -88,16 +88,19 @@ abstract final class LotteryPeriodHelper {
     if (sealAt <= 0 && gap <= 0) {
       return LotteryDisplayPhase.betting;
     }
-    // 文档：now ≥ sealAt → 已封盘
-    if (sealRemainSeconds(game, clock) <= 0) {
+    // 开奖剩余减到提前量：与翻页钟同一条 openAt，到 0 的同一秒进入封盘。
+    if (bettingCountdownSeconds(game, clock) <= 0) {
       return LotteryDisplayPhase.sealed;
     }
     return LotteryDisplayPhase.betting;
   }
 
-  /// 还能下注的秒数（sealAt − now）。期态条上的数字不用它。
+  /// 距封盘翻页钟：开奖剩余减去本期提前量。没有提前量时才等于开奖剩余。
   static int bettingCountdownSeconds(LotteryGameModel game, [DateTime? now]) {
-    return sealRemainSeconds(game, now);
+    final gap = LotteryPeriodRules.sealSecondsOf(game);
+    final openLeft = openRemainSeconds(game, now);
+    if (gap <= 0) return openLeft;
+    return math.max(0, openLeft - gap);
   }
 
   /// 封盘后「距离开奖 N 秒」用的离开奖剩余。封盘前翻页钟用 [bettingCountdownSeconds]。

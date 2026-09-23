@@ -5,7 +5,7 @@ import 'package:letou_app/features/lottery/engine/lottery_period_engine.dart';
 import 'package:letou_app/features/lottery/utils/lottery_period_ui.dart';
 
 void main() {
-  test('同期更远的开奖时刻不采用，单独的 sealAt 仍可改封盘点', () {
+  test('同期更远的开奖时刻不采用，已确定的提前量不再被后到的 sealAt 改掉', () {
     final engine = LotteryPeriodEngine();
     final t0 = DateTime(2099, 6, 1, 12, 0, 0);
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
@@ -60,8 +60,9 @@ void main() {
       now: t15,
     );
     final afterEnrich = engine.displayGame('JS_SC', t15);
-    // sealSeconds=10 不得把 sealAt 改回 open-10；仍用刚写入的 sealAt。
-    expect(LotteryPeriodHelper.bettingCountdownSeconds(afterEnrich, t15), 55);
+    // 本期提前量已经是 30 秒，后到的 sealAt 不再把距封盘改掉。
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(afterEnrich, t15), 30);
+    expect(LotteryPeriodHelper.openRemainSeconds(afterEnrich, t15), 60);
   });
 
   test('封盘窗口内更远 openAt 不把封盘中抬成一整期，换期后才采用', () {
