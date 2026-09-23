@@ -3,14 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
 
-/// 统一下拉刷新文案：下拉刷新 → 松开刷新 → 正在刷新 → 刷新成功
-/// 不显示中间/头部转圈，只保留文字状态。
+/// 统一下拉刷新：下拉刷新 → 松开刷新 → 正在刷新 → 刷新成功（含默认箭头/转圈/对勾图标）
 Header appRefreshHeader({
   Color? textColor,
   Color? iconColor,
   Duration processedDuration = const Duration(milliseconds: 600),
 }) {
   final color = textColor ?? AppColors.textSecondary;
+  final icon = iconColor ?? AppColors.textSecondary;
   return ClassicHeader(
     dragText: '下拉刷新',
     armedText: '松开刷新',
@@ -22,9 +22,7 @@ Header appRefreshHeader({
     showMessage: false,
     processedDuration: processedDuration,
     textStyle: TextStyle(fontSize: 13.sp, color: color),
-    pullIconBuilder: (context, state, value) => const SizedBox.shrink(),
-    iconDimension: 0,
-    spacing: 0,
+    iconTheme: IconThemeData(color: icon, size: 18.sp),
   );
 }
 
@@ -34,6 +32,7 @@ Footer appLoadFooter({
   Color? iconColor,
 }) {
   final color = textColor ?? AppColors.textSecondary;
+  final icon = iconColor ?? AppColors.textSecondary;
   return ClassicFooter(
     dragText: '上拉加载',
     armedText: '松开加载',
@@ -44,9 +43,7 @@ Footer appLoadFooter({
     noMoreText: '没有更多了',
     showMessage: false,
     textStyle: TextStyle(fontSize: 13.sp, color: color),
-    pullIconBuilder: (context, state, value) => const SizedBox.shrink(),
-    iconDimension: 0,
-    spacing: 0,
+    iconTheme: IconThemeData(color: icon, size: 18.sp),
   );
 }
 

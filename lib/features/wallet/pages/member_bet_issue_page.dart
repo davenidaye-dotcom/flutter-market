@@ -5,6 +5,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
@@ -104,13 +105,20 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
     _load(reset: true);
   }
 
-  Future<void> _load({required bool reset}) async {
+  Future<void> _load({required bool reset, bool fromPull = false}) async {
     if (reset) {
-      setState(() {
-        _pageNum = 1;
-        _hasMore = true;
-        _loading = true;
-      });
+      if (!fromPull) {
+        setState(() {
+          _pageNum = 1;
+          _hasMore = true;
+          _loading = true;
+        });
+      } else {
+        setState(() {
+          _pageNum = 1;
+          _hasMore = true;
+        });
+      }
     } else {
       if (!_hasMore || _loadingMore) return;
       setState(() => _loadingMore = true);
@@ -150,6 +158,7 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
         _loadingMore = false;
       });
       AppToast.error(e.toString());
+      if (fromPull) rethrow;
     }
   }
 
@@ -192,67 +201,71 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
             ),
             SizedBox(height: 12.h),
             Expanded(
-              child: _loading
-                  ? const AppPageLoading()
-                  : RefreshIndicator(
-                      onRefresh: () => _load(reset: true),
-                      child: ListView(
-                        controller: _scroll,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 24.h),
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10.r),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: Column(
-                              children: [
-                                _header(),
-                                if (_rows.isEmpty)
-                                  Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 64.h),
-                                    child: const Center(child: AppEmptyHint()),
-                                  )
-                                else
-                                  for (var i = 0; i < _rows.length; i++)
-                                    _IssueRow(
-                                      issue: '${_rows[i]['issueNo'] ?? '—'}',
-                                      bet: memberBetMoney(
-                                        _rows[i]['betAmount'],
-                                        trimZero: true,
-                                      ),
-                                      pnl: memberBetMoney(
-                                        _rows[i]['winLoss'],
-                                        trimZero: true,
-                                      ),
-                                      pnlColor:
-                                          memberBetPnlColor(_rows[i]['winLoss']),
-                                      stripe: i.isOdd,
-                                      onTap: () => _openIssue(_rows[i]),
-                                    ),
-                              ],
+              child: AppPullRefresh(
+                onRefresh: () => _load(reset: true, fromPull: true),
+                child: ListView(
+                  controller: _scroll,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 24.h),
+                  children: [
+                    if (_loading)
+                      SizedBox(
+                        height: 200.h,
+                        child: const AppPageLoading(),
+                      )
+                    else
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: [
+                            _header(),
+                            if (_rows.isEmpty)
+                              Padding(
+                                padding: EdgeInsets.symmetric(vertical: 64.h),
+                                child: const Center(child: AppEmptyHint()),
+                              )
+                            else
+                              for (var i = 0; i < _rows.length; i++)
+                                _IssueRow(
+                                  issue: '${_rows[i]['issueNo'] ?? '—'}',
+                                  bet: memberBetMoney(
+                                    _rows[i]['betAmount'],
+                                    trimZero: true,
+                                  ),
+                                  pnl: memberBetMoney(
+                                    _rows[i]['winLoss'],
+                                    trimZero: true,
+                                  ),
+                                  pnlColor:
+                                      memberBetPnlColor(_rows[i]['winLoss']),
+                                  stripe: i.isOdd,
+                                  onTap: () => _openIssue(_rows[i]),
+                                ),
+                          ],
+                        ),
+                      ),
+                    if (!_loading && _rows.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(top: 16.h),
+                        child: Center(
+                          child: Text(
+                            _loadingMore
+                                ? '加载中…'
+                                : '已加载完毕，共${_total > 0 ? _total : _rows.length}条',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color: AppColors.textHint,
                             ),
                           ),
-                          if (_rows.isNotEmpty)
-                            Padding(
-                              padding: EdgeInsets.only(top: 16.h),
-                              child: Center(
-                                child: Text(
-                                  _loadingMore
-                                      ? '加载中…'
-                                      : '已加载完毕，共${_total > 0 ? _total : _rows.length}条',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: AppColors.textHint,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
+                        ),
                       ),
-                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

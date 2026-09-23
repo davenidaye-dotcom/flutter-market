@@ -5,6 +5,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
@@ -38,8 +39,10 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
     Future.microtask(_load);
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool fromPull = false}) async {
+    if (!fromPull) {
+      setState(() => _loading = true);
+    }
     try {
       final data = await ref.read(walletRepositoryProvider).getBetGameReport(
             startDate: DateRangeFilter.format(_start),
@@ -64,6 +67,7 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
       if (!mounted) return;
       setState(() => _loading = false);
       AppToast.error(e.toString());
+      rethrow;
     }
   }
 
@@ -139,42 +143,47 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
             ),
             SizedBox(height: 12.h),
             Expanded(
-              child: _loading
-                  ? const AppPageLoading()
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 24.h),
-                        children: [
-                          _SummaryCard(summary: _summary),
-                          SizedBox(height: 12.h),
-                          if (_rows.isEmpty)
-                            Padding(
-                              padding: EdgeInsets.only(top: 80.h),
-                              child: const Center(child: AppEmptyHint()),
-                            )
-                          else ...[
-                            for (final r in _rows) ...[
-                              _GameCard(row: r, onTap: () => _openGame(r)),
-                              SizedBox(height: 10.h),
-                            ],
-                            Padding(
-                              padding: EdgeInsets.only(top: 8.h),
-                              child: Center(
-                                child: Text(
-                                  '已加载完毕，共${_rows.length}条',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: AppColors.textHint,
-                                  ),
-                                ),
+              child: AppPullRefresh(
+                onRefresh: () => _load(fromPull: true),
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 24.h),
+                  children: [
+                    if (_loading)
+                      SizedBox(
+                        height: 200.h,
+                        child: const AppPageLoading(),
+                      )
+                    else ...[
+                      _SummaryCard(summary: _summary),
+                      SizedBox(height: 12.h),
+                      if (_rows.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(top: 80.h),
+                          child: const Center(child: AppEmptyHint()),
+                        )
+                      else ...[
+                        for (final r in _rows) ...[
+                          _GameCard(row: r, onTap: () => _openGame(r)),
+                          SizedBox(height: 10.h),
+                        ],
+                        Padding(
+                          padding: EdgeInsets.only(top: 8.h),
+                          child: Center(
+                            child: Text(
+                              '已加载完毕，共${_rows.length}条',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: AppColors.textHint,
                               ),
                             ),
-                          ],
-                        ],
-                      ),
-                    ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
             ),
           ],
         ),
