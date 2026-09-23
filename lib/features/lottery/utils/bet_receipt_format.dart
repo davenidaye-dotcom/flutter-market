@@ -52,7 +52,7 @@ String formatWinCheckText({
   final lines = <String>['$issue期已开奖', '中奖列表核对', '-------------------'];
   final list = winners ?? const <WinCheckEntry>[];
   if (list.isEmpty) {
-    lines.add('本期暂无中奖名单，请再接再厉。');
+    lines.add('本期暂无中奖名单，再接再厉!');
     return lines.join('\n');
   }
   for (final w in list) {

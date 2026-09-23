@@ -32,7 +32,7 @@ class RegressionFixtures {
           'id': 'sealed-$gameId-$previousIssue',
           'msgType': 'SEALED',
           'issueNo': previousIssue,
-          'content': '======停止战斗====== =======封盘线=======',
+          'content': '======封盘线======\n======停止战斗======',
           'senderName': '管理员',
           'createdAt': '2026-08-29T21:05:00',
         },
@@ -107,7 +107,7 @@ class RegressionFixtures {
         'gameType': gameId,
         'data': {
           'issueNo': issue ?? currentIssue,
-          'text': '======停止战斗====== =======封盘线=======',
+          'text': '======封盘线======\n======停止战斗======',
         },
       };
 

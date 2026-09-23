@@ -567,20 +567,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       });
     for (final m in ordered) {
       final issue = extractIssue(m);
-      // 无对应开奖卡片的中奖核对先挂起，避免核对先于开奖上屏。
-      if (m.type == ChatMessageType.winCheck &&
-          issue != null &&
-          issue.isNotEmpty &&
-          !cache.hasDrawForIssue(roomId, gameId, issue)) {
-        final key = winListChatMessageId(gameId, issue);
-        final pendingKey = '$gameId|${issueCompareKey(issue)}';
-        _pendingWinListByKey[pendingKey] = _PendingWinList(
-          gameType: gameId,
-          dedupeKey: key,
-          message: m.id.isNotEmpty ? m : m.copyWith(id: key),
-        );
-        continue;
-      }
       final String key;
       if (m.type == ChatMessageType.resultCard &&
           issue != null &&
@@ -1348,20 +1334,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       isAdmin: false,
       issueNo: issue.isNotEmpty ? issue : null,
     );
-    // 开奖卡片未到：挂起，避免「核对」先上屏、开奖再插到上面闪一下。
-    if (issue.isNotEmpty &&
-        !ChatPushCache.instance.hasDrawForIssue(roomId, gameType, issue)) {
-      final pendingKey = '$gameType|${issueCompareKey(issue)}';
-      _pendingWinListByKey[pendingKey] = _PendingWinList(
-        gameType: gameType,
-        dedupeKey: key,
-        message: message,
-      );
-      if (_pendingWinListByKey.length > 32) {
-        _pendingWinListByKey.remove(_pendingWinListByKey.keys.first);
-      }
-      return;
-    }
     _pushChatOnce(key, gameType, message);
   }
 

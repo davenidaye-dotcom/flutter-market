@@ -77,16 +77,7 @@ List<ChatMessageModel> buildChatTimeline(
       if (byPhase != 0) return byPhase;
       return _stableTieBreak(a, b);
     });
-  // 无开奖卡片的中奖核对不上屏（防核对插在开奖上方 / 磁盘孤儿）。
-  return list
-      .where((m) {
-        if (m.type != ChatMessageType.winCheck) return true;
-        final issue = extractIssue(m);
-        if (issue == null || issue.isEmpty) return true;
-        final key = issueCompareKey(issue);
-        return key > 0 && draws.containsKey(key);
-      })
-      .toList(growable: false);
+  return list;
 }
 
 /// 历史兜底封盘文案，与 Java tickGame 推送一致。
@@ -109,7 +100,7 @@ List<ChatMessageModel> syntheticSealMessagesForDraw({
     ChatMessageModel(
       id: 'hist-sealed-$gameId-${issueCompareKey(issue)}',
       sender: '机器人',
-      content: '======停止战斗====== =======封盘线=======',
+      content: '======封盘线======\n======停止战斗======',
       time: '',
       type: ChatMessageType.system,
       isAdmin: true,

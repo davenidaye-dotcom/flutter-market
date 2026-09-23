@@ -28,7 +28,7 @@ void main() {
       _m(id: 'w', type: ChatMessageType.winCheck, content: '$issue期已开奖\n中奖列表核对', issueNo: issue, time: '20:58'),
       _m(id: 'd', type: ChatMessageType.resultCard, content: '第$issue期开奖', issueNo: issue, time: '20:58'),
       _m(id: 'r', type: ChatMessageType.betListCheck, content: '$issue期已封盘\n竞猜列表核对', issueNo: issue, time: '20:57'),
-      _m(id: 's2', type: ChatMessageType.system, content: '======停止战斗====== =======封盘线=======', issueNo: issue),
+      _m(id: 's2', type: ChatMessageType.system, content: '======封盘线======\n======停止战斗======', issueNo: issue),
       _m(id: 's1', type: ChatMessageType.system, content: '注意：距离封盘时间还有10秒，封盘之后将不能再投注！', issueNo: issue),
       _m(id: 'rc', type: ChatMessageType.betReceipt, content: '$issue期投注成功!', issueNo: issue, time: '20:56'),
       _m(id: 'b', type: ChatMessageType.text, content: '1/100', issueNo: issue, time: '20:56'),
@@ -68,12 +68,12 @@ void main() {
     expect(ordered.map((e) => e.id).toList(), ['r', 'd', 'w']);
   });
 
-  test('orphan winCheck without draw is dropped from timeline', () {
+  test('winCheck without a draw stays in the timeline', () {
     final ordered = buildChatTimeline([
       _m(id: 'w', type: ChatMessageType.winCheck, content: '中奖', issueNo: '34163699'),
       _m(id: 'r', type: ChatMessageType.betListCheck, content: '竞猜', issueNo: '34163698'),
     ], gameId: 'JS_SC');
-    expect(ordered.map((e) => e.id).toList(), ['r']);
+    expect(ordered.map((e) => e.id).toList(), ['r', 'w']);
   });
 
   test('history merge stops at gap so live head does not sit on stale orphans', () {

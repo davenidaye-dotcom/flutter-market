@@ -93,7 +93,7 @@ ChatMessageModel sealedLine(String gameId, String issue) {
   return ChatMessageModel(
     id: 'sealed-$gameId-$issue',
     sender: '管理员',
-    content: '======停止战斗====== =======封盘线=======',
+    content: '======封盘线======\n======停止战斗======',
     time: '21:05',
     type: ChatMessageType.system,
     isAdmin: true,
