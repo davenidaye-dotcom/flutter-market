@@ -126,6 +126,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   int _historyReadyGen = 0;
   String? _longDragonLoadedGameId;
   bool _pinnedToBottom = true;
+  final _showJumpBottomNotifier = ValueNotifier(false);
   Timer? _draftSaveTimer;
   Timer? _historyRowsDebounce;
   bool _disposed = false;
@@ -139,7 +140,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
   void _onScrollChanged() {
     if (!_scrollCtrl.hasClients) return;
-    _pinnedToBottom = _scrollCtrl.offset <= 64;
+    final pinned = _scrollCtrl.offset <= 64;
+    _pinnedToBottom = pinned;
+    final showJump = !pinned;
+    if (_showJumpBottomNotifier.value != showJump) {
+      _showJumpBottomNotifier.value = showJump;
+    }
   }
 
   /// 已在底部不跳。手指还在滑或惯性未停时不 jump，避免和滚动抢位置。
@@ -148,6 +154,18 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       if (_disposed || !mounted) return;
       _jumpToBottomIfPinned(animated: animated);
     });
+  }
+
+  /// 用户点右下角按钮：强制滚到底并重新钉住底部。
+  void _forceScrollToBottom() {
+    _pinnedToBottom = true;
+    _showJumpBottomNotifier.value = false;
+    if (!_scrollCtrl.hasClients) return;
+    _scrollCtrl.animateTo(
+      0,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
   }
 
   void _jumpToBottomIfPinned({bool animated = false}) {
@@ -903,6 +921,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _dockPaddingNotifier.dispose();
     _historyDisplayRowsNotifier.dispose();
     _chatHiddenNotifier.dispose();
+    _showJumpBottomNotifier.dispose();
     _betBusy.dispose();
     super.dispose();
   }
@@ -1641,6 +1660,64 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                             },
                           );
                         },
+                      );
+                    },
+                  ),
+                ),
+                // 上滑离开底部时：右下角回到最新
+                Positioned(
+                  right: 12.w,
+                  bottom: 0,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: _dockPaddingNotifier,
+                    builder: (_, bottomPad, __) {
+                      return Padding(
+                        padding: EdgeInsets.only(bottom: bottomPad + 10.h),
+                        child: ValueListenableBuilder<bool>(
+                          valueListenable: _chatHiddenNotifier,
+                          builder: (_, hidden, __) {
+                            if (hidden) return const SizedBox.shrink();
+                            return ValueListenableBuilder<_BottomPanel>(
+                              valueListenable: _panelNotifier,
+                              builder: (_, panel, __) {
+                                if (panel == _BottomPanel.quickBet) {
+                                  return const SizedBox.shrink();
+                                }
+                                return ValueListenableBuilder<bool>(
+                                  valueListenable: _showJumpBottomNotifier,
+                                  builder: (_, show, __) {
+                                    return AnimatedOpacity(
+                                      opacity: show ? 1 : 0,
+                                      duration: const Duration(milliseconds: 160),
+                                      child: IgnorePointer(
+                                        ignoring: !show,
+                                        child: Material(
+                                          color: AppColors.navBlue,
+                                          elevation: 3,
+                                          shadowColor: Colors.black26,
+                                          shape: const CircleBorder(),
+                                          child: InkWell(
+                                            customBorder: const CircleBorder(),
+                                            onTap: _forceScrollToBottom,
+                                            child: SizedBox(
+                                              width: 40.w,
+                                              height: 40.w,
+                                              child: Icon(
+                                                Icons.keyboard_arrow_down_rounded,
+                                                size: 26.sp,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                );
+                              },
+                            );
+                          },
+                        ),
                       );
                     },
                   ),

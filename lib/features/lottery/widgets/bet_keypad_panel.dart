@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 
-/// 自定义下注键盘 — 固定行高，按键防抖，减轻模拟器连点卡顿
+/// 自定义下注键盘 — 固定行高，按键防抖，按下蓝色反馈
 class BetKeypadPanel extends StatefulWidget {
   const BetKeypadPanel({
     super.key,
@@ -159,7 +159,7 @@ class _ActionRow extends StatelessWidget {
   }
 }
 
-class _KeyCell extends StatelessWidget {
+class _KeyCell extends StatefulWidget {
   const _KeyCell({
     required this.label,
     required this.onTap,
@@ -172,8 +172,15 @@ class _KeyCell extends StatelessWidget {
   final VoidCallback? onLongPress;
   final bool enabled;
 
-  Color? get _bg {
-    return switch (label) {
+  @override
+  State<_KeyCell> createState() => _KeyCellState();
+}
+
+class _KeyCellState extends State<_KeyCell> {
+  bool _pressed = false;
+
+  Color? get _fixedBg {
+    return switch (widget.label) {
       '龙' => const Color(0xFFE53935),
       '虎' => const Color(0xFF1E88E5),
       '冠亚和' => const Color(0xFF43A047),
@@ -181,49 +188,79 @@ class _KeyCell extends StatelessWidget {
     };
   }
 
+  void _setPressed(bool value) {
+    if (!widget.enabled || _pressed == value) return;
+    setState(() => _pressed = value);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final bg = _bg;
-    final isColorKey = bg != null;
-    final textColor = enabled ? const Color(0xFF666666) : AppColors.textHint;
+    final fixedBg = _fixedBg;
+    final isColorKey = fixedBg != null;
+    final pressBlue = _pressed && widget.enabled && !isColorKey;
+    final textColor = !widget.enabled
+        ? AppColors.textHint
+        : pressBlue
+            ? Colors.white
+            : const Color(0xFF666666);
 
-    return GestureDetector(
+    return Listener(
       behavior: HitTestBehavior.opaque,
-      onTap: enabled ? onTap : null,
-      onLongPress: enabled ? onLongPress : null,
-      child: Center(
-        child: isColorKey
-            ? Opacity(
-                opacity: enabled ? 1 : 0.45,
-                child: Container(
+      onPointerDown: widget.enabled ? (_) => _setPressed(true) : null,
+      onPointerUp: widget.enabled ? (_) => _setPressed(false) : null,
+      onPointerCancel: widget.enabled ? (_) => _setPressed(false) : null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.enabled ? widget.onTap : null,
+        onLongPress: widget.enabled ? widget.onLongPress : null,
+        child: Center(
+          child: isColorKey
+              ? Opacity(
+                  opacity: widget.enabled ? (_pressed ? 0.78 : 1) : 0.45,
+                  child: Container(
+                    width: double.infinity,
+                    height: 38,
+                    margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: fixedBg,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      widget.label,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: widget.label.length > 2 ? 13.sp : 17.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                )
+              : Container(
                   width: double.infinity,
                   height: 38,
                   margin: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: bg,
+                    color: pressBlue ? AppColors.navBlue : Colors.transparent,
                     borderRadius: BorderRadius.circular(6),
                   ),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: label.length > 2 ? 13.sp : 17.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  child: widget.label == '⌫'
+                      ? Icon(
+                          Icons.backspace_outlined,
+                          size: 22.sp,
+                          color: pressBlue ? Colors.white : textColor,
+                        )
+                      : Text(
+                          widget.label,
+                          style: TextStyle(
+                            fontSize: widget.label == '空格' ? 15.sp : 20.sp,
+                            color: textColor,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                 ),
-              )
-            : label == '⌫'
-                ? Icon(Icons.backspace_outlined, size: 22.sp, color: textColor)
-                : Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: label == '空格' ? 15.sp : 20.sp,
-                      color: textColor,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+        ),
       ),
     );
   }
