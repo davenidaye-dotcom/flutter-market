@@ -1241,7 +1241,29 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     final gameType = _gameTypeFromEvent(event, payload);
-    if (gameType == null || gameType.isEmpty) return;
+    if (gameType == null || gameType.isEmpty) {
+      if (type == 'RESYNC') {
+        unawaited(loadAllChatMessagesFromServer());
+      }
+      return;
+    }
+
+    if (type == 'RESYNC') {
+      unawaited(loadChatMessagesFromServer(gameType));
+      return;
+    }
+
+    if (type == 'ROOM_EVENTS') {
+      final events = payload['events'];
+      if (events is List) {
+        for (final raw in events) {
+          if (raw is Map) {
+            _onWsEvent(Map<String, dynamic>.from(raw));
+          }
+        }
+      }
+      return;
+    }
 
     if (type == 'PERIOD_TICK' || type == 'PERIOD_SNAPSHOT') {
       final issue = payload['issueNo']?.toString() ??
@@ -1298,6 +1320,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           isAdmin: false,
           issueNo: issue.isNotEmpty ? issue : null,
           avatarUrl: (payload['avatarUrl'] ?? payload['avatar'])?.toString(),
+          seq: _seqOf(payload),
+          pair: _pairOf(payload),
         ),
       );
       return;
@@ -1337,7 +1361,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       // 引擎若去重未产出 draw 事件，仍强制开奖卡上屏（后端已先于 WIN_LIST 推送）。
       if (issue.isNotEmpty &&
           !ChatPushCache.instance.hasDrawForIssue(roomId, gameType, issue)) {
-        _pushDrawChat(gameType, issue, ranks);
+        _pushDrawChat(
+          gameType,
+          issue,
+          ranks,
+          seq: _seqOf(payload),
+          pair: _pairOf(payload),
+        );
       }
       if (_engine.isDrawingPhase(gameType, DateTime.now())) {
         _scheduleRefreshGamesFromServer(immediate: true);
@@ -1419,6 +1449,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         type: ChatMessageType.betListCheck,
         isAdmin: false,
         issueNo: issue.isNotEmpty ? issue : null,
+        seq: _seqOf(payload),
+        pair: _pairOf(payload),
       ),
     );
   }
@@ -1448,6 +1480,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       type: ChatMessageType.winCheck,
       isAdmin: false,
       issueNo: issue.isNotEmpty ? issue : null,
+      seq: _seqOf(payload),
+      pair: _pairOf(payload),
     );
     _pushChatOnce(key, gameType, message);
   }
@@ -1493,6 +1527,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         isAdmin: false,
         issueNo: issue.isNotEmpty ? issue : null,
         avatarUrl: (avatar != null && avatar.isNotEmpty) ? avatar : null,
+        seq: _seqOf(payload),
+        pair: _pairOf(payload),
       ),
     );
   }
@@ -1520,6 +1556,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (topic.startsWith('game:')) return topic.substring(5);
     return topic.split(':').lastOrNull;
   }
+
+  int _seqOf(Map<String, dynamic> payload) =>
+      int.tryParse('${payload['seq']}') ?? 0;
+
+  int _pairOf(Map<String, dynamic> payload) =>
+      int.tryParse('${payload['pair']}') ?? 0;
 
   List<int> _parseRanks(dynamic ranks) {
     if (ranks is! List) return const [];
@@ -1553,11 +1595,19 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         type: ChatMessageType.system,
         isAdmin: true,
         issueNo: issue.isNotEmpty ? issue : null,
+        seq: _seqOf(payload),
+        pair: _pairOf(payload),
       ),
     );
   }
 
-  void _pushDrawChat(String gameType, String issue, List<int> ranks) {
+  void _pushDrawChat(
+    String gameType,
+    String issue,
+    List<int> ranks, {
+    int seq = 0,
+    int pair = 0,
+  }) {
     final fullIssue = issue.trim();
     final msgId = fullIssue.isNotEmpty
         ? drawChatMessageId(gameType, issue)
@@ -1574,6 +1624,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         isAdmin: true,
         issueNo: fullIssue.isNotEmpty ? fullIssue : null,
         drawRanks: ranks,
+        seq: seq,
+        pair: pair,
       ),
     );
     // 开奖先落盘后再放行挂起的中奖核对，保证同帧顺序：开奖 → 核对。

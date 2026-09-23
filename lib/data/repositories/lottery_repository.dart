@@ -244,6 +244,8 @@ class LotteryRepository {
           : (parsed.issueNo ?? _issueFromMessageId(id.isNotEmpty ? id : m['id']?.toString())),
       drawRanks: parsed.ranks.isEmpty ? null : parsed.ranks,
       avatarUrl: (m['avatarUrl'] ?? m['avatar'])?.toString(),
+      seq: int.tryParse('${m['seq']}') ?? 0,
+      pair: int.tryParse('${m['pair']}') ?? 0,
     );
   }
 

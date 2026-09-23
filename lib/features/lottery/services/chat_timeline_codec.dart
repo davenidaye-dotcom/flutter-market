@@ -35,6 +35,8 @@ Map<String, dynamic> _messageToJson(ChatMessageModel message) => {
       if (message.issueNo != null) 'issueNo': message.issueNo,
       if (message.drawRanks != null) 'drawRanks': message.drawRanks,
       if (message.avatarUrl != null) 'avatarUrl': message.avatarUrl,
+      if (message.seq > 0) 'seq': message.seq,
+      if (message.pair > 0) 'pair': message.pair,
     };
 
 ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
@@ -62,5 +64,7 @@ ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
     issueNo: json['issueNo']?.toString(),
     drawRanks: drawRanks == null || drawRanks.isEmpty ? null : drawRanks,
     avatarUrl: json['avatarUrl']?.toString(),
+    seq: int.tryParse('${json['seq']}') ?? 0,
+    pair: int.tryParse('${json['pair']}') ?? 0,
   );
 }

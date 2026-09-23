@@ -22,6 +22,8 @@ class ChatMessageModel {
     this.issueNo,
     this.drawRanks,
     this.avatarUrl,
+    this.seq = 0,
+    this.pair = 0,
   });
 
   final String id;
@@ -36,6 +38,10 @@ class ChatMessageModel {
   final List<int>? drawRanks;
   /// 头像编码（av01）或历史 URL
   final String? avatarUrl;
+  /// 房间流序号。0 表示旧数据，仍按期号阶段排。
+  final int seq;
+  /// 同一序号里的行号。0 下注文字，1 回执。
+  final int pair;
 
   ChatMessageModel copyWith({
     String? id,
@@ -48,6 +54,8 @@ class ChatMessageModel {
     String? issueNo,
     List<int>? drawRanks,
     String? avatarUrl,
+    int? seq,
+    int? pair,
   }) {
     return ChatMessageModel(
       id: id ?? this.id,
@@ -60,6 +68,8 @@ class ChatMessageModel {
       issueNo: issueNo ?? this.issueNo,
       drawRanks: drawRanks ?? this.drawRanks,
       avatarUrl: avatarUrl ?? this.avatarUrl,
+      seq: seq ?? this.seq,
+      pair: pair ?? this.pair,
     );
   }
 

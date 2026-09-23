@@ -340,29 +340,16 @@ class ChatPushCache {
       final existingIssue = extractIssue(existing) ?? '';
       final preferred = preferFullIssueNo(incomingIssue, existingIssue);
       if (preferred == existingIssue.trim()) return false;
-      final upgraded = existing.type == ChatMessageType.resultCard
-          ? ChatMessageModel(
-              id: existing.id,
-              sender: existing.sender,
-              content: '第$preferred期开奖',
-              time: existing.time,
-              type: existing.type,
-              isAdmin: existing.isAdmin,
-              issueNo: preferred,
-              drawRanks: existing.drawRanks ?? incoming.drawRanks,
-              avatarUrl: existing.avatarUrl ?? incoming.avatarUrl,
-            )
-          : ChatMessageModel(
-              id: existing.id,
-              sender: existing.sender,
-              content: existing.content,
-              time: existing.time,
-              type: existing.type,
-              isAdmin: existing.isAdmin,
-              issueNo: preferred,
-              drawRanks: existing.drawRanks,
-              avatarUrl: existing.avatarUrl ?? incoming.avatarUrl,
-            );
+      final upgraded = existing.copyWith(
+        content: existing.type == ChatMessageType.resultCard
+            ? '第$preferred期开奖'
+            : existing.content,
+        issueNo: preferred,
+        drawRanks: existing.drawRanks ?? incoming.drawRanks,
+        avatarUrl: existing.avatarUrl ?? incoming.avatarUrl,
+        seq: existing.seq > 0 ? existing.seq : incoming.seq,
+        pair: existing.seq > 0 ? existing.pair : incoming.pair,
+      );
       buffer[i] = _CachedChatPush(
         dedupeKey: logicalKey,
         push: LotteryChatPush(gameId: entry.push.gameId, message: upgraded),
@@ -1020,6 +1007,8 @@ Map<String, dynamic> _messageToJson(ChatMessageModel message) => {
       if (message.issueNo != null) 'issueNo': message.issueNo,
       if (message.drawRanks != null) 'drawRanks': message.drawRanks,
       if (message.avatarUrl != null) 'avatarUrl': message.avatarUrl,
+      if (message.seq > 0) 'seq': message.seq,
+      if (message.pair > 0) 'pair': message.pair,
     };
 
 ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
@@ -1047,5 +1036,7 @@ ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
     issueNo: json['issueNo']?.toString(),
     drawRanks: drawRanks == null || drawRanks.isEmpty ? null : drawRanks,
     avatarUrl: json['avatarUrl']?.toString(),
+    seq: int.tryParse('${json['seq']}') ?? 0,
+    pair: int.tryParse('${json['pair']}') ?? 0,
   );
 }

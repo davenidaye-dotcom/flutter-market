@@ -73,6 +73,14 @@ List<ChatMessageModel> buildChatTimeline(
     ..sort((a, b) {
       final byIssue = _compareMessagesByIssue(a, b);
       if (byIssue != 0) return byIssue;
+      // 两边都有房间流序号时，只按序号排，不再按消息类型插队。
+      if (a.seq > 0 && b.seq > 0) {
+        final bySeq = a.seq.compareTo(b.seq);
+        if (bySeq != 0) return bySeq;
+        final byPair = a.pair.compareTo(b.pair);
+        if (byPair != 0) return byPair;
+        return _stableTieBreak(a, b);
+      }
       final byPhase = _phaseOrder(a).compareTo(_phaseOrder(b));
       if (byPhase != 0) return byPhase;
       return _stableTieBreak(a, b);
