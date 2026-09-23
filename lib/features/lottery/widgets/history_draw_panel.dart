@@ -46,11 +46,14 @@ abstract final class HistoryDrawLayout {
   /// 历史表开奖球内数字相对原来 18 边长的比例。
   static double ballFontScale() => 0.72;
 
-  /// 开奖数字的绝对字号。顶栏和历史表共用，方框变大后字不跟着变。
-  static double ballDigitSize() => ballSize() * ballFontScale();
+  /// 开奖数字的绝对字号。顶栏和历史表共用，另加 1.sp。
+  static double ballDigitSize() => ballSize() * ballFontScale() + 1.sp;
+
+  /// 红框里的号码方框比格子算出的边长再大 2.sp。
+  static double ballBoxBoost() => 2.sp;
 
   static const int visibleRows = 10;
-  static double rowHeight() => 24.h;
+  static double rowHeight() => 24.h + ballBoxBoost();
   static double rowGap() => 1.h;
   static double headerHeight() => 28.h;
   static double listPadTop() => 1.h;
@@ -286,6 +289,7 @@ class _DataRow extends StatelessWidget {
           numbers: row.numbers,
           expandSlots: true,
           digitFontSize: HistoryDrawLayout.ballDigitSize(),
+          boxBoost: HistoryDrawLayout.ballBoxBoost(),
         ),
         gy: Text(
           '$sum$size$oddEven',

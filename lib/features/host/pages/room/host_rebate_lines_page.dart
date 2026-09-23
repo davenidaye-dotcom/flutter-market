@@ -7,18 +7,22 @@ import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// 未回水按单明细 — GET /owner/room/rebate/lines?accountId=&unpaidOnly=true
+/// 未回水 / 未返佣按单明细。
+/// 回水：GET /owner/room/rebate/lines
+/// 佣金：GET /owner/room/commission/lines
 class HostRebateLinesPage extends ConsumerStatefulWidget {
   const HostRebateLinesPage({
     super.key,
     required this.roomId,
     required this.accountId,
     this.displayName,
+    this.commission = false,
   });
 
   final String roomId;
   final String accountId;
   final String? displayName;
+  final bool commission;
 
   @override
   ConsumerState<HostRebateLinesPage> createState() =>
@@ -38,10 +42,16 @@ class _HostRebateLinesPageState extends ConsumerState<HostRebateLinesPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getRebateLines(
-            accountId: widget.accountId,
-            unpaidOnly: true,
-          );
+      final repo = ref.read(ownerRepositoryProvider);
+      final data = widget.commission
+          ? await repo.getCommissionLines(
+              accountId: widget.accountId,
+              unpaidOnly: true,
+            )
+          : await repo.getRebateLines(
+              accountId: widget.accountId,
+              unpaidOnly: true,
+            );
       if (!mounted) return;
       setState(() {
         _rows = hostRowsOf(data);
@@ -56,8 +66,9 @@ class _HostRebateLinesPageState extends ConsumerState<HostRebateLinesPage> {
 
   String get _title {
     final name = (widget.displayName ?? '').trim();
-    if (name.isEmpty) return '未回明细';
-    return '$name · 未回明细';
+    final suffix = widget.commission ? '未返明细' : '未回明细';
+    if (name.isEmpty) return suffix;
+    return '$name · $suffix';
   }
 
   @override
@@ -69,7 +80,7 @@ class _HostRebateLinesPageState extends ConsumerState<HostRebateLinesPage> {
           : _rows.isEmpty
               ? Center(
                   child: Text(
-                    '暂无未回明细',
+                    widget.commission ? '暂无未返明细' : '暂无未回明细',
                     style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
                   ),
                 )
@@ -132,6 +143,9 @@ class _HostRebateLinesPageState extends ConsumerState<HostRebateLinesPage> {
                             children: [
                               _kv('流水', hostNumStr(r['turnover'], fraction: 2)),
                               _kv('比例', '${hostNumStr(r['ratio'])}%'),
+                              if (widget.commission &&
+                                  '${r['sourceAccountId'] ?? ''}'.trim().isNotEmpty)
+                                _kv('下线', '${r['sourceAccountId']}'),
                               _kv('状态', status == 'VOID' ? '作废' : '有效'),
                               if ('${r['orderId'] ?? ''}'.trim().isNotEmpty)
                                 _kv('注单', '${r['orderId']}'),

@@ -4,10 +4,11 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../widgets/host_ui.dart';
 import '../reports/rebate_report_page.dart';
+import 'host_pending_commission_page.dart';
 import 'host_pending_rebate_page.dart';
 import 'host_rebate_records_page.dart';
 
-/// 回水：未回水队列 / 记录 / 报表
+/// 回水：用户未回水 / 代理未返佣 / 记录 / 报表
 class HostRebateHubPage extends StatelessWidget {
   const HostRebateHubPage({super.key, required this.roomId});
 
@@ -17,11 +18,18 @@ class HostRebateHubPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final items = <_HubItem>[
       _HubItem(
-        '未回水',
+        '用户未回水',
         Icons.access_time,
         const Color(0xFFFFE0B2),
         const Color(0xFFEF6C00),
         HostPendingRebatePage(roomId: roomId),
+      ),
+      _HubItem(
+        '代理未返佣',
+        Icons.groups_outlined,
+        const Color(0xFFE1BEE7),
+        const Color(0xFF6A1B9A),
+        HostPendingCommissionPage(roomId: roomId),
       ),
       _HubItem(
         '彩票回水记录',

@@ -762,6 +762,47 @@ class OwnerRepository {
     });
     return _asMap(data);
   }
+
+  /// 代理未返佣查询 — GET /owner/room/commission/batch-preview
+  Future<Map<String, dynamic>> getCommissionBatchPreview({
+    String presence = 'ALL',
+    String? keyword,
+  }) async {
+    final data = await _client.get('/owner/room/commission/batch-preview', query: {
+      'presence': presence,
+      if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
+    });
+    return _asMap(data);
+  }
+
+  /// 单笔返佣 / 一键返佣 — POST /owner/room/commission/batch-advance
+  /// 传 1 个 accountId 即单笔返佣，传当前列表全部 id 即一键返佣。
+  Future<Map<String, dynamic>> batchAdvanceCommission({
+    required List<int> accountIds,
+    String? remark,
+  }) async {
+    final data = await _client.post('/owner/room/commission/batch-advance', data: {
+      'accountIds': accountIds,
+      if (remark != null && remark.isNotEmpty) 'remark': remark,
+    });
+    return _asMap(data);
+  }
+
+  /// 代理未返佣按单明细 — GET /owner/room/commission/lines
+  Future<Map<String, dynamic>> getCommissionLines({
+    String? accountId,
+    String? startDate,
+    String? endDate,
+    bool unpaidOnly = true,
+  }) async {
+    final data = await _client.get('/owner/room/commission/lines', query: {
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+      'unpaidOnly': unpaidOnly,
+    });
+    return _asMap(data);
+  }
 }
 
 Map<String, dynamic> _asMap(dynamic data) {

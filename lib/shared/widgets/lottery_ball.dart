@@ -73,6 +73,7 @@ class LotteryBallRow extends StatelessWidget {
     this.fontScale = 0.48,
     /// 指定后数字用这个绝对字号，不随方框变大。
     this.digitFontSize,
+    this.boxBoost = 0,
   });
 
   final List<int> numbers;
@@ -82,6 +83,7 @@ class LotteryBallRow extends StatelessWidget {
   final bool expandSlots;
   final double fontScale;
   final double? digitFontSize;
+  final double boxBoost;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +92,8 @@ class LotteryBallRow extends StatelessWidget {
         builder: (context, constraints) {
           final slot = constraints.maxWidth / 10;
           final slotGap = 1.w;
-          var size = slot - slotGap;
+          var size = slot - slotGap + boxBoost;
+          if (size > slot) size = slot;
           final maxH = constraints.maxHeight;
           if (maxH.isFinite && maxH > 0 && maxH < size) {
             size = maxH;
