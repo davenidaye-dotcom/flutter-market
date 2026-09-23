@@ -52,30 +52,26 @@ class DateRangeFilter extends StatelessWidget {
     final y = biz.subtract(const Duration(days: 1));
     items.add(DateRangeQuickItem(label: '昨日', start: y, end: y));
 
-    // 上周
+    // 本周 / 上周（与竞品、房间报表一致）
     final monday = biz.subtract(Duration(days: biz.weekday - 1));
+    items.add(DateRangeQuickItem(label: '本周', start: monday, end: biz));
     final lastMonday = monday.subtract(const Duration(days: 7));
     final lastSunday = monday.subtract(const Duration(days: 1));
     items.add(DateRangeQuickItem(label: '上周', start: lastMonday, end: lastSunday));
 
-    // 本周
-    items.add(DateRangeQuickItem(label: '本周', start: monday, end: biz));
-
-    // 上月
-    final firstThis = DateTime(biz.year, biz.month, 1);
-    final lastMonthEnd = firstThis.subtract(const Duration(days: 1));
-    final lastMonthStart = DateTime(lastMonthEnd.year, lastMonthEnd.month, 1);
-    items.add(DateRangeQuickItem(
-      label: '上月',
-      start: lastMonthStart,
-      end: lastMonthEnd,
-    ));
-
-    // 本月
+    // 本月 / 上个月
     items.add(DateRangeQuickItem(
       label: '本月',
       start: DateTime(biz.year, biz.month, 1),
       end: biz,
+    ));
+    final firstThis = DateTime(biz.year, biz.month, 1);
+    final lastMonthEnd = firstThis.subtract(const Duration(days: 1));
+    final lastMonthStart = DateTime(lastMonthEnd.year, lastMonthEnd.month, 1);
+    items.add(DateRangeQuickItem(
+      label: '上个月',
+      start: lastMonthStart,
+      end: lastMonthEnd,
     ));
 
     return items;

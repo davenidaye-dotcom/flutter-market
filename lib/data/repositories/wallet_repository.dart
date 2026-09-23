@@ -74,6 +74,52 @@ class WalletRepository {
     return _asMap(data);
   }
 
+  /// 竞猜记录 L1：按彩种汇总
+  Future<Map<String, dynamic>> getBetGameReport({
+    String? startDate,
+    String? endDate,
+  }) async {
+    final data = await _client.get('/member/reports/bets', query: {
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+    });
+    return _asMap(data);
+  }
+
+  /// 竞猜记录 L2：某彩种期号列表
+  Future<Map<String, dynamic>> getBetIssueReport({
+    required String gameType,
+    String? startDate,
+    String? endDate,
+    int pageNum = 1,
+    int pageSize = 50,
+  }) async {
+    final data = await _client.get('/member/reports/bets/issues', query: {
+      'gameType': gameType,
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMap(data);
+  }
+
+  /// 竞猜记录 L3：某期玩法明细
+  Future<Map<String, dynamic>> getBetItemReport({
+    required String gameType,
+    required String issueNo,
+    int pageNum = 1,
+    int pageSize = 50,
+  }) async {
+    final data = await _client.get('/member/reports/bets/items', query: {
+      'gameType': gameType,
+      'issueNo': issueNo,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> getBetDetail(String orderId) async {
     final data = await _client.get('/member/bets/$orderId');
     return _asMap(data);

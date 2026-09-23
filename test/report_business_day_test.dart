@@ -52,6 +52,8 @@ void main() {
       expect(items[0].start, DateTime(2026, 9, 22));
       expect(items[1].label, '昨日');
       expect(items[1].start, DateTime(2026, 9, 21));
+      expect(items.map((e) => e.label).toList(),
+          ['今日', '昨日', '本周', '上周', '本月', '上个月']);
     });
   });
 }
