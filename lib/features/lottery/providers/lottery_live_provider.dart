@@ -603,6 +603,28 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         _flushPendingWinList(gameId, issue);
       }
     }
+    _dropChatOlderThanServerWindow(gameId, msgs);
+  }
+
+  /// 进房历史以服务器这批期号为准，丢掉更早的本地消息。
+  void _dropChatOlderThanServerWindow(
+    String gameId,
+    List<ChatMessageModel> msgs,
+  ) {
+    String? oldest;
+    for (final m in msgs) {
+      final issue = extractIssue(m);
+      if (issue == null || issue.isEmpty) continue;
+      if (oldest == null || compareIssueNo(issue, oldest) < 0) {
+        oldest = issue;
+      }
+    }
+    if (oldest == null) return;
+    ChatPushCache.instance.dropOlderThanIssue(
+      roomId: roomId,
+      gameId: gameId,
+      oldestIssue: oldest,
+    );
   }
 
   Future<void> _preloadGameTimeline(String gameId) async {

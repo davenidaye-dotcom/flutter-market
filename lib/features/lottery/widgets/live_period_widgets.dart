@@ -308,8 +308,7 @@ class LiveHallGameCountdown extends ConsumerWidget {
               ),
               SizedBox(width: 8.w),
               FlipCountdown(
-                // 封盘中：距开奖
-                seconds: LotteryPeriodHelper.openRemainSeconds(game, now),
+                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
                 compact: true,
               ),
             ],
@@ -330,8 +329,7 @@ class LiveHallGameCountdown extends ConsumerWidget {
               ),
               SizedBox(width: 8.w),
               FlipCountdown(
-                seconds:
-                    LotteryPeriodHelper.bettingCountdownSeconds(game, now),
+                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
                 compact: true,
               ),
             ],

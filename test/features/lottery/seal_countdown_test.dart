@@ -112,4 +112,32 @@ void main() {
     expect(LotteryPeriodHelper.phaseOf(g, nearOpen), LotteryDisplayPhase.betting);
     expect(LotteryPeriodHelper.bettingCountdownSeconds(g, nearOpen), 9);
   });
+
+  test('期态条数字是离开奖剩余，封盘点从 31 接到 30', () {
+    final openAt = t0.add(const Duration(seconds: 75));
+    final sealAt = t0.add(const Duration(seconds: 45));
+    final g = LotteryGameModel(
+      id: 'JS_SC',
+      name: '极速赛车',
+      currentIssue: '1',
+      countdownSeconds: 75,
+      openAtEpochMs: openAt.millisecondsSinceEpoch,
+      sealAtEpochMs: sealAt.millisecondsSinceEpoch,
+      sealSeconds: 30,
+    );
+    expect(LotteryPeriodHelper.phaseOf(g, t0), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.statusClockSeconds(g, t0), 75);
+
+    final beforeSeal = t0.add(const Duration(seconds: 44));
+    expect(LotteryPeriodHelper.phaseOf(g, beforeSeal), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.statusClockSeconds(g, beforeSeal), 31);
+
+    final atSeal = t0.add(const Duration(seconds: 45));
+    expect(LotteryPeriodHelper.phaseOf(g, atSeal), LotteryDisplayPhase.sealed);
+    expect(LotteryPeriodHelper.statusClockSeconds(g, atSeal), 30);
+
+    final opened = t0.add(const Duration(seconds: 75));
+    expect(LotteryPeriodHelper.phaseOf(g, opened), LotteryDisplayPhase.drawing);
+    expect(LotteryPeriodHelper.statusClockSeconds(g, opened), 0);
+  });
 }

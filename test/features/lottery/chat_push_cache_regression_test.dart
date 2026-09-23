@@ -386,5 +386,62 @@ void main() {
         15,
       );
     });
+
+    test('进房窗口丢掉更早的注单，留下窗口内的开奖', () {
+      const ranks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+      cache.pushOnce(
+        roomId: roomId,
+        dedupeKey: 'bet-old',
+        gameId: gameId,
+        message: ChatMessageModel(
+          id: 'bet-old',
+          sender: '机器人',
+          content: '34164045期投注成功!',
+          time: '05:14',
+          type: ChatMessageType.betReceipt,
+          issueNo: '34164045',
+        ),
+      );
+      cache.pushOnce(
+        roomId: roomId,
+        dedupeKey: 'draw-old',
+        gameId: gameId,
+        message: drawCard(gameId, '34164420', ranks),
+      );
+      cache.pushOnce(
+        roomId: roomId,
+        dedupeKey: 'draw-new',
+        gameId: gameId,
+        message: drawCard(gameId, '34164434', ranks),
+      );
+      cache.pushOnce(
+        roomId: roomId,
+        dedupeKey: 'draw-empty',
+        gameId: gameId,
+        message: const ChatMessageModel(
+          id: 'draw-empty',
+          sender: '机器人',
+          content: '',
+          time: '',
+          type: ChatMessageType.resultCard,
+        ),
+      );
+
+      cache.dropOlderThanIssue(
+        roomId: roomId,
+        gameId: gameId,
+        oldestIssue: '34164421',
+      );
+
+      final left = cache.bufferedForGame(roomId, gameId);
+      final issues = left.map((m) => m.issueNo).toList();
+      expect(issues, isNot(contains('34164045')));
+      expect(issues, isNot(contains('34164420')));
+      expect(issues, contains('34164434'));
+      expect(
+        left.where((m) => m.type == ChatMessageType.resultCard && (m.issueNo ?? '').isEmpty),
+        isEmpty,
+      );
+    });
   });
 }

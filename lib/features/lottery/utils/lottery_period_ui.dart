@@ -95,9 +95,14 @@ abstract final class LotteryPeriodHelper {
     return LotteryDisplayPhase.betting;
   }
 
-  /// 下注中「距封盘」倒计时。
+  /// 还能下注的秒数（sealAt − now）。期态条上的数字不用它。
   static int bettingCountdownSeconds(LotteryGameModel game, [DateTime? now]) {
     return sealRemainSeconds(game, now);
+  }
+
+  /// 期态条数字。距封盘和封盘中都是离开奖剩余，过封盘点时连续减，不换一条钟。
+  static int statusClockSeconds(LotteryGameModel game, [DateTime? now]) {
+    return openRemainSeconds(game, now);
   }
 
   static bool showDrawingPlaceholders(LotteryGameModel game) {
@@ -200,8 +205,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
               ),
               SizedBox(width: 8.w),
               FlipCountdown(
-                // 封盘中：距开奖（openAt）
-                seconds: LotteryPeriodHelper.openRemainSeconds(game, now),
+                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
                 compact: compactCountdown,
               ),
             ],
@@ -218,8 +222,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
               ),
               SizedBox(width: 8.w),
               FlipCountdown(
-                seconds:
-                    LotteryPeriodHelper.bettingCountdownSeconds(game, now),
+                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
                 compact: compactCountdown,
               ),
             ],

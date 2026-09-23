@@ -257,6 +257,11 @@ class _ResultCard extends StatelessWidget {
     final ranks = (message.drawRanks != null && message.drawRanks!.isNotEmpty)
         ? message.drawRanks!
         : parsed.ranks;
+    if ((issue == null || issue.isEmpty) &&
+        ranks.isEmpty &&
+        message.content.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
 
     return Container(
       width: double.infinity,

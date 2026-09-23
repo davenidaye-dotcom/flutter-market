@@ -503,6 +503,63 @@ class ChatPushCache {
         .toList(growable: false);
   }
 
+  /// 丢掉该彩种比 [oldestIssue] 更早的消息，以及没有期号也没有球号的空开奖卡。
+  void dropOlderThanIssue({
+    required String roomId,
+    required String gameId,
+    required String oldestIssue,
+  }) {
+    final floor = oldestIssue.trim();
+    if (gameId.isEmpty || floor.isEmpty) return;
+    final keys = _keysByRoom[roomId];
+    var changed = false;
+
+    bool shouldDrop(ChatMessageModel message) {
+      if (message.type == ChatMessageType.resultCard) {
+        final issue = extractIssue(message);
+        final ranks = message.drawRanks ?? const <int>[];
+        if ((issue == null || issue.isEmpty) &&
+            ranks.isEmpty &&
+            message.content.trim().isEmpty) {
+          return true;
+        }
+      }
+      final issue = extractIssue(message);
+      if (issue == null || issue.isEmpty) return false;
+      return compareIssueNo(issue, floor) < 0;
+    }
+
+    final buffer = _bufferByRoom[roomId];
+    if (buffer != null) {
+      final kept = <_CachedChatPush>[];
+      for (final entry in buffer) {
+        if (entry.push.gameId == gameId && shouldDrop(entry.push.message)) {
+          keys?.remove(entry.dedupeKey);
+          changed = true;
+          continue;
+        }
+        kept.add(entry);
+      }
+      _bufferByRoom[roomId] = kept;
+    }
+
+    final live = _liveByRoom[roomId];
+    if (live != null) {
+      live.removeWhere((entry) {
+        if (entry.push.gameId != gameId || !shouldDrop(entry.push.message)) {
+          return false;
+        }
+        keys?.remove(entry.dedupeKey);
+        changed = true;
+        return true;
+      });
+    }
+
+    if (!changed) return;
+    _invalidateGameCache(roomId, gameId);
+    _schedulePersist(roomId);
+  }
+
   List<ChatMessageModel> bufferedForGame(String roomId, String gameId) {
     final buffer = _bufferByRoom[roomId];
     if (buffer == null || buffer.isEmpty) return const [];
