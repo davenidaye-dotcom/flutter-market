@@ -100,7 +100,7 @@ abstract final class LotteryPeriodHelper {
     return sealRemainSeconds(game, now);
   }
 
-  /// 期态条数字。距封盘和封盘中都是离开奖剩余，过封盘点时连续减，不换一条钟。
+  /// 封盘后「距离开奖 N 秒」用的离开奖剩余。封盘前翻页钟用 [bettingCountdownSeconds]。
   static int statusClockSeconds(LotteryGameModel game, [DateTime? now]) {
     return openRemainSeconds(game, now);
   }
@@ -125,7 +125,7 @@ abstract final class LotteryPeriodHelper {
   }
 }
 
-/// 期态条：下注(距封盘) → 封盘中 → 开奖中
+/// 期态条：封盘前红色翻页钟（距封盘）→「封盘中，距离开奖 N 秒」→ 开奖中
 class LotteryPeriodCountdownRow extends StatelessWidget {
   const LotteryPeriodCountdownRow({
     super.key,
@@ -134,7 +134,6 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
     this.showIssue = true,
     this.compactCountdown = false,
     this.issueStyle,
-    this.labelStyle,
     this.sealedStyle,
     this.drawingStyle,
   });
@@ -146,7 +145,6 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
   /// 紧凑倒计时，与「封盘中/开奖中」同高，避免期态切换抖动
   final bool compactCountdown;
   final TextStyle? issueStyle;
-  final TextStyle? labelStyle;
   final TextStyle? sealedStyle;
   final TextStyle? drawingStyle;
 
@@ -195,35 +193,32 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
           ),
         ),
       LotteryDisplayPhase.sealed => _phaseRow(
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (issue.isNotEmpty) Text(issue, style: issueTextStyle),
-              Text(
-                '封盘中',
-                style: sealedStyle ?? phaseLabel,
-              ),
-              SizedBox(width: 8.w),
-              FlipCountdown(
-                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
-                compact: compactCountdown,
-              ),
-            ],
+          Text.rich(
+            TextSpan(
+              children: [
+                if (issue.isNotEmpty)
+                  TextSpan(text: '$issue ', style: issueTextStyle),
+                TextSpan(
+                  text:
+                      '封盘中，距离开奖${LotteryPeriodHelper.statusClockSeconds(game, now)}秒',
+                  style: sealedStyle ?? phaseLabel,
+                ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       LotteryDisplayPhase.betting => _phaseRow(
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                issue.isEmpty ? '距封盘' : '$issue 距封盘',
-                style: labelStyle ??
-                    phaseLabel.copyWith(color: issueTextStyle.color),
-              ),
-              SizedBox(width: 8.w),
+              if (issue.isNotEmpty) Text(issue, style: issueTextStyle),
+              if (issue.isNotEmpty) SizedBox(width: 8.w),
               FlipCountdown(
-                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
+                seconds: LotteryPeriodHelper.bettingCountdownSeconds(game, now),
                 compact: compactCountdown,
+                digitColor: AppColors.danger,
               ),
             ],
           ),

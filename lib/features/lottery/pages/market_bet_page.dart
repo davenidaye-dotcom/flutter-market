@@ -804,7 +804,6 @@ class _StatusBar extends StatelessWidget {
                   gameId: gameId,
                   issuePrefix: compactIssueNo(game.currentIssue),
                   issueStyle: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
-                  labelStyle: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
                 ),
               ),
               _miniBtn('注单'),

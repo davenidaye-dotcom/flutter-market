@@ -404,11 +404,13 @@ class _GameCard extends ConsumerWidget {
                   gameId: gameId,
                   style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
                 ),
-                const Spacer(),
-                LiveHallGameCountdown(
-                  roomId: roomId,
-                  gameId: gameId,
-                  tickEnabled: countdownActive,
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: LiveHallGameCountdown(
+                    roomId: roomId,
+                    gameId: gameId,
+                    tickEnabled: countdownActive,
+                  ),
                 ),
               ],
             ),

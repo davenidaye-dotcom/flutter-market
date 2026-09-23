@@ -214,7 +214,6 @@ class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
     this.issuePrefix,
     this.showIssue = true,
     this.issueStyle,
-    this.labelStyle,
     this.sealedStyle,
     this.drawingStyle,
   });
@@ -225,7 +224,6 @@ class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
   final String? issuePrefix;
   final bool showIssue;
   final TextStyle? issueStyle;
-  final TextStyle? labelStyle;
   final TextStyle? sealedStyle;
   final TextStyle? drawingStyle;
 
@@ -245,7 +243,6 @@ class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
       showIssue: showIssue,
       compactCountdown: true,
       issueStyle: issueStyle,
-      labelStyle: labelStyle,
       sealedStyle: sealedStyle,
       drawingStyle: drawingStyle,
     );
@@ -294,45 +291,30 @@ class LiveHallGameCountdown extends ConsumerWidget {
         ),
       LotteryDisplayPhase.sealed => SizedBox(
           height: 18.h,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '封盘中',
-                style: TextStyle(
-                  fontSize: 13.sp,
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w600,
-                  height: 1,
-                ),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '封盘中，距离开奖${LotteryPeriodHelper.statusClockSeconds(game, now)}秒',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: AppColors.danger,
+                fontWeight: FontWeight.w600,
+                height: 1,
               ),
-              SizedBox(width: 8.w),
-              FlipCountdown(
-                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
-                compact: true,
-              ),
-            ],
+            ),
           ),
         ),
       LotteryDisplayPhase.betting => SizedBox(
           height: 18.h,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '距封盘',
-                style: TextStyle(
-                  fontSize: 13.sp,
-                  fontWeight: FontWeight.w600,
-                  height: 1,
-                ),
-              ),
-              SizedBox(width: 8.w),
-              FlipCountdown(
-                seconds: LotteryPeriodHelper.statusClockSeconds(game, now),
-                compact: true,
-              ),
-            ],
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FlipCountdown(
+              seconds: LotteryPeriodHelper.bettingCountdownSeconds(game, now),
+              compact: true,
+              digitColor: AppColors.danger,
+            ),
           ),
         ),
     };
