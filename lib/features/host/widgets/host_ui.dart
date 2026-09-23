@@ -4,7 +4,6 @@ import '../../../config/theme/app_colors.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
-import '../../../shared/widgets/stable_screen_metrics.dart';
 
 export '../../../shared/widgets/app_page_loading.dart';
 
@@ -268,7 +267,12 @@ Future<String?> hostInputSheet(
         ),
       );
     },
-  ).whenComplete(ctrl.dispose);
+  ).whenComplete(() {
+    // 等弹层/IME 卸载完成再 dispose，避免 InheritedElement dependents 断言
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ctrl.dispose();
+    });
+  });
 }
 
 /// 底部弹出多字段表单。fields 返回 true 时关闭并回 true。
@@ -320,27 +324,59 @@ Future<bool> hostFormSheet(
   return result == true;
 }
 
-/// 键盘避让：订阅 MediaQuery.viewInsets，整块顶到键盘上方。
-class _HostKeyboardAware extends StatelessWidget {
+/// 键盘避让：用 [WidgetsBindingObserver] 听 metrics，避免 MediaQuery Inherited 在弹层卸载时断言。
+class _HostKeyboardAware extends StatefulWidget {
   const _HostKeyboardAware({required this.child});
 
   final Widget child;
 
   @override
+  State<_HostKeyboardAware> createState() => _HostKeyboardAwareState();
+}
+
+class _HostKeyboardAwareState extends State<_HostKeyboardAware>
+    with WidgetsBindingObserver {
+  double _inset = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncInset());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    _syncInset();
+  }
+
+  void _syncInset() {
+    if (!mounted) return;
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) return;
+    final view = views.first;
+    final next = view.viewInsets.bottom / view.devicePixelRatio;
+    if ((next - _inset).abs() < 0.5) return;
+    setState(() => _inset = next);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // MediaQuery 订阅保证键盘弹出/收起时重建；View 兜底防被上层篡改
-    final mqInset = MediaQuery.viewInsetsOf(context).bottom;
-    final viewInset = realKeyboardInset(context);
-    final inset = mqInset >= viewInset ? mqInset : viewInset;
     return AnimatedPadding(
       duration: const Duration(milliseconds: 120),
       curve: Curves.easeOut,
-      padding: EdgeInsets.only(bottom: inset),
+      padding: EdgeInsets.only(bottom: _inset),
       child: SingleChildScrollView(
         reverse: true,
         physics: const ClampingScrollPhysics(),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        child: child,
+        child: widget.child,
       ),
     );
   }
