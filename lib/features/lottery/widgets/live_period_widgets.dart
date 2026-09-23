@@ -320,7 +320,14 @@ class LiveHallGameCountdown extends ConsumerWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('距封盘', style: TextStyle(fontSize: 12.sp, height: 1)),
+              Text(
+                '距封盘',
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  fontWeight: FontWeight.w600,
+                  height: 1,
+                ),
+              ),
               SizedBox(width: 8.w),
               FlipCountdown(
                 seconds:

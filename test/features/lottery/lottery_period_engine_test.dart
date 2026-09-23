@@ -209,7 +209,7 @@ void main() {
     expect(g.isDrawing, isFalse);
   });
 
-  test('stale openAt with positive seconds restores countdown after reveal', () {
+  test('past openAt stays 开奖中 even if seconds is still positive', () {
     engine.onPeriodTick(
       'JS_SC',
       issue: '34136341',
@@ -229,11 +229,11 @@ void main() {
       lastRanks: const [2, 3, 4, 5, 6, 7, 8, 9, 10, 1],
       now: atZero,
     );
-    expect(engine.countdownFor('JS_SC', atZero), 8);
+    expect(engine.countdownFor('JS_SC', atZero), 0);
     final g = engine.displayGame('JS_SC', atZero);
-    // openAt 已到点 → 封盘/开奖窗口（与 sealSeconds 无关）
-    expect(LotteryPeriodHelper.phaseOf(g, atZero), LotteryDisplayPhase.sealed);
-    expect(g.isDrawing, isFalse);
+    // 与 web 一致：openAt 已到点就显示开奖中，不用 countdownSeconds 把时钟拉回来。
+    expect(LotteryPeriodHelper.phaseOf(g, atZero), LotteryDisplayPhase.drawing);
+    expect(g.isDrawing, isTrue);
   });
 
   test('cd zero waits for draw then exits on rollover tick', () {

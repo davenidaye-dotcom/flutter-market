@@ -172,4 +172,59 @@ void main() {
     expect(LotteryPeriodHelper.bettingCountdownSeconds(g, t15), 50);
     expect(LotteryPeriodHelper.openRemainSeconds(g, t15), 80);
   });
+
+  test('开奖时刻到了保持开奖中，同期更远 openAt 不把倒计时拉回来', () {
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    final openAt = t0.add(const Duration(seconds: 40)).millisecondsSinceEpoch;
+    final sealAt = t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          countdownSeconds: 40,
+          openAtEpochMs: openAt,
+          sealSeconds: 30,
+          sealAtEpochMs: sealAt,
+        ),
+      ],
+      t0,
+    );
+    final opened = t0.add(const Duration(seconds: 40));
+    final drawing = engine.displayGame('JS_SC', opened);
+    expect(LotteryPeriodHelper.phaseOf(drawing, opened), LotteryDisplayPhase.drawing);
+    expect(LotteryPeriodHelper.openRemainSeconds(drawing, opened), 0);
+
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 75,
+      openAtEpochMs: opened.add(const Duration(seconds: 75)).millisecondsSinceEpoch,
+      sealAtEpochMs: opened.add(const Duration(seconds: 45)).millisecondsSinceEpoch,
+      sealSeconds: 30,
+      now: opened,
+    );
+    final held = engine.displayGame('JS_SC', opened);
+    expect(held.currentIssue, '34136341');
+    expect(LotteryPeriodHelper.phaseOf(held, opened), LotteryDisplayPhase.drawing);
+    expect(LotteryPeriodHelper.openRemainSeconds(held, opened), 0);
+
+    final nextAt = opened.add(const Duration(seconds: 1));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136342',
+      seconds: 75,
+      openAtEpochMs: nextAt.add(const Duration(seconds: 75)).millisecondsSinceEpoch,
+      sealAtEpochMs: nextAt.add(const Duration(seconds: 45)).millisecondsSinceEpoch,
+      sealSeconds: 30,
+      now: nextAt,
+    );
+    final next = engine.displayGame('JS_SC', nextAt);
+    expect(next.currentIssue, '34136342');
+    expect(LotteryPeriodHelper.phaseOf(next, nextAt), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(next, nextAt), 45);
+    expect(LotteryPeriodHelper.openRemainSeconds(next, nextAt), 75);
+  });
 }

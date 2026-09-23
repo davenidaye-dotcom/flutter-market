@@ -78,9 +78,9 @@ abstract final class LotteryPeriodHelper {
     }
     final clock = now ?? DateTime.now();
     final openLeft = openRemainSeconds(game, clock);
+    // 与 web openText 一致：封盘和开奖剩余都到 0，显示开奖中，不停留在「封盘中 00:00」。
     if (openLeft <= 0) {
-      // 开奖时刻已到：短暂「封盘中/开奖中」由 isDrawing 区分
-      return LotteryDisplayPhase.sealed;
+      return LotteryDisplayPhase.drawing;
     }
     final sealAt = game.sealAtEpochMs ?? 0;
     final gap = LotteryPeriodRules.sealSecondsOf(game);
@@ -213,7 +213,8 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
             children: [
               Text(
                 issue.isEmpty ? '距封盘' : '$issue 距封盘',
-                style: labelStyle ?? issueTextStyle,
+                style: labelStyle ??
+                    phaseLabel.copyWith(color: issueTextStyle.color),
               ),
               SizedBox(width: 8.w),
               FlipCountdown(
