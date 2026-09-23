@@ -32,7 +32,11 @@ class ChatMessageItem extends StatelessWidget {
     if (message.type == ChatMessageType.betReceipt ||
         message.type == ChatMessageType.winCheck ||
         message.type == ChatMessageType.betListCheck) {
-      return _RobotBubble(message: message);
+      return _RobotBubble(
+        message: message,
+        // 中奖列表核对对齐模板图正文，比房间其它气泡大约一号。
+        fontSize: message.type == ChatMessageType.winCheck ? 16.sp : 13.sp,
+      );
     }
     if (_isRobotSystemLayout) {
       return Padding(
@@ -102,9 +106,10 @@ class ChatMessageItem extends StatelessWidget {
 }
 
 class _RobotBubble extends StatelessWidget {
-  const _RobotBubble({required this.message});
+  const _RobotBubble({required this.message, required this.fontSize});
 
   final ChatMessageModel message;
+  final double fontSize;
 
   @override
   Widget build(BuildContext context) {
@@ -141,7 +146,7 @@ class _RobotBubble extends StatelessWidget {
                   child: Text(
                     message.content,
                     style: TextStyle(
-                      fontSize: 13.sp,
+                      fontSize: fontSize,
                       height: 1.45,
                       color: Colors.black,
                       fontWeight: FontWeight.bold,

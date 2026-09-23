@@ -46,11 +46,8 @@ abstract final class HistoryDrawLayout {
   /// 历史表开奖球内数字相对原来 18 边长的比例。
   static double ballFontScale() => 0.72;
 
-  /// 历史表数字的绝对字号，方框变大后仍用这个，字不跟着变。
+  /// 开奖数字的绝对字号。顶栏和历史表共用，方框变大后字不跟着变。
   static double ballDigitSize() => ballSize() * ballFontScale();
-
-  /// 顶栏最新开奖数字，保持原来 18 × 0.48。
-  static double latestBallDigitSize() => ballSize() * 0.48;
 
   static const int visibleRows = 10;
   static double rowHeight() => 24.h;

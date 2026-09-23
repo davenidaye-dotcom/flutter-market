@@ -2302,7 +2302,7 @@ class _GameStatusBar extends StatelessWidget {
                 roomId: roomId,
                 gameId: gameId,
                 expandSlots: true,
-                digitFontSize: HistoryDrawLayout.latestBallDigitSize(),
+                digitFontSize: HistoryDrawLayout.ballDigitSize(),
               ),
               gy: LiveLatestDrawSumText(
                 roomId: roomId,
