@@ -387,6 +387,77 @@ void main() {
       );
     });
 
+    test('大量投注成功不会裁掉竞猜核对和中奖列表', () {
+      for (var i = 0; i < 200; i++) {
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: 'receipt-$i',
+          gameId: gameId,
+          message: ChatMessageModel(
+            id: 'receipt-$i',
+            sender: '机器人',
+            content: '3416442${i % 10}期投注成功!',
+            time: '12:00',
+            type: ChatMessageType.betReceipt,
+            issueNo: '34164430',
+          ),
+        );
+      }
+      for (var issue = 5260; issue <= 5274; issue++) {
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: 'draw-$gameId-$issue',
+          gameId: gameId,
+          message: drawCard(gameId, '$issue', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+        );
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: 'bet-rank-$gameId-$issue',
+          gameId: gameId,
+          message: ChatMessageModel(
+            id: 'bet-rank-$gameId-$issue',
+            sender: '机器人',
+            content: '$issue期已封盘\n竞猜列表核对',
+            time: '12:00',
+            type: ChatMessageType.betListCheck,
+            issueNo: '$issue',
+          ),
+        );
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: 'win-list-$gameId-$issue',
+          gameId: gameId,
+          message: ChatMessageModel(
+            id: 'win-list-$gameId-$issue',
+            sender: '机器人',
+            content: '$issue期已开奖\n中奖列表核对',
+            time: '12:01',
+            type: ChatMessageType.winCheck,
+            issueNo: '$issue',
+          ),
+        );
+      }
+      final buf = cache.bufferedForGame(roomId, gameId);
+      expect(
+        buf.where((m) => m.type == ChatMessageType.betListCheck).length,
+        15,
+      );
+      expect(
+        buf.where((m) => m.type == ChatMessageType.winCheck).length,
+        15,
+      );
+      final timeline = buildChatTimeline(buf, gameId: gameId);
+      final visible = ChatPushCache.capVisibleTimeline(timeline);
+      expect(
+        visible.where((m) => m.content.contains('竞猜列表核对')).length,
+        15,
+      );
+      expect(
+        visible.where((m) => m.content.contains('中奖列表核对')).length,
+        15,
+      );
+    });
+
     test('进房窗口丢掉更早的注单，留下窗口内的开奖', () {
       const ranks = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
       cache.pushOnce(
@@ -442,6 +513,47 @@ void main() {
         left.where((m) => m.type == ChatMessageType.resultCard && (m.issueNo ?? '').isEmpty),
         isEmpty,
       );
+    });
+
+    test('同一条下注后来补上头像编码', () {
+      const id = 'bet-chat-JS_SC-9001';
+      final first = ChatMessageModel(
+        id: id,
+        sender: '气氛号',
+        content: '大/10',
+        time: '12:00',
+        issueNo: '34164435',
+      );
+      expect(
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: id,
+          gameId: gameId,
+          message: first,
+        ),
+        isTrue,
+      );
+      expect(
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: id,
+          gameId: gameId,
+          message: first.copyWith(avatarUrl: 'av07'),
+        ),
+        isTrue,
+      );
+      expect(
+        cache.pushOnce(
+          roomId: roomId,
+          dedupeKey: id,
+          gameId: gameId,
+          message: first.copyWith(avatarUrl: 'av08'),
+        ),
+        isFalse,
+      );
+      final stored = cache.bufferedForGame(roomId, gameId);
+      expect(stored, hasLength(1));
+      expect(stored.single.avatarUrl, 'av07');
     });
   });
 }

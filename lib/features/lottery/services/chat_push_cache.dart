@@ -61,8 +61,10 @@ class ChatPushCache {
   static const maxDrawsPerGame = chatHistoryIssueLimit;
   /// 每彩种用户下注文案上限（多期合计）。
   static const maxUserBetsPerGame = 120;
-  /// 确认卡 + 竞猜核对 + 中奖核对（约 15 期 × 数条）。
+  /// 投注成功确认卡。竞猜核对、中奖列表另计，不占这 120 条。
   static const maxRobotMsgsPerGame = 120;
+  /// 每彩种竞猜列表核对、中奖列表各保留最近 15 期。
+  static const maxCheckCardsPerGame = chatHistoryIssueLimit;
   /// 兼容旧名：总预算仅作 others 配额参考，不再拿它裁掉核对。
   static const maxPerGame = maxDrawsPerGame + maxUserBetsPerGame + maxRobotMsgsPerGame;
   /// 聊天 ListView 最多渲染条数
@@ -190,9 +192,10 @@ class ChatPushCache {
         _schedulePersist(roomId);
         return true;
       }
-      final upgraded =
-          _upgradeStoredIssueIfLonger(roomId, logicalKey, normalized);
-      return upgraded;
+      if (_upgradeStoredIssueIfLonger(roomId, logicalKey, normalized)) {
+        return true;
+      }
+      return _fillStoredAvatarIfMissing(roomId, logicalKey, normalized);
     }
     keys.add(logicalKey);
 
@@ -290,6 +293,36 @@ class ChatPushCache {
         dedupeKey: logicalKey,
         push: LotteryChatPush(gameId: entry.push.gameId, message: incoming),
       );
+      return true;
+    }
+    return false;
+  }
+
+  /// 进房历史补上的头像：本地已有同一条、但当时接口没带头像时，补上并刷新。
+  bool _fillStoredAvatarIfMissing(
+    String roomId,
+    String logicalKey,
+    ChatMessageModel incoming,
+  ) {
+    final incomingAvatar = incoming.avatarUrl?.trim();
+    if (incomingAvatar == null || incomingAvatar.isEmpty) return false;
+    final buffer = _bufferByRoom[roomId];
+    if (buffer == null) return false;
+    for (var i = 0; i < buffer.length; i++) {
+      final entry = buffer[i];
+      if (entry.dedupeKey != logicalKey) continue;
+      final existing = entry.push.message;
+      final existingAvatar = existing.avatarUrl?.trim();
+      if (existingAvatar != null && existingAvatar.isNotEmpty) return false;
+      buffer[i] = _CachedChatPush(
+        dedupeKey: logicalKey,
+        push: LotteryChatPush(
+          gameId: entry.push.gameId,
+          message: existing.copyWith(avatarUrl: incomingAvatar),
+        ),
+      );
+      _invalidateGameCache(roomId, entry.push.gameId);
+      _schedulePersist(roomId);
       return true;
     }
     return false;
@@ -937,10 +970,13 @@ class ChatPushCache {
         .where((e) => isUserBetChatMessage(e.push.message))
         .toList();
     final robotMsgs = entries
-        .where((e) =>
-            e.push.message.type == ChatMessageType.betReceipt ||
-            e.push.message.type == ChatMessageType.winCheck ||
-            e.push.message.type == ChatMessageType.betListCheck)
+        .where((e) => e.push.message.type == ChatMessageType.betReceipt)
+        .toList();
+    final betRanks = entries
+        .where((e) => e.push.message.type == ChatMessageType.betListCheck)
+        .toList();
+    final winLists = entries
+        .where((e) => e.push.message.type == ChatMessageType.winCheck)
         .toList();
     final others = entries
         .where((e) =>
@@ -951,15 +987,11 @@ class ChatPushCache {
             !isUserBetChatMessage(e.push.message))
         .toList();
 
-    final keptDraws = draws.length > maxDrawsPerGame
-        ? draws.sublist(draws.length - maxDrawsPerGame)
-        : draws;
-    final keptUserBets = userBets.length > maxUserBetsPerGame
-        ? userBets.sublist(userBets.length - maxUserBetsPerGame)
-        : userBets;
-    final keptRobot = robotMsgs.length > maxRobotMsgsPerGame
-        ? robotMsgs.sublist(robotMsgs.length - maxRobotMsgsPerGame)
-        : robotMsgs;
+    final keptDraws = _tail(draws, maxDrawsPerGame);
+    final keptUserBets = _tail(userBets, maxUserBetsPerGame);
+    final keptRobot = _tail(robotMsgs, maxRobotMsgsPerGame);
+    final keptRanks = _tail(betRanks, maxCheckCardsPerGame);
+    final keptWins = _tail(winLists, maxCheckCardsPerGame);
     const maxOthers = 40;
     final keptOthers = others.length > maxOthers
         ? others.sublist(others.length - maxOthers)
@@ -969,6 +1001,8 @@ class ChatPushCache {
       ...keptDraws,
       ...keptUserBets,
       ...keptRobot,
+      ...keptRanks,
+      ...keptWins,
       ...keptOthers,
     };
     for (final e in entries) {
@@ -983,9 +1017,50 @@ class ChatPushCache {
       keys.remove(k);
     }
 
-    final merged = [...keptDraws, ...keptUserBets, ...keptRobot, ...keptOthers];
+    final merged = [
+      ...keptDraws,
+      ...keptUserBets,
+      ...keptRobot,
+      ...keptRanks,
+      ...keptWins,
+      ...keptOthers,
+    ];
     merged.sort((a, b) => entries.indexOf(a).compareTo(entries.indexOf(b)));
     return merged;
+  }
+
+  static List<T> _tail<T>(List<T> items, int max) {
+    if (items.length <= max) return items;
+    return items.sublist(items.length - max);
+  }
+
+  /// 屏幕最多 [maxVisibleChatMessages] 条，但开奖卡、竞猜核对、中奖列表优先留下。
+  static List<ChatMessageModel> capVisibleTimeline(
+    List<ChatMessageModel> messages,
+  ) {
+    final max = maxVisibleChatMessages;
+    if (messages.length <= max) return messages;
+    final pinned = <int>[];
+    for (var i = 0; i < messages.length; i++) {
+      final type = messages[i].type;
+      if (type == ChatMessageType.resultCard ||
+          type == ChatMessageType.betListCheck ||
+          type == ChatMessageType.winCheck) {
+        pinned.add(i);
+      }
+    }
+    final keep = <int>{};
+    if (pinned.length >= max) {
+      keep.addAll(pinned.sublist(pinned.length - max));
+    } else {
+      keep.addAll(pinned);
+      var budget = max - pinned.length;
+      for (var i = messages.length - 1; i >= 0 && budget > 0; i--) {
+        if (keep.add(i)) budget--;
+      }
+    }
+    final ordered = keep.toList()..sort();
+    return [for (final i in ordered) messages[i]];
   }
 
   void _schedulePersist(String roomId) {

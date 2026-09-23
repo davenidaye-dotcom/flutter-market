@@ -170,6 +170,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         ..write(':')
         ..write(m.content.length)
         ..write(':')
+        ..write(m.avatarUrl ?? '')
+        ..write(':')
         ..write(m.drawRanks?.join(',') ?? '')
         ..write('|');
     }
@@ -177,10 +179,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   void _setMessages(List<ChatMessageModel> messages) {
-    final maxVisible = ChatPushCache.maxVisibleChatMessages;
-    final trimmed = messages.length > maxVisible
-        ? messages.sublist(messages.length - maxVisible)
-        : messages;
+    final trimmed = ChatPushCache.capVisibleTimeline(messages);
     final nextIds = trimmed.map((m) => m.id).toSet();
     final prev = _messagesNotifier.value;
     if (setEquals(nextIds, _messageIds) && trimmed.length == prev.length) {
@@ -198,6 +197,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
           final b = prev[i];
           if (a.content != b.content ||
               a.issueNo != b.issueNo ||
+              a.avatarUrl != b.avatarUrl ||
               !listEquals(a.drawRanks, b.drawRanks)) {
             contentSame = false;
             break;
