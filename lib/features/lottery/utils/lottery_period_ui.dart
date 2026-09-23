@@ -69,7 +69,7 @@ abstract final class LotteryPeriodHelper {
     }
     final openLeft = openRemainSeconds(game, clock);
     if (gap > 0) return math.max(0, openLeft - gap);
-    return 0;
+    return openLeft;
   }
 
   static LotteryDisplayPhase phaseOf(LotteryGameModel game, [DateTime? now]) {
@@ -95,10 +95,12 @@ abstract final class LotteryPeriodHelper {
     return LotteryDisplayPhase.betting;
   }
 
-  /// 红色距封盘翻页钟：直接数到封盘时刻。
-  /// 封盘时刻 = 开盘 +（一期总秒数 − 提前封盘秒数）。没有封盘时刻时不改成数整段开奖剩余。
+  /// 距封盘翻页钟：开奖剩余减去本期提前量。没有提前量时才等于开奖剩余。
   static int bettingCountdownSeconds(LotteryGameModel game, [DateTime? now]) {
-    return sealRemainSeconds(game, now);
+    final gap = LotteryPeriodRules.sealSecondsOf(game);
+    final openLeft = openRemainSeconds(game, now);
+    if (gap <= 0) return openLeft;
+    return math.max(0, openLeft - gap);
   }
 
   /// 封盘后「距离开奖 N 秒」用的离开奖剩余。封盘前翻页钟用 [bettingCountdownSeconds]。

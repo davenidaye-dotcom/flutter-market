@@ -95,6 +95,16 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
     await _saveRemark();
   }
 
+  Future<void> _copyId() async {
+    final id = (_member?.id.isNotEmpty == true) ? _member!.id : widget.memberId;
+    if (id.isEmpty) {
+      AppToast.info('暂无ID');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: id));
+    AppToast.success('已复制ID');
+  }
+
   Future<void> _creditDialog(String direction) async {
     final title = direction == 'UP' ? '给会员上分' : '给会员下分';
     final amount = await hostInputSheet(
@@ -251,6 +261,7 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                     borderRadius: BorderRadius.circular(12.r),
                   ),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       CircleAvatar(
                         radius: 28.r,
@@ -305,6 +316,29 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                               style: TextStyle(fontSize: 13.sp, color: blue, fontWeight: FontWeight.w600),
                             ),
                           ],
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      Material(
+                        color: blue.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8.r),
+                        child: InkWell(
+                          onTap: _copyId,
+                          borderRadius: BorderRadius.circular(8.r),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.copy_outlined, size: 14.sp, color: blue),
+                                SizedBox(width: 4.w),
+                                Text(
+                                  '复制ID',
+                                  style: TextStyle(fontSize: 12.sp, color: blue, fontWeight: FontWeight.w600),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ),
                     ],

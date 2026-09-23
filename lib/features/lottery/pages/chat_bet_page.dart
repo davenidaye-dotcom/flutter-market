@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import 'package:easy_refresh/easy_refresh.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/session_store.dart';
@@ -2457,38 +2456,18 @@ class _HistoryOverlayPanel extends ConsumerStatefulWidget {
 }
 
 class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
-  final _refreshCtrl = EasyRefreshController();
-
-  @override
-  void dispose() {
-    _refreshCtrl.dispose();
-    super.dispose();
-  }
-
   Future<void> _onRefresh() async {
     await ref
         .read(roomLotteryLiveProvider(widget.roomId).notifier)
         .refreshDrawHistoryRows(widget.gameId);
-    if (mounted) {
-      widget.onEpochChange();
-      // 刷新后允许再次上拉
-      _refreshCtrl.resetFooter();
-    }
+    if (mounted) widget.onEpochChange();
   }
 
   Future<bool> _onLoadMore() async {
     final hasMore = await ref
         .read(roomLotteryLiveProvider(widget.roomId).notifier)
         .loadMoreDrawHistoryRows(widget.gameId);
-    if (mounted) {
-      widget.onEpochChange();
-      if (hasMore) {
-        // 列表重建后解除 footer 锁定，才能连续上拉
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _refreshCtrl.resetFooter();
-        });
-      }
-    }
+    if (mounted) widget.onEpochChange();
     return hasMore;
   }
 
@@ -2496,7 +2475,9 @@ class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
   Widget build(BuildContext context) {
     ref.listen(
       roomLotteryLiveProvider(widget.roomId).select((s) => s.drawCacheEpoch),
-      (_, __) => widget.onEpochChange(),
+      (_, __) {
+        if (mounted) widget.onEpochChange();
+      },
     );
     ref.listen(
       roomLotteryLiveProvider(widget.roomId).select((s) {
@@ -2504,7 +2485,9 @@ class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
         if (g == null) return null;
         return (g.previousIssue, g.previousResults.join(','));
       }),
-      (_, __) => widget.onEpochChange(),
+      (_, __) {
+        if (mounted) widget.onEpochChange();
+      },
     );
     return ValueListenableBuilder<bool>(
       valueListenable: widget.loadingListenable,
@@ -2519,7 +2502,6 @@ class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
               onRetry: widget.onRetry,
               onRefresh: _onRefresh,
               onLoadMore: _onLoadMore,
-              refreshController: _refreshCtrl,
             );
           },
         );
