@@ -5,6 +5,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import 'member_bet_report_shared.dart';
@@ -59,13 +60,20 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
     }
   }
 
-  Future<void> _load({required bool reset}) async {
+  Future<void> _load({required bool reset, bool fromPull = false}) async {
     if (reset) {
-      setState(() {
-        _pageNum = 1;
-        _hasMore = true;
-        _loading = true;
-      });
+      if (!fromPull) {
+        setState(() {
+          _pageNum = 1;
+          _hasMore = true;
+          _loading = true;
+        });
+      } else {
+        setState(() {
+          _pageNum = 1;
+          _hasMore = true;
+        });
+      }
     } else {
       if (!_hasMore || _loadingMore) return;
       setState(() => _loadingMore = true);
@@ -104,6 +112,7 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
         _loadingMore = false;
       });
       AppToast.error(e.toString());
+      if (fromPull) rethrow;
     }
   }
 
@@ -126,47 +135,53 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
               onBack: () => appSafePop(context),
             ),
             Expanded(
-              child: _loading
-                  ? const AppPageLoading()
-                  : RefreshIndicator(
-                      onRefresh: () => _load(reset: true),
-                      child: ListView.separated(
-                        controller: _scroll,
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
-                        itemCount: _rows.isEmpty ? 1 : _rows.length + 1,
-                        separatorBuilder: (_, _) =>
-                            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-                        itemBuilder: (_, i) {
-                          if (_rows.isEmpty) {
-                            return Padding(
-                              padding: EdgeInsets.only(top: 80.h),
-                              child: const Center(child: AppEmptyHint()),
-                            );
-                          }
-                          if (i == _rows.length) {
-                            return Padding(
-                              padding: EdgeInsets.only(top: 16.h),
-                              child: Center(
-                                child: Text(
-                                  _loadingMore
-                                      ? '加载中…'
-                                      : '已加载完毕，共${_total > 0 ? _total : _rows.length}条',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: AppColors.textHint,
-                                  ),
-                                ),
-                              ),
-                            );
-                          }
-                          return _ItemRow(
-                            row: _rows[i],
-                            timeLabel: _fullTime(_rows[i]['createdAt']),
-                          );
-                        },
-                      ),
-                    ),
+              child: AppPullRefresh(
+                onRefresh: () => _load(reset: true, fromPull: true),
+                child: ListView.separated(
+                  controller: _scroll,
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
+                  itemCount: _loading
+                      ? 1
+                      : (_rows.isEmpty ? 1 : _rows.length + 1),
+                  separatorBuilder: (_, _) =>
+                      const Divider(height: 1, color: Color(0xFFEEEEEE)),
+                  itemBuilder: (_, i) {
+                    if (_loading) {
+                      return SizedBox(
+                        height: 200.h,
+                        child: const AppPageLoading(),
+                      );
+                    }
+                    if (_rows.isEmpty) {
+                      return Padding(
+                        padding: EdgeInsets.only(top: 80.h),
+                        child: const Center(child: AppEmptyHint()),
+                      );
+                    }
+                    if (i == _rows.length) {
+                      return Padding(
+                        padding: EdgeInsets.only(top: 16.h),
+                        child: Center(
+                          child: Text(
+                            _loadingMore
+                                ? '加载中…'
+                                : '已加载完毕，共${_total > 0 ? _total : _rows.length}条',
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color: AppColors.textHint,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+                    return _ItemRow(
+                      row: _rows[i],
+                      timeLabel: _fullTime(_rows[i]['createdAt']),
+                    );
+                  },
+                ),
+              ),
             ),
           ],
         ),
