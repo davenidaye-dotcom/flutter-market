@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:easy_refresh/easy_refresh.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/lottery_ball.dart';
 
 class HistoryDrawRow {
@@ -83,7 +85,7 @@ class Pk10AlignRow extends StatelessWidget {
   }
 }
 
-/// 历史开奖展开面板 — 固定高度，与注单/长龙一致，可滚动
+/// 历史开奖展开面板 — 固定高度，下拉刷新 / 上拉加载更多
 class HistoryDrawPanel extends StatelessWidget {
   const HistoryDrawPanel({
     super.key,
@@ -91,19 +93,31 @@ class HistoryDrawPanel extends StatelessWidget {
     this.loading = false,
     this.error = false,
     this.onRetry,
+    this.onRefresh,
+    this.onLoadMore,
+    this.refreshController,
   });
 
-  static const int maxRows = 10;
+  /// 首屏默认拉取条数；面板可视约 7 行，其余靠上拉加载。
+  static const int pageSize = 20;
+  /// 内存上限，避免无限堆积。
+  static const int maxCachedRows = 300;
+  @Deprecated('Use pageSize')
+  static const int maxRows = pageSize;
+
   static double panelHeight(BuildContext context) => 260.h;
 
   final List<HistoryDrawRow> rows;
   final bool loading;
   final bool error;
   final VoidCallback? onRetry;
+  final Future<void> Function()? onRefresh;
+  /// 返回 false 表示没有更多期数。
+  final Future<bool> Function()? onLoadMore;
+  final EasyRefreshController? refreshController;
 
   @override
   Widget build(BuildContext context) {
-    final displayRows = rows.take(maxRows).toList();
     final pad = HistoryDrawLayout.hPad();
 
     return Material(
@@ -124,7 +138,7 @@ class HistoryDrawPanel extends StatelessWidget {
         child: Column(
           children: [
             const _Header(),
-            Expanded(child: _buildBody(displayRows, pad)),
+            Expanded(child: _buildBody(rows, pad)),
           ],
         ),
       ),
@@ -146,19 +160,36 @@ class HistoryDrawPanel extends StatelessWidget {
         ),
       );
     }
-    if (displayRows.isEmpty) {
-      return Center(
-        child: Text(
-          '暂无开奖记录',
-          style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-        ),
-      );
+
+    final list = displayRows.isEmpty
+        ? ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              SizedBox(height: 80.h),
+              Center(
+                child: Text(
+                  '暂无开奖记录',
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                ),
+              ),
+            ],
+          )
+        : ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(pad, 2.h, pad, 8.h),
+            itemCount: displayRows.length,
+            separatorBuilder: (_, _) => SizedBox(height: 2.h),
+            itemBuilder: (_, i) => _DataRow(row: displayRows[i]),
+          );
+
+    if (onRefresh == null && onLoadMore == null) {
+      return list;
     }
-    return ListView.separated(
-      padding: EdgeInsets.fromLTRB(pad, 2.h, pad, 8.h),
-      itemCount: displayRows.length,
-      separatorBuilder: (_, _) => SizedBox(height: 2.h),
-      itemBuilder: (_, i) => _DataRow(row: displayRows[i]),
+    return AppPullRefresh(
+      controller: refreshController,
+      onRefresh: onRefresh ?? () async {},
+      onLoad: onLoadMore,
+      child: list,
     );
   }
 }

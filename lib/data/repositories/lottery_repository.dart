@@ -339,10 +339,11 @@ class LotteryRepository {
     );
   }
 
-  Future<List<Map<String, dynamic>>> getDrawHistory({
+  Future<({List<Map<String, dynamic>> rows, int total})> getDrawHistory({
     required String gameId,
     bool asOwner = false,
     String? date,
+    int pageNum = 1,
     int pageSize = 50,
   }) async {
     final path = asOwner
@@ -352,23 +353,28 @@ class LotteryRepository {
       path,
       query: {
         if (date != null) 'date': date,
-        'pageNum': 1,
+        'pageNum': pageNum < 1 ? 1 : pageNum,
         'pageSize': pageSize,
       },
     );
-    if (data is Map && data['rows'] is List) {
-      return (data['rows'] as List)
-          .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e))
-          .toList();
+    if (data is Map) {
+      final rows = data['rows'] is List
+          ? (data['rows'] as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : const <Map<String, dynamic>>[];
+      final total = int.tryParse('${data['total'] ?? ''}') ?? rows.length;
+      return (rows: rows, total: total);
     }
     if (data is List) {
-      return data
+      final rows = data
           .whereType<Map>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
+      return (rows: rows, total: rows.length);
     }
-    return const [];
+    return (rows: const <Map<String, dynamic>>[], total: 0);
   }
 
   Future<List<Map<String, dynamic>>> getLongDragon({

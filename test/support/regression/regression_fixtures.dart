@@ -166,13 +166,14 @@ class FakeLotteryRepository extends LotteryRepository {
       chatMessages;
 
   @override
-  Future<List<Map<String, dynamic>>> getDrawHistory({
+  Future<({List<Map<String, dynamic>> rows, int total})> getDrawHistory({
     required String gameId,
     bool asOwner = false,
     String? date,
+    int pageNum = 1,
     int pageSize = 50,
   }) async =>
-      drawHistory;
+      (rows: drawHistory, total: drawHistory.length);
 
   @override
   Future<List<String>> submitBet({

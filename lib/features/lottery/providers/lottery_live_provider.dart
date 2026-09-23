@@ -124,6 +124,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   final Map<String, Future<void>> _drawLoadByGame = {};
   final Map<String, Future<void>> _gameTimelinePreloadByGame = {};
   final Map<String, List<HistoryDrawRow>> _apiDrawRowsByGame = {};
+  final Map<String, int> _drawHistoryPageByGame = {};
+  final Map<String, bool> _drawHistoryHasMoreByGame = {};
   Timer? _gamesRefreshDebounce;
   Future<void>? _gamesRefreshInflight;
   Timer? _drawCacheBumpDebounce;
@@ -272,24 +274,35 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   List<HistoryDrawRow> drawHistoryForGame(String gameId) {
     final api = _apiDrawRowsByGame[gameId] ?? const <HistoryDrawRow>[];
+    // 面板翻页以 API 页为准；有 API 数据时不再用聊天缓存顶满，否则上拉更老期会被 take 丢掉
+    if (api.isNotEmpty) {
+      return api.take(HistoryDrawPanel.maxCachedRows).toList(growable: false);
+    }
     final local = ChatPushCache.instance.historyDrawRowsForGame(
       roomId,
       gameId,
-      maxRows: ChatPushCache.drawHistoryLimit,
+      maxRows: HistoryDrawPanel.maxCachedRows,
     );
-    return mergeHistorySources([api, local])
-        .take(HistoryDrawPanel.maxRows)
-        .toList(growable: false);
+    return local;
   }
+
+  bool drawHistoryHasMore(String gameId) =>
+      _drawHistoryHasMoreByGame[gameId] ?? true;
 
   Future<void> refreshDrawHistoryRows(String gameId) async {
     if (gameId.isEmpty) return;
     final inflight = _drawLoadByGame[gameId];
     if (inflight != null) {
       await inflight;
-      if (!_cacheNeedsDrawBackfill(gameId)) return;
+      return;
     }
-    final future = _fetchDrawHistoryRowsFromApi(gameId);
+    // 用户下拉刷新：重置到第 1 页
+    final future = _fetchDrawHistoryRowsFromApi(
+      gameId,
+      pageNum: 1,
+      append: false,
+      resetPages: true,
+    );
     _drawLoadByGame[gameId] = future;
     try {
       await future;
@@ -298,25 +311,111 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
   }
 
-  Future<void> _fetchDrawHistoryRowsFromApi(String gameId) async {
+  /// 上拉加载更多历史期。返回 false 表示没有更多了。
+  Future<bool> loadMoreDrawHistoryRows(String gameId) async {
+    if (gameId.isEmpty) return false;
+    if (!(_drawHistoryHasMoreByGame[gameId] ?? true)) return false;
+    final inflight = _drawLoadByGame[gameId];
+    if (inflight != null) {
+      await inflight;
+      return _drawHistoryHasMoreByGame[gameId] ?? false;
+    }
+    final nextPage = (_drawHistoryPageByGame[gameId] ?? 1) + 1;
+    final future = _fetchDrawHistoryRowsFromApi(
+      gameId,
+      pageNum: nextPage,
+      append: true,
+      resetPages: false,
+    );
+    _drawLoadByGame[gameId] = future;
+    try {
+      await future;
+    } finally {
+      _drawLoadByGame.remove(gameId);
+    }
+    return _drawHistoryHasMoreByGame[gameId] ?? false;
+  }
+
+  Future<void> _fetchDrawHistoryRowsFromApi(
+    String gameId, {
+    required int pageNum,
+    required bool append,
+    bool resetPages = false,
+  }) async {
     try {
       final isHost = _ref.read(authSessionProvider).isHostSide;
-      final raw = await _ref.read(lotteryRepositoryProvider).getDrawHistory(
+      final page = await _ref.read(lotteryRepositoryProvider).getDrawHistory(
             gameId: gameId,
             asOwner: isHost,
-            pageSize: ChatPushCache.drawHistoryLimit,
+            pageNum: pageNum,
+            pageSize: HistoryDrawPanel.pageSize,
           );
       if (!mounted) return;
-      final rows = drawHistoryRowsFromApi(raw);
-      if (rows.isEmpty) return;
-      _apiDrawRowsByGame[gameId] = rows;
-      applyServerDraws(
-        gameId: gameId,
-        draws: drawRowsToResultMessages(rows, gameId: gameId),
-        bumpCache: false,
-      );
+      final rows = drawHistoryRowsFromApi(page.rows);
+      final existing = _apiDrawRowsByGame[gameId] ?? const <HistoryDrawRow>[];
+      final List<HistoryDrawRow> next;
+      if (append) {
+        next = _mergeApiHistoryByExactIssue(existing, rows);
+      } else if (resetPages || existing.isEmpty) {
+        next = rows;
+      } else {
+        // 后台回补：只把第 1 页最新并进去，保留已翻页的更老数据
+        next = _mergeApiHistoryByExactIssue(rows, existing);
+      }
+      final capped =
+          next.take(HistoryDrawPanel.maxCachedRows).toList(growable: false);
+      _apiDrawRowsByGame[gameId] = capped;
+      if (resetPages || !append) {
+        if (resetPages || existing.isEmpty) {
+          _drawHistoryPageByGame[gameId] = pageNum;
+        }
+      } else {
+        _drawHistoryPageByGame[gameId] = pageNum;
+      }
+      final loaded = capped.length;
+      final total = page.total;
+      // 以服务端 total 为准；total 缺失时仅当本页满页才继续
+      if (total > 0) {
+        _drawHistoryHasMoreByGame[gameId] =
+            loaded < HistoryDrawPanel.maxCachedRows && loaded < total;
+      } else {
+        _drawHistoryHasMoreByGame[gameId] =
+            loaded < HistoryDrawPanel.maxCachedRows &&
+            rows.length >= HistoryDrawPanel.pageSize;
+      }
+      if (!append && rows.isNotEmpty) {
+        applyServerDraws(
+          gameId: gameId,
+          draws: drawRowsToResultMessages(rows, gameId: gameId),
+          bumpCache: false,
+        );
+      }
       _bumpDrawCache();
-    } catch (_) {}
+    } catch (_) {
+      if (!append && resetPages) rethrow;
+    }
+  }
+
+  /// API 翻页去重：按完整期号，避免后四位碰撞把新页吃掉。
+  List<HistoryDrawRow> _mergeApiHistoryByExactIssue(
+    List<HistoryDrawRow> primary,
+    List<HistoryDrawRow> secondary,
+  ) {
+    final seen = <String>{};
+    final out = <HistoryDrawRow>[];
+    for (final row in [...primary, ...secondary]) {
+      final key = row.issue.trim();
+      if (key.isEmpty || seen.contains(key)) continue;
+      seen.add(key);
+      out.add(row);
+    }
+    out.sort((a, b) {
+      final ai = int.tryParse(a.issue) ?? 0;
+      final bi = int.tryParse(b.issue) ?? 0;
+      if (ai != bi) return bi.compareTo(ai);
+      return b.issue.length.compareTo(a.issue.length);
+    });
+    return out;
   }
 
   void applyServerDraws({
@@ -386,7 +485,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (!_cacheNeedsDrawBackfill(gameId)) return;
-    await _fetchDrawHistoryRowsFromApi(gameId);
+    // 后台回补勿 resetPages，否则会抹掉用户已上拉的更老期
+    await _fetchDrawHistoryRowsFromApi(
+      gameId,
+      pageNum: 1,
+      append: false,
+      resetPages: false,
+    );
   }
 
   void scheduleReconcileChatDraws(String gameId) {

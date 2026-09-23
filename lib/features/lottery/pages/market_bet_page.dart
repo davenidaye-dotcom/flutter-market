@@ -1085,152 +1085,161 @@ class _BottomBar extends StatelessWidget {
         final canInteract = enabled && !submitting;
         final presetColor = canInteract ? AppColors.navBlue : AppColors.textHint;
         final presetActiveColor = canInteract ? AppColors.primaryDark : AppColors.textHint;
-        return Container(
-          color: canInteract ? Colors.white : const Color(0xFFEEEEEE),
-          padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
-          child: SafeArea(
-            top: false,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    for (var i = 0; i < presets.length; i++) ...[
-                      if (i > 0) SizedBox(width: 6.w),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: canInteract ? () => onPreset(i) : null,
-                          child: Container(
-                            height: 32.h,
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: presetIndex == i ? presetActiveColor : presetColor,
-                              borderRadius: BorderRadius.circular(4.r),
-                            ),
-                            child: Text(
-                              '${presets[i]}',
-                              style: TextStyle(fontSize: 14.sp, color: Colors.white, fontWeight: FontWeight.w600),
+        // AppPageScaffold 默认 resizeToAvoidBottomInset=false，需手动抬高底栏避开系统键盘
+        final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+        return AnimatedPadding(
+          duration: const Duration(milliseconds: 120),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: keyboardInset),
+          child: Container(
+            color: canInteract ? Colors.white : const Color(0xFFEEEEEE),
+            padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
+            child: SafeArea(
+              top: false,
+              // 键盘已盖住底部手势条，勿再叠一层 safe padding
+              bottom: keyboardInset <= 0,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      for (var i = 0; i < presets.length; i++) ...[
+                        if (i > 0) SizedBox(width: 6.w),
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: canInteract ? () => onPreset(i) : null,
+                            child: Container(
+                              height: 32.h,
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: presetIndex == i ? presetActiveColor : presetColor,
+                                borderRadius: BorderRadius.circular(4.r),
+                              ),
+                              child: Text(
+                                '${presets[i]}',
+                                style: TextStyle(fontSize: 14.sp, color: Colors.white, fontWeight: FontWeight.w600),
+                              ),
                             ),
                           ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  SizedBox(height: 8.h),
+                  ValueListenableBuilder<TextEditingValue>(
+                    valueListenable: amountCtrl,
+                    builder: (_, value, _) {
+                      final unit = int.tryParse(value.text.trim()) ??
+                          (double.tryParse(value.text.trim())?.round() ?? 0);
+                      final liveTotal = unit * count;
+                      return Row(
+                        children: [
+                          Text(
+                            '下注总额: $liveTotal',
+                            style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                          ),
+                          const Spacer(),
+                          Text(
+                            '共$count注单',
+                            style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                  SizedBox(height: 8.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 40.h,
+                          child: EmulatorSafeTextField(
+                            controller: amountCtrl,
+                            enabled: canInteract,
+                            keyboardType: TextInputType.number,
+                            textInputAction: TextInputAction.done,
+                            onChanged: onAmountChanged,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            style: TextStyle(fontSize: 14.sp, color: canInteract ? AppColors.textPrimary : AppColors.textHint),
+                            decoration: InputDecoration(
+                              hintText: enabled ? '请输入下注金额' : '房主不可下注',
+                              hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
+                              filled: true,
+                              fillColor: canInteract ? const Color(0xFFF5F5F5) : const Color(0xFFDDDDDD),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12.w),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(4.r),
+                                borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(4.r),
+                                borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+                              ),
+                              disabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(4.r),
+                                borderSide: const BorderSide(color: Color(0xFFCCCCCC)),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      GestureDetector(
+                        onTap: canInteract ? onBet : null,
+                        child: Container(
+                          height: 40.h,
+                          padding: EdgeInsets.symmetric(horizontal: 18.w),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: canInteract ? AppColors.navBlue : AppColors.textHint,
+                            borderRadius: BorderRadius.circular(4.r),
+                          ),
+                          child: submitting
+                              ? SizedBox(
+                                  width: 18.w,
+                                  height: 18.w,
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text('下注', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      GestureDetector(
+                        onTap: canInteract ? onRepeat : null,
+                        child: Container(
+                          height: 40.h,
+                          padding: EdgeInsets.symmetric(horizontal: 12.w),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: canInteract ? const Color(0xFF43A047) : AppColors.textHint,
+                            borderRadius: BorderRadius.circular(4.r),
+                          ),
+                          child: Text('重投', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
+                        ),
+                      ),
+                      SizedBox(width: 8.w),
+                      GestureDetector(
+                        onTap: canInteract ? onReset : null,
+                        child: Container(
+                          height: 40.h,
+                          padding: EdgeInsets.symmetric(horizontal: 18.w),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: canInteract ? AppColors.danger : AppColors.textHint.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(4.r),
+                          ),
+                          child: Text('重置', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
                         ),
                       ),
                     ],
-                  ],
-                ),
-                SizedBox(height: 8.h),
-                ValueListenableBuilder<TextEditingValue>(
-                  valueListenable: amountCtrl,
-                  builder: (_, value, _) {
-                    final unit = int.tryParse(value.text.trim()) ??
-                        (double.tryParse(value.text.trim())?.round() ?? 0);
-                    final liveTotal = unit * count;
-                    return Row(
-                      children: [
-                        Text(
-                          '下注总额: $liveTotal',
-                          style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                        ),
-                        const Spacer(),
-                        Text(
-                          '共$count注单',
-                          style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-                SizedBox(height: 8.h),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 40.h,
-                        child: EmulatorSafeTextField(
-                          controller: amountCtrl,
-                          enabled: canInteract,
-                          keyboardType: TextInputType.number,
-                          textInputAction: TextInputAction.done,
-                          onChanged: onAmountChanged,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          style: TextStyle(fontSize: 14.sp, color: canInteract ? AppColors.textPrimary : AppColors.textHint),
-                          decoration: InputDecoration(
-                            hintText: enabled ? '请输入下注金额' : '房主不可下注',
-                            hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
-                            filled: true,
-                            fillColor: canInteract ? const Color(0xFFF5F5F5) : const Color(0xFFDDDDDD),
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12.w),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(4.r),
-                              borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(4.r),
-                              borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
-                            ),
-                            disabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(4.r),
-                              borderSide: const BorderSide(color: Color(0xFFCCCCCC)),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    GestureDetector(
-                      onTap: canInteract ? onBet : null,
-                      child: Container(
-                        height: 40.h,
-                        padding: EdgeInsets.symmetric(horizontal: 18.w),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: canInteract ? AppColors.navBlue : AppColors.textHint,
-                          borderRadius: BorderRadius.circular(4.r),
-                        ),
-                        child: submitting
-                            ? SizedBox(
-                                width: 18.w,
-                                height: 18.w,
-                                child: const CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text('下注', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    GestureDetector(
-                      onTap: canInteract ? onRepeat : null,
-                      child: Container(
-                        height: 40.h,
-                        padding: EdgeInsets.symmetric(horizontal: 12.w),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: canInteract ? const Color(0xFF43A047) : AppColors.textHint,
-                          borderRadius: BorderRadius.circular(4.r),
-                        ),
-                        child: Text('重投', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    GestureDetector(
-                      onTap: canInteract ? onReset : null,
-                      child: Container(
-                        height: 40.h,
-                        padding: EdgeInsets.symmetric(horizontal: 18.w),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: canInteract ? AppColors.danger : AppColors.textHint.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(4.r),
-                        ),
-                        child: Text('重置', style: TextStyle(fontSize: 15.sp, color: Colors.white)),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                  ),
+                ],
+              ),
             ),
           ),
         );

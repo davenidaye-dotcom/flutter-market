@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import 'package:easy_refresh/easy_refresh.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/session_store.dart';
@@ -1326,19 +1327,22 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   ) {
     final issue = game.previousIssue?.trim() ?? '';
     final balls = game.previousResults.where((n) => n > 0).toList();
-    HistoryDrawRow? liveHead;
-    if (issue.isNotEmpty && balls.isNotEmpty) {
-      liveHead = HistoryDrawRow(
-        issue: issue,
-        numbers: balls,
-        summary: balls.length >= 2 ? '${balls[0] + balls[1]}' : '',
-      );
+    if (issue.isEmpty || balls.isEmpty) {
+      return rows.take(HistoryDrawPanel.maxCachedRows).toList(growable: false);
     }
-    return mergeDrawHistoryRows(
-      base: rows,
-      liveHead: liveHead,
-      maxRows: HistoryDrawPanel.maxRows,
+    final liveHead = HistoryDrawRow(
+      issue: issue,
+      numbers: balls,
+      summary: balls.length >= 2 ? '${balls[0] + balls[1]}' : '',
     );
+    // 历史面板要能上拉翻页：只做表头顶条合并，不能用断档截断 / pageSize=20 上限
+    final out = <HistoryDrawRow>[liveHead];
+    for (final row in rows) {
+      if (sameIssueNo(row.issue, liveHead.issue)) continue;
+      out.add(row);
+      if (out.length >= HistoryDrawPanel.maxCachedRows) break;
+    }
+    return out;
   }
 
   void _scheduleHistoryRowsRefresh() {
@@ -1678,26 +1682,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                     },
                   ),
                 ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: ValueListenableBuilder<bool>(
-                    valueListenable: _historyExpandedNotifier,
-                    builder: (_, expanded, __) {
-                      if (!expanded) return const SizedBox.shrink();
-                      return _HistoryOverlayPanel(
-                        roomId: widget.roomId,
-                        gameId: activeGameId,
-                        rowsListenable: _historyDisplayRowsNotifier,
-                        loadingListenable: _historyLoadingNotifier,
-                        onRetry: () => unawaited(_ensureHistoryPanelReady()),
-                        onEpochChange: _refreshHistoryRows,
-                      );
-                    },
-                  ),
-                ),
-                // 注单/长龙/历史展开时：点面板外区域关闭
+                // 注单/长龙/历史展开时：点面板外区域关闭（必须在面板之下，否则吞掉上拉下拉）
                 Positioned.fill(
                   child: ListenableBuilder(
                     listenable: Listenable.merge([
@@ -1714,6 +1699,25 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                         onTap: _dismissOverlays,
                         behavior: HitTestBehavior.opaque,
                         child: const ColoredBox(color: Color(0x03000000)),
+                      );
+                    },
+                  ),
+                ),
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _historyExpandedNotifier,
+                    builder: (_, expanded, __) {
+                      if (!expanded) return const SizedBox.shrink();
+                      return _HistoryOverlayPanel(
+                        roomId: widget.roomId,
+                        gameId: activeGameId,
+                        rowsListenable: _historyDisplayRowsNotifier,
+                        loadingListenable: _historyLoadingNotifier,
+                        onRetry: () => unawaited(_ensureHistoryPanelReady()),
+                        onEpochChange: _refreshHistoryRows,
                       );
                     },
                   ),
@@ -2283,6 +2287,41 @@ class _HistoryOverlayPanel extends ConsumerStatefulWidget {
 }
 
 class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
+  final _refreshCtrl = EasyRefreshController();
+
+  @override
+  void dispose() {
+    _refreshCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onRefresh() async {
+    await ref
+        .read(roomLotteryLiveProvider(widget.roomId).notifier)
+        .refreshDrawHistoryRows(widget.gameId);
+    if (mounted) {
+      widget.onEpochChange();
+      // 刷新后允许再次上拉
+      _refreshCtrl.resetFooter();
+    }
+  }
+
+  Future<bool> _onLoadMore() async {
+    final hasMore = await ref
+        .read(roomLotteryLiveProvider(widget.roomId).notifier)
+        .loadMoreDrawHistoryRows(widget.gameId);
+    if (mounted) {
+      widget.onEpochChange();
+      if (hasMore) {
+        // 列表重建后解除 footer 锁定，才能连续上拉
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _refreshCtrl.resetFooter();
+        });
+      }
+    }
+    return hasMore;
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen(
@@ -2308,6 +2347,9 @@ class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
               loading: loading && rows.isEmpty,
               error: false,
               onRetry: widget.onRetry,
+              onRefresh: _onRefresh,
+              onLoadMore: _onLoadMore,
+              refreshController: _refreshCtrl,
             );
           },
         );
