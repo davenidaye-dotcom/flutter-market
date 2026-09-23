@@ -2273,6 +2273,7 @@ class _GameStatusBar extends StatelessWidget {
                   roomId: roomId,
                   gameId: gameId,
                   showIssue: false,
+                  countdownColor: AppColors.countdownGreen,
                 ),
               ),
               GestureDetector(

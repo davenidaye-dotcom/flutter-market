@@ -34,8 +34,8 @@ class ChatMessageItem extends StatelessWidget {
         message.type == ChatMessageType.betListCheck) {
       return _RobotBubble(
         message: message,
-        // 中奖列表核对对齐模板图正文，比房间其它气泡大约一号。
-        fontSize: message.type == ChatMessageType.winCheck ? 16.sp : 13.sp,
+        // 中奖列表、竞猜核对列表对齐模板图正文。
+        fontSize: message.type == ChatMessageType.betReceipt ? 13.sp : 16.sp,
       );
     }
     if (_isRobotSystemLayout) {

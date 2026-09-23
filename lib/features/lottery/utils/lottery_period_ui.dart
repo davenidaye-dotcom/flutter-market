@@ -139,6 +139,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
     this.issueStyle,
     this.sealedStyle,
     this.drawingStyle,
+    this.countdownColor = AppColors.danger,
   });
 
   final LotteryGameModel game;
@@ -150,6 +151,8 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
   final TextStyle? issueStyle;
   final TextStyle? sealedStyle;
   final TextStyle? drawingStyle;
+  /// 距封盘翻页钟和「距离开奖 N 秒」。开奖中仍用红色。
+  final Color countdownColor;
 
   double get _rowHeight => compactCountdown ? 18.h : 26.h;
 
@@ -179,6 +182,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
       fontWeight: FontWeight.w600,
       height: 1,
     );
+    final countdownLabel = phaseLabel.copyWith(color: countdownColor);
 
     return switch (phase) {
       LotteryDisplayPhase.drawing => _phaseRow(
@@ -204,7 +208,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
                 TextSpan(
                   text:
                       '封盘中，距离开奖${LotteryPeriodHelper.statusClockSeconds(game, now)}秒',
-                  style: sealedStyle ?? phaseLabel,
+                  style: sealedStyle ?? countdownLabel,
                 ),
               ],
             ),
@@ -221,7 +225,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
               FlipCountdown(
                 seconds: LotteryPeriodHelper.bettingCountdownSeconds(game, now),
                 compact: compactCountdown,
-                digitColor: AppColors.danger,
+                digitColor: countdownColor,
               ),
             ],
           ),

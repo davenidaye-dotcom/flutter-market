@@ -219,6 +219,7 @@ class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
     this.issueStyle,
     this.sealedStyle,
     this.drawingStyle,
+    this.countdownColor = AppColors.danger,
   });
 
   final String roomId;
@@ -229,6 +230,7 @@ class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
   final TextStyle? issueStyle;
   final TextStyle? sealedStyle;
   final TextStyle? drawingStyle;
+  final Color countdownColor;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -248,6 +250,7 @@ class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
       issueStyle: issueStyle,
       sealedStyle: sealedStyle,
       drawingStyle: drawingStyle,
+      countdownColor: countdownColor,
     );
   }
 }
