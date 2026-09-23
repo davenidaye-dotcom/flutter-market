@@ -515,7 +515,17 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
     final drawCount =
         timeline.where((m) => m.type == ChatMessageType.resultCard).length;
-    return drawCount >= 1;
+    if (drawCount < 1) return false;
+    // 多期开奖却完全没有下注/核对：历史回补未生效，不算暖，强制再拉 messages
+    if (drawCount >= 2) {
+      final hasMid = timeline.any((m) =>
+          m.type == ChatMessageType.text ||
+          m.type == ChatMessageType.betReceipt ||
+          m.type == ChatMessageType.betListCheck ||
+          m.type == ChatMessageType.winCheck);
+      if (!hasMid) return false;
+    }
+    return true;
   }
 
   Future<void> loadChatMessagesFromServer(String gameId) async {

@@ -103,24 +103,35 @@ class _AnnouncementMarqueeState extends State<AnnouncementMarquee>
                     }
                     final cycle = _textWidth + _gap;
                     if (cycle <= _gap || vw <= 0) {
-                      return Text(text, style: style, maxLines: 1, softWrap: false);
+                      return Text(
+                        text,
+                        style: style,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.clip,
+                      );
                     }
                     final seconds = (_elapsed - _origin).inMicroseconds / 1000000.0;
                     final dx = -((seconds * _pxPerSec) % cycle);
                     final copies = (vw / cycle).ceil() + 2;
-                    return Transform.translate(
-                      offset: Offset(dx, 0),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var i = 0; i < copies; i++) ...[
-                            SizedBox(
-                              width: _textWidth,
-                              child: Text(text, style: style, maxLines: 1, softWrap: false),
-                            ),
-                            const SizedBox(width: _gap),
+                    // OverflowBox：滚动条比视口宽时不触发 RenderFlex overflow（仍由外层 ClipRect 裁切）
+                    return OverflowBox(
+                      maxWidth: double.infinity,
+                      alignment: Alignment.centerLeft,
+                      child: Transform.translate(
+                        offset: Offset(dx, 0),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (var i = 0; i < copies; i++) ...[
+                              SizedBox(
+                                width: _textWidth,
+                                child: Text(text, style: style, maxLines: 1, softWrap: false),
+                              ),
+                              const SizedBox(width: _gap),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     );
                   },
