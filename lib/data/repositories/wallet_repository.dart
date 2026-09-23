@@ -19,8 +19,9 @@ class WalletRepository {
     return WalletSummaryModel(
       availablePoints: n(m['totalAssets'] ?? m['available'] ?? m['availablePoints'] ?? m['balance']),
       todayTurnover: n(m['turnover'] ?? m['todayTurnover']),
-      // rebate = 个人回水比例%；pendingRebate = 待领金额
+      // pendingRebate = 待领金额；paidRebate = 当前业务日已领取回水
       pendingRebate: n(m['pendingRebate']),
+      paidRebate: n(m['paidRebate']),
       todayWinLoss: n(m['profitLoss'] ?? m['todayWinLoss'] ?? m['winLoss']),
       playMode: (m['playMode'] ?? 'REAL').toString(),
     );

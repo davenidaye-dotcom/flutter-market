@@ -198,7 +198,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                           Expanded(
                                             child: _metric(
                                               '回水',
-                                              s == null ? '--' : '${s.pendingRebate.toInt()}',
+                                              s == null ? '--' : '${s.paidRebate.toInt()}',
                                               brown,
                                               valueColor: AppColors.success,
                                             ),

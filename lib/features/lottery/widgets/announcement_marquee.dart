@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 
-/// 彩种列表顶栏公告：横向无缝跑马灯。
+/// 彩种列表顶栏公告：匀速连续滚动，下一段紧跟上一段。
 class AnnouncementMarquee extends StatefulWidget {
   const AnnouncementMarquee({super.key, required this.text});
 
@@ -14,12 +15,17 @@ class AnnouncementMarquee extends StatefulWidget {
 
 class _AnnouncementMarqueeState extends State<AnnouncementMarquee>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
+  late final Ticker _ticker;
+  Duration _elapsed = Duration.zero;
+
+  /// 当前这段文案开始滚动的时刻。换文案才重置，宽度变化不打断。
+  Duration _origin = Duration.zero;
   double _textWidth = 0;
   double _viewportWidth = 0;
+  String _measuredText = '';
 
   /// 两段文案之间的空隙
-  static const double _gap = 48;
+  static const double _gap = 32;
 
   /// 约 40 逻辑像素/秒
   static const double _pxPerSec = 40;
@@ -27,52 +33,52 @@ class _AnnouncementMarqueeState extends State<AnnouncementMarquee>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this);
-  }
-
-  @override
-  void didUpdateWidget(covariant AnnouncementMarquee oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.text != widget.text) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _measureAndStart();
-      });
-    }
+    _ticker = createTicker((elapsed) {
+      if (!mounted) return;
+      setState(() => _elapsed = elapsed);
+    })..start();
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _ticker.dispose();
     super.dispose();
   }
 
-  void _measureAndStart() {
-    final text = widget.text.trim().isEmpty ? '欢迎进入本房间' : widget.text.trim();
-    if (_viewportWidth <= 0) {
-      _controller.stop();
+  void _scheduleMeasure(double vw, String text, TextStyle style, TextScaler scaler) {
+    if ((vw - _viewportWidth).abs() < 0.5 && text == _measuredText && _textWidth > 0) {
       return;
     }
-    final style = TextStyle(fontSize: 13.sp, color: AppColors.textPrimary);
-    final painter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
-    _textWidth = painter.width;
-    // 短文案也滚动：以视口宽度为周期，避免停住无感
-    final cycle = (_textWidth + _gap).clamp(_viewportWidth + _gap, double.infinity);
-    final ms = ((cycle / _pxPerSec) * 1000).round().clamp(4000, 60000);
-    _controller
-      ..stop()
-      ..duration = Duration(milliseconds: ms)
-      ..repeat();
-    if (mounted) setState(() {});
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final painter = TextPainter(
+        text: TextSpan(text: text, style: style),
+        textDirection: TextDirection.ltr,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final width = painter.width;
+      if ((vw - _viewportWidth).abs() < 0.5 &&
+          text == _measuredText &&
+          (width - _textWidth).abs() < 0.5) {
+        return;
+      }
+      setState(() {
+        if (text != _measuredText) {
+          _origin = _elapsed;
+        }
+        _viewportWidth = vw;
+        _measuredText = text;
+        _textWidth = width;
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final text = widget.text.trim().isEmpty ? '欢迎进入本房间' : widget.text.trim();
-    final style = TextStyle(fontSize: 13.sp, color: AppColors.textPrimary);
+    final style = TextStyle(fontSize: 13.sp, color: AppColors.textPrimary, height: 1);
+    final scaler = MediaQuery.textScalerOf(context);
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
@@ -92,39 +98,30 @@ class _AnnouncementMarqueeState extends State<AnnouncementMarquee>
                 child: LayoutBuilder(
                   builder: (context, constraints) {
                     final vw = constraints.maxWidth;
-                    if (vw != _viewportWidth && vw > 0) {
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        if (!mounted) return;
-                        _viewportWidth = vw;
-                        _measureAndStart();
-                      });
+                    if (vw > 0) {
+                      _scheduleMeasure(vw, text, style, scaler);
                     }
-                    final cycle = (_textWidth + _gap)
-                        .clamp((_viewportWidth > 0 ? _viewportWidth : vw) + _gap, double.infinity);
-                    return AnimatedBuilder(
-                      animation: _controller,
-                      builder: (context, _) {
-                        final dx = -_controller.value * cycle;
-                        Widget label(String t) => Text(
-                              t,
-                              style: style,
-                              maxLines: 1,
-                              softWrap: false,
-                            );
-                        return Stack(
-                          clipBehavior: Clip.hardEdge,
-                          children: [
-                            Transform.translate(
-                              offset: Offset(dx, 0),
-                              child: label(text),
+                    final cycle = _textWidth + _gap;
+                    if (cycle <= _gap || vw <= 0) {
+                      return Text(text, style: style, maxLines: 1, softWrap: false);
+                    }
+                    final seconds = (_elapsed - _origin).inMicroseconds / 1000000.0;
+                    final dx = -((seconds * _pxPerSec) % cycle);
+                    final copies = (vw / cycle).ceil() + 2;
+                    return Transform.translate(
+                      offset: Offset(dx, 0),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (var i = 0; i < copies; i++) ...[
+                            SizedBox(
+                              width: _textWidth,
+                              child: Text(text, style: style, maxLines: 1, softWrap: false),
                             ),
-                            Transform.translate(
-                              offset: Offset(dx + cycle, 0),
-                              child: label(text),
-                            ),
+                            const SizedBox(width: _gap),
                           ],
-                        );
-                      },
+                        ],
+                      ),
                     );
                   },
                 ),

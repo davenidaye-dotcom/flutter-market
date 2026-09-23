@@ -262,7 +262,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         points: wallet.availablePoints.toInt(),
         turnover: wallet.todayTurnover.toInt(),
         winLoss: wallet.todayWinLoss.toInt(),
-        rebate: wallet.pendingRebate.toInt(),
+        rebate: wallet.paidRebate.toInt(),
         isTrialAccount: wallet.isTrial,
       );
     } catch (_) {}
@@ -836,7 +836,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         wallet.availablePoints.toInt(),
         wallet.todayTurnover.toInt(),
         wallet.todayWinLoss.toInt(),
-        wallet.pendingRebate.toInt(),
+        wallet.paidRebate.toInt(),
         wallet.isTrial,
       );
     } catch (_) {
