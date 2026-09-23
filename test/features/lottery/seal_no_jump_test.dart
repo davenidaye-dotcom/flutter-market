@@ -5,7 +5,7 @@ import 'package:letou_app/features/lottery/engine/lottery_period_engine.dart';
 import 'package:letou_app/features/lottery/utils/lottery_period_ui.dart';
 
 void main() {
-  test('同期内后到的 sealAt/openAt 按服务端时刻更新距封盘', () {
+  test('同期更远的开奖时刻不采用，单独的 sealAt 仍可改封盘点', () {
     final engine = LotteryPeriodEngine();
     final t0 = DateTime(2099, 6, 1, 12, 0, 0);
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
@@ -38,7 +38,7 @@ void main() {
     final midSeal = LotteryPeriodHelper.bettingCountdownSeconds(mid, t15);
     expect(midSeal, 30);
 
-    // 与 web mergePeriod 一致：后到的 sealAt/openAt 覆盖，距封盘跟着变。
+    // 同期更远的 openAt 不采用，剩余保持原来的 75 秒钟。
     final laterOpen = t0.add(const Duration(seconds: 95)).millisecondsSinceEpoch;
     engine.onPeriodTick(
       'JS_SC',
@@ -50,8 +50,8 @@ void main() {
       now: t15,
     );
     final after = engine.displayGame('JS_SC', t15);
-    expect(LotteryPeriodHelper.bettingCountdownSeconds(after, t15), 50);
-    expect(LotteryPeriodHelper.openRemainSeconds(after, t15), 80);
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(after, t15), 30);
+    expect(LotteryPeriodHelper.openRemainSeconds(after, t15), 60);
 
     engine.applySealConfig(
       'JS_SC',
@@ -142,7 +142,7 @@ void main() {
     expect(LotteryPeriodHelper.bettingCountdownSeconds(next, sealedAt), 45);
   });
 
-  test('封盘前只带 openAt 时按原提前量平移 sealAt', () {
+  test('封盘前更远的 openAt 不拉长剩余，提前量保持不变', () {
     final engine = LotteryPeriodEngine();
     final t0 = DateTime(2099, 6, 1, 12, 0, 0);
     engine.bootstrap(
@@ -169,8 +169,38 @@ void main() {
     final t15 = t0.add(const Duration(seconds: 15));
     final g = engine.displayGame('JS_SC', t15);
     expect(LotteryPeriodHelper.phaseOf(g, t15), LotteryDisplayPhase.betting);
-    expect(LotteryPeriodHelper.bettingCountdownSeconds(g, t15), 50);
-    expect(LotteryPeriodHelper.openRemainSeconds(g, t15), 80);
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(g, t15), 30);
+    expect(LotteryPeriodHelper.openRemainSeconds(g, t15), 60);
+  });
+
+  test('封盘前更近的 openAt 按原提前量平移 sealAt', () {
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          countdownSeconds: 75,
+          openAtEpochMs: t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch,
+          sealSeconds: 30,
+          sealAtEpochMs: t0.add(const Duration(seconds: 45)).millisecondsSinceEpoch,
+        ),
+      ],
+      t0,
+    );
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 60,
+      openAtEpochMs: t0.add(const Duration(seconds: 60)).millisecondsSinceEpoch,
+      now: t0,
+    );
+    final g = engine.displayGame('JS_SC', t0);
+    expect(LotteryPeriodHelper.phaseOf(g, t0), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.openRemainSeconds(g, t0), 60);
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(g, t0), 30);
   });
 
   test('开奖时刻到了保持开奖中，同期更远 openAt 不把倒计时拉回来', () {

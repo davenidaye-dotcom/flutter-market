@@ -254,7 +254,7 @@ final class LotteryPeriodEngine {
       }
     }
 
-    // 封盘后钉死本期时刻，直到换期。未封盘时后来的包覆盖；只带 openAt 时封盘提前量跟着平移。
+    // 封盘后钉死到换期。同期未封盘时，开奖时刻只允许提前，不能把剩余拉长。
     if (!pinned) {
       _applyEpochs(
         slot,
@@ -528,7 +528,8 @@ final class LotteryPeriodEngine {
         compareIssueNo(issue, slot.model.currentIssue) > 0;
   }
 
-  /// 写入开奖/封盘时刻。只带 openAt 时，按原提前量平移 sealAt，避免封盘段被拉成一期总长。
+  /// 写入开奖/封盘时刻。同一期已有开奖时刻时，更远的 openAt 整包丢弃。
+  /// 只带更近的 openAt 时，按原提前量平移 sealAt，避免封盘段被拉成一期总长。
   void _applyEpochs(
     _GameSlot slot, {
     int? openAtMs,
@@ -537,6 +538,14 @@ final class LotteryPeriodEngine {
   }) {
     final prevOpen = slot.model.openAtEpochMs ?? 0;
     final prevSeal = slot.model.sealAtEpochMs ?? 0;
+    final sameIssue = slot.armedIssue.isNotEmpty &&
+        _sameIssue(slot.armedIssue, slot.model.currentIssue);
+    if (sameIssue &&
+        openAtMs != null &&
+        openAtMs > prevOpen &&
+        prevOpen > 0) {
+      return;
+    }
     var sealAt = sealAtMs;
     // 开奖时刻还在未来、包里又没带 sealAt：按原提前量平移，避免封盘段被拉成一期总长。
     if (openAtMs != null &&

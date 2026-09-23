@@ -654,7 +654,7 @@ void main() {
     expect(g.isDrawing, isFalse);
   });
 
-  test('before seal a later openAt replaces the http anchor', () {
+  test('before seal a farther openAt does not stretch the current issue', () {
     final httpOpenAt =
         t0.add(const Duration(seconds: 47)).millisecondsSinceEpoch;
     engine.bootstrap(
@@ -678,8 +678,8 @@ void main() {
       openAtEpochMs: staleWsOpenAt,
       now: t0,
     );
-    // 未封盘：后来的 openAt 覆盖。本期没有 sealAt，不涉及封盘钉死。
-    expect(engine.countdownFor('JS_SC', t0), 64);
+    // 同期已有开奖时刻：更远的包丢掉，剩余从 47 继续减。
+    expect(engine.countdownFor('JS_SC', t0), 47);
     final t5 = t0.add(const Duration(seconds: 5));
     engine.onPeriodTick(
       'JS_SC',
@@ -688,7 +688,7 @@ void main() {
       openAtEpochMs: staleWsOpenAt + 6000,
       now: t5,
     );
-    expect(engine.countdownFor('JS_SC', t5), 65);
+    expect(engine.countdownFor('JS_SC', t5), 42);
   });
 
   test('ws synced stuck drawing recovers from http snapshot', () {
