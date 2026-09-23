@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
@@ -48,7 +50,7 @@ class LotteryBall extends StatelessWidget {
       child: Text(
         '$number',
         style: TextStyle(
-          color: Colors.white,
+          color: AppColors.ballDigitColor(number),
           fontSize: s * fontScale,
           height: 1,
           fontWeight: FontWeight.bold,
@@ -66,9 +68,11 @@ class LotteryBallRow extends StatelessWidget {
     this.placeholder = false,
     this.ballSize,
     this.gap,
-    /// true：10 列等宽居中（与表头「一」～「十」、顶栏开奖球对齐）
+    /// true：10 列等宽，方框铺满格子并与表头「一」～「十」对齐。
     this.expandSlots = false,
     this.fontScale = 0.48,
+    /// 指定后数字用这个绝对字号，不随方框变大。
+    this.digitFontSize,
   });
 
   final List<int> numbers;
@@ -77,24 +81,40 @@ class LotteryBallRow extends StatelessWidget {
   final double? gap;
   final bool expandSlots;
   final double fontScale;
+  final double? digitFontSize;
 
   @override
   Widget build(BuildContext context) {
     if (expandSlots) {
-      return Row(
-        children: List.generate(
-          10,
-          (i) => Expanded(
-            child: Center(
-              child: LotteryBall(
-                number: i < numbers.length ? numbers[i] : 0,
-                size: ballSize,
-                placeholder: placeholder || i >= numbers.length,
-                fontScale: fontScale,
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final slot = constraints.maxWidth / 10;
+          final slotGap = 1.w;
+          var size = slot - slotGap;
+          final maxH = constraints.maxHeight;
+          if (maxH.isFinite && maxH > 0 && maxH < size) {
+            size = maxH;
+          }
+          size = math.max(1, size);
+          final scale = digitFontSize != null && digitFontSize! > 0
+              ? digitFontSize! / size
+              : fontScale;
+          return Row(
+            children: List.generate(
+              10,
+              (i) => Expanded(
+                child: Center(
+                  child: LotteryBall(
+                    number: i < numbers.length ? numbers[i] : 0,
+                    size: size,
+                    placeholder: placeholder || i >= numbers.length,
+                    fontScale: scale,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       );
     }
     final spacing = gap ?? 3.w;

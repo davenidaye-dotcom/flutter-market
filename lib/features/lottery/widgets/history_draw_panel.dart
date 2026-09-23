@@ -20,11 +20,11 @@ class HistoryDrawRow {
 
 /// 顶栏期号、开奖球、历史表头、下拉数据行共用同一套列宽。
 abstract final class HistoryDrawLayout {
-  static double hPad() => 10.w;
+  static double hPad() => 8.w;
   /// 4 位期号居中，和「期数」同一列。
-  static double issueW() => 52.w;
-  static double issueGap() => 4.w;
-  static double gyW() => 48.w;
+  static double issueW() => 40.w;
+  static double issueGap() => 2.w;
+  static double gyW() => 46.w;
   static double dtW() => 58.w;
   static double trailingW() => gyW() + dtW();
   static double ballSize() => 18.w;
@@ -43,8 +43,21 @@ abstract final class HistoryDrawLayout {
         fontWeight: FontWeight.w600,
       );
 
-  /// 历史表开奖球内数字相对球径
+  /// 历史表开奖球内数字相对原来 18 边长的比例。
   static double ballFontScale() => 0.72;
+
+  /// 历史表数字的绝对字号，方框变大后仍用这个，字不跟着变。
+  static double ballDigitSize() => ballSize() * ballFontScale();
+
+  /// 顶栏最新开奖数字，保持原来 18 × 0.48。
+  static double latestBallDigitSize() => ballSize() * 0.48;
+
+  static const int visibleRows = 10;
+  static double rowHeight() => 24.h;
+  static double rowGap() => 1.h;
+  static double headerHeight() => 28.h;
+  static double listPadTop() => 1.h;
+  static double listPadBottom() => 1.h;
 }
 
 /// 期号 | 十个等宽槽 | 冠亚和 | 龙虎。顶栏和下拉必须用这一行，禁止各自算宽。
@@ -98,14 +111,21 @@ class HistoryDrawPanel extends StatelessWidget {
     this.refreshController,
   });
 
-  /// 首屏默认拉取条数；面板可视约 7 行，其余靠上拉加载。
+  /// 首屏默认拉取条数；面板固定露出 [HistoryDrawLayout.visibleRows] 期，其余靠上拉。
   static const int pageSize = 20;
   /// 内存上限，避免无限堆积。
   static const int maxCachedRows = 300;
   @Deprecated('Use pageSize')
   static const int maxRows = pageSize;
 
-  static double panelHeight(BuildContext context) => 260.h;
+  static double panelHeight(BuildContext context) {
+    final rows = HistoryDrawLayout.visibleRows;
+    return HistoryDrawLayout.headerHeight() +
+        HistoryDrawLayout.listPadTop() +
+        HistoryDrawLayout.listPadBottom() +
+        rows * HistoryDrawLayout.rowHeight() +
+        (rows - 1) * HistoryDrawLayout.rowGap();
+  }
 
   final List<HistoryDrawRow> rows;
   final bool loading;
@@ -176,9 +196,15 @@ class HistoryDrawPanel extends StatelessWidget {
           )
         : ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: EdgeInsets.fromLTRB(pad, 2.h, pad, 8.h),
+            padding: EdgeInsets.fromLTRB(
+              pad,
+              HistoryDrawLayout.listPadTop(),
+              pad,
+              HistoryDrawLayout.listPadBottom(),
+            ),
             itemCount: displayRows.length,
-            separatorBuilder: (_, _) => SizedBox(height: 2.h),
+            separatorBuilder: (_, _) =>
+                SizedBox(height: HistoryDrawLayout.rowGap()),
             itemBuilder: (_, i) => _DataRow(row: displayRows[i]),
           );
 
@@ -203,7 +229,7 @@ class _Header extends StatelessWidget {
   Widget build(BuildContext context) {
     final pad = HistoryDrawLayout.hPad();
     return Container(
-      height: 32.h,
+      height: HistoryDrawLayout.headerHeight(),
       padding: EdgeInsets.symmetric(horizontal: pad),
       color: const Color(0xFFF5F5F5),
       child: Pk10AlignRow(
@@ -251,7 +277,7 @@ class _DataRow extends StatelessWidget {
         : '';
 
     return SizedBox(
-      height: 36.h,
+      height: HistoryDrawLayout.rowHeight(),
       child: Pk10AlignRow(
         issue: Text(
           _issueTail(row.issue),
@@ -261,9 +287,8 @@ class _DataRow extends StatelessWidget {
         ),
         middle: LotteryBallRow(
           numbers: row.numbers,
-          ballSize: HistoryDrawLayout.ballSize(),
           expandSlots: true,
-          fontScale: HistoryDrawLayout.ballFontScale(),
+          digitFontSize: HistoryDrawLayout.ballDigitSize(),
         ),
         gy: Text(
           '$sum$size$oddEven',

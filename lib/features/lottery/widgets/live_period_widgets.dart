@@ -80,6 +80,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
     this.ballSize,
     this.gap,
     this.expandSlots = false,
+    this.digitFontSize,
   });
 
   final String roomId;
@@ -87,6 +88,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
   final double? ballSize;
   final double? gap;
   final bool expandSlots;
+  final double? digitFontSize;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -108,6 +110,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
       gap: gap,
       placeholder: snap.placeholder,
       expandSlots: expandSlots,
+      digitFontSize: digitFontSize,
     );
   }
 }

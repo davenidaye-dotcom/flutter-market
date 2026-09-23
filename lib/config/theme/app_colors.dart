@@ -27,17 +27,25 @@ abstract final class AppColors {
   static const sidebarActive = Color(0xFF4A698A);
   static const sidebarInactive = Color(0xFFF0F0F0);
 
-  /// 开奖号码球色
+  /// 开奖号码方框色，取自房间模板截图。
   static const ballColors = <int, Color>{
-    1: Color(0xFFFFD700),
-    2: Color(0xFF2196F3),
-    3: Color(0xFF616161),
-    4: Color(0xFFFF9800),
-    5: Color(0xFF00BCD4),
-    6: Color(0xFF9C27B0),
-    7: Color(0xFFB0BEC5),
-    8: Color(0xFFF44336),
-    9: Color(0xFF880E4F),
-    10: Color(0xFF4CAF50),
+    1: Color(0xFFF9F100),
+    2: Color(0xFF0C8AEB),
+    3: Color(0xFF4A4A4A),
+    4: Color(0xFFF1780F),
+    5: Color(0xFF77F6F6),
+    6: Color(0xFF5437ED),
+    7: Color(0xFFE3E3E3),
+    8: Color(0xFFED2D0D),
+    9: Color(0xFF770D06),
+    10: Color(0xFF0FB60C),
   };
+
+  /// 1、5、7 是浅底，白字看不清，用深色；其余保持白字。
+  static Color ballDigitColor(int number) {
+    if (number == 1 || number == 5 || number == 7) {
+      return const Color(0xFF333333);
+    }
+    return const Color(0xFFFFFFFF);
+  }
 }
