@@ -164,16 +164,12 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
       ),
     );
     if (!ok) {
-      nameCtrl.dispose();
-      userCtrl.dispose();
-      pwdCtrl.dispose();
+      disposeTextControllersAfterFrame([nameCtrl, userCtrl, pwdCtrl]);
       return;
     }
     if (nameCtrl.text.trim().isEmpty || userCtrl.text.trim().isEmpty) {
       AppToast.error('请填写昵称和用户名');
-      nameCtrl.dispose();
-      userCtrl.dispose();
-      pwdCtrl.dispose();
+      disposeTextControllersAfterFrame([nameCtrl, userCtrl, pwdCtrl]);
       return;
     }
     try {
@@ -183,16 +179,12 @@ class _HostAssistantsPageState extends ConsumerState<HostAssistantsPage> {
             displayName: nameCtrl.text.trim(),
             permissions: _toCodes(selected),
           );
-      nameCtrl.dispose();
-      userCtrl.dispose();
-      pwdCtrl.dispose();
+      disposeTextControllersAfterFrame([nameCtrl, userCtrl, pwdCtrl]);
       if (!mounted) return;
       AppToast.success('协管已创建');
       await _load(silent: true);
     } catch (e) {
-      nameCtrl.dispose();
-      userCtrl.dispose();
-      pwdCtrl.dispose();
+      disposeTextControllersAfterFrame([nameCtrl, userCtrl, pwdCtrl]);
       AppToast.error(e.toString());
     }
   }

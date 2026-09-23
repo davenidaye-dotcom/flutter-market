@@ -8,6 +8,7 @@ import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/safe_text_controller.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../widgets/avatar_picker_sheet.dart';
@@ -34,11 +35,11 @@ class PersonalSettingsPage extends ConsumerWidget {
       ),
     );
     if (ok != true) {
-      ctrl.dispose();
+      disposeTextControllersAfterFrame([ctrl]);
       return;
     }
     final nick = ctrl.text.trim();
-    ctrl.dispose();
+    disposeTextControllersAfterFrame([ctrl]);
     if (nick.isEmpty) return;
     try {
       await ref.read(memberRepositoryProvider).updateNickname(nick);

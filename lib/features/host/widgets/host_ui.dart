@@ -4,8 +4,10 @@ import '../../../config/theme/app_colors.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/safe_text_controller.dart';
 
 export '../../../shared/widgets/app_page_loading.dart';
+export '../../../shared/widgets/safe_text_controller.dart';
 
 /// 房主二级页通用壳（全屏，无底部 Tab）
 class HostSubPageScaffold extends StatelessWidget {
@@ -183,8 +185,14 @@ Future<bool> hostConfirm(
               cancelText: cancelText,
               confirmText: confirmText,
               danger: danger,
-              onCancel: () => Navigator.pop(ctx, false),
-              onConfirm: () => Navigator.pop(ctx, true),
+              onCancel: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.pop(ctx, false);
+              },
+              onConfirm: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Navigator.pop(ctx, true);
+              },
             ),
           ],
         ),
@@ -269,9 +277,7 @@ Future<String?> hostInputSheet(
     },
   ).whenComplete(() {
     // 等弹层/IME 卸载完成再 dispose，避免 InheritedElement dependents 断言
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ctrl.dispose();
-    });
+    disposeTextControllersAfterFrame([ctrl]);
   });
 }
 
@@ -303,8 +309,12 @@ Future<bool> hostFormSheet(
                   _HostSheetActions(
                     cancelText: cancelText,
                     confirmText: confirmText,
-                    onCancel: () => Navigator.pop(ctx, false),
+                    onCancel: () {
+                      FocusManager.instance.primaryFocus?.unfocus();
+                      Navigator.pop(ctx, false);
+                    },
                     onConfirm: () async {
+                      FocusManager.instance.primaryFocus?.unfocus();
                       if (onConfirm != null) {
                         final ok = await onConfirm();
                         if (ok && ctx.mounted) Navigator.pop(ctx, true);

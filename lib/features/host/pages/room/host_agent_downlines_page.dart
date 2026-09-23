@@ -498,7 +498,6 @@ Future<AddAgentDownlineResult?> showAddAgentDownlineSheet(
     },
   );
 
-  memberId.dispose();
-  ratio.dispose();
+  disposeTextControllersAfterFrame([memberId, ratio]);
   return ok ? result : null;
 }

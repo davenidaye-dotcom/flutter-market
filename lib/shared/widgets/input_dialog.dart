@@ -76,26 +76,22 @@ class _TextInputDialogState extends State<_TextInputDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final mq = MediaQueryData.fromView(View.of(context));
-    return MediaQuery(
-      data: mq,
-      child: AlertDialog(
-        title: Text(widget.title),
-        content: EmulatorSafeTextField(
-          controller: _ctrl,
-          focusNode: _focusNode,
-          obscureText: widget.obscure,
-          keyboardType: widget.keyboardType,
-          textInputAction: TextInputAction.done,
-          inputFormatters: _formatters,
-          onSubmitted: (_) => _submit(),
-          decoration: InputDecoration(hintText: widget.hint),
-        ),
-        actions: [
-          TextButton(onPressed: safeDialogPop(context), child: const Text('取消')),
-          TextButton(onPressed: _submit, child: const Text('确定')),
-        ],
+    return AlertDialog(
+      title: Text(widget.title),
+      content: EmulatorSafeTextField(
+        controller: _ctrl,
+        focusNode: _focusNode,
+        obscureText: widget.obscure,
+        keyboardType: widget.keyboardType,
+        textInputAction: TextInputAction.done,
+        inputFormatters: _formatters,
+        onSubmitted: (_) => _submit(),
+        decoration: InputDecoration(hintText: widget.hint),
       ),
+      actions: [
+        TextButton(onPressed: safeDialogPop(context), child: const Text('取消')),
+        TextButton(onPressed: _submit, child: const Text('确定')),
+      ],
     );
   }
 }

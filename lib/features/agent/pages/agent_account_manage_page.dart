@@ -6,6 +6,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/safe_text_controller.dart';
 import '../widgets/agent_ui.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 
@@ -135,10 +136,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     final password = passCtrl.text;
     final confirmPassword = confirmCtrl.text;
     final displayName = nameCtrl.text.trim();
-    userCtrl.dispose();
-    passCtrl.dispose();
-    confirmCtrl.dispose();
-    nameCtrl.dispose();
+    disposeTextControllersAfterFrame([userCtrl, passCtrl, confirmCtrl, nameCtrl]);
     if (ok != true) return;
     if (username.isEmpty || password.isEmpty) {
       AppToast.error('用户名和密码不能为空');

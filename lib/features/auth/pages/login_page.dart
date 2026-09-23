@@ -135,29 +135,41 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 SizedBox(height: 8.h),
                                 Align(
                                   alignment: Alignment.centerRight,
-                                  child: GestureDetector(
-                                    onTap: () => setState(() => _remember = !_remember),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Container(
-                                          width: 16.w,
-                                          height: 16.w,
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            border: Border.all(color: AppColors.primaryLight, width: 1.5),
-                                            color: _remember ? AppColors.primaryLight : Colors.transparent,
-                                          ),
-                                          child: _remember
-                                              ? Icon(Icons.check, size: 10.sp, color: Colors.white)
-                                              : null,
+                                  child: Material(
+                                    color: Colors.transparent,
+                                    child: InkWell(
+                                      onTap: () {
+                                        // 先收键盘，避免首点只被 IME 吃掉
+                                        FocusManager.instance.primaryFocus?.unfocus();
+                                        setState(() => _remember = !_remember);
+                                      },
+                                      borderRadius: BorderRadius.circular(20.r),
+                                      child: Padding(
+                                        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 12.h),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              width: 20.w,
+                                              height: 20.w,
+                                              alignment: Alignment.center,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                border: Border.all(color: AppColors.primaryLight, width: 1.5),
+                                                color: _remember ? AppColors.primaryLight : Colors.white,
+                                              ),
+                                              child: _remember
+                                                  ? Icon(Icons.check, size: 12.sp, color: Colors.white)
+                                                  : null,
+                                            ),
+                                            SizedBox(width: 8.w),
+                                            Text(
+                                              '记住密码',
+                                              style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
+                                            ),
+                                          ],
                                         ),
-                                        SizedBox(width: 6.w),
-                                        Text(
-                                          '记住密码',
-                                          style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
-                                        ),
-                                      ],
+                                      ),
                                     ),
                                   ),
                                 ),

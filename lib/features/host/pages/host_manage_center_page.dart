@@ -99,9 +99,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
       ),
     );
     if (!ok) {
-      titleCtrl.dispose();
-      totalCtrl.dispose();
-      countCtrl.dispose();
+      disposeTextControllersAfterFrame([titleCtrl, totalCtrl, countCtrl]);
       return;
     }
     try {
@@ -114,9 +112,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
-      titleCtrl.dispose();
-      totalCtrl.dispose();
-      countCtrl.dispose();
+      disposeTextControllersAfterFrame([titleCtrl, totalCtrl, countCtrl]);
     }
   }
 

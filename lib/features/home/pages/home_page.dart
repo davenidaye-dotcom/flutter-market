@@ -18,6 +18,7 @@ import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
+import '../../../shared/widgets/safe_text_controller.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
@@ -136,7 +137,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     );
     final remark = remarkCtrl.text.trim();
-    remarkCtrl.dispose();
+    disposeTextControllersAfterFrame([remarkCtrl]);
     if (submit != true || !mounted) return;
 
     try {
