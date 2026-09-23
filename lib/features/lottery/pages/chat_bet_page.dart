@@ -430,6 +430,63 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     return inputH + bottomSafe + extra;
   }
 
+  String? _pendingLocalBetId;
+
+  String _publishOptimisticBet(String command) {
+    final user = ref.read(authSessionProvider).user;
+    final sender =
+        (user?.nickname.isNotEmpty == true) ? user!.nickname : '我';
+    final issue = ref
+            .read(roomLotteryLiveProvider(widget.roomId))
+            .gameById(_gameId)
+            ?.currentIssue ??
+        '';
+    final id = 'local-bet-$_gameId-${DateTime.now().microsecondsSinceEpoch}';
+    _pendingLocalBetId = id;
+    _publishChatMessage(
+      ChatMessageModel(
+        id: id,
+        sender: sender,
+        content: command,
+        time: TimeOfDay.now().format(context),
+        issueNo: issue.isNotEmpty ? issue : null,
+        isSelf: true,
+        avatarUrl: user?.avatarUrl,
+      ),
+      dedupeKey: id,
+    );
+    return id;
+  }
+
+  void _dropOptimisticBet(String localId) {
+    if (_pendingLocalBetId == localId) _pendingLocalBetId = null;
+    ChatPushCache.instance.dropMessage(
+      roomId: widget.roomId,
+      gameId: _gameId,
+      dedupeKey: localId,
+    );
+    _applyTimelineFromCache();
+  }
+
+  void _completeOptimisticBet(String command, List<String> orderIds) {
+    final localId = _pendingLocalBetId;
+    _pendingLocalBetId = null;
+    if (localId == null) {
+      _appendLocalMessage(command, orderIds: orderIds);
+      return;
+    }
+    if (orderIds.isNotEmpty) {
+      ChatPushCache.instance.adoptLocalBet(
+        roomId: widget.roomId,
+        gameId: _gameId,
+        localId: localId,
+        orderId: orderIds.first,
+      );
+      _applyTimelineFromCache();
+    }
+    _appendLocalReceipt(command, orderIds: orderIds);
+  }
+
   void _appendLocalMessage(String command, {List<String> orderIds = const []}) {
     final user = ref.read(authSessionProvider).user;
     final sender =
@@ -452,17 +509,46 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       avatarUrl: user?.avatarUrl,
     );
     _publishChatMessage(message, dedupeKey: id);
+    _appendLocalReceipt(
+      command,
+      orderIds: orderIds,
+      sender: sender,
+      issue: issue,
+      time: message.time,
+    );
+  }
+
+  void _appendLocalReceipt(
+    String command, {
+    List<String> orderIds = const [],
+    String? sender,
+    String? issue,
+    String? time,
+  }) {
+    final user = ref.read(authSessionProvider).user;
+    final mention = sender ??
+        ((user?.nickname.isNotEmpty == true) ? user!.nickname : '我');
+    final issueNo = issue ??
+        (ref
+                .read(roomLotteryLiveProvider(widget.roomId))
+                .gameById(_gameId)
+                ?.currentIssue ??
+            '');
+    final stamp = time ?? TimeOfDay.now().format(context);
+    final receiptId = orderIds.isNotEmpty
+        ? 'bet-receipt-$_gameId-${orderIds.first}'
+        : 'bet-receipt-$_gameId-${DateTime.now().millisecondsSinceEpoch}';
     final receipt = ChatMessageModel(
-      id: 'bet-receipt-$_gameId-${orderIds.isNotEmpty ? orderIds.first : id}',
+      id: receiptId,
       sender: '机器人',
       content: formatBetReceiptText(
-        mention: sender,
-        issue: issue,
+        mention: mention,
+        issue: issueNo,
         fallbackContent: command,
       ),
-      time: message.time,
+      time: stamp,
       type: ChatMessageType.betReceipt,
-      issueNo: issue.isNotEmpty ? issue : null,
+      issueNo: issueNo.isNotEmpty ? issueNo : null,
     );
     _publishChatMessage(receipt, dedupeKey: receipt.id);
   }
@@ -1158,6 +1244,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
     _submitLocked = true;
     _betBusy.value = true;
+    final localId = _publishOptimisticBet(command);
     try {
       final done = await _betGuard.run((requestId) async {
         final orderIds = await ref.read(lotteryRepositoryProvider).submitBet(
@@ -1168,7 +1255,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
             );
         return orderIds;
       });
-      if (done == null || !mounted) return;
+      if (done == null || !mounted) {
+        _dropOptimisticBet(localId);
+        return;
+      }
       unawaited(
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
@@ -1181,11 +1271,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
           accountId: _accountId,
         ),
       );
-      _appendLocalMessage(command, orderIds: done);
+      _completeOptimisticBet(command, done);
       _rememberSuccessfulBet(command);
       _appendBetSlip(command, orderIds: done);
       AppToast.success('下注成功');
     } catch (e) {
+      _dropOptimisticBet(localId);
       AppToast.error(e.toString());
     } finally {
       _submitLocked = false;
@@ -1570,8 +1661,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                             roomId: widget.roomId,
                             gameId: activeGameId,
                             embedded: true,
+                            onBetStart: _publishOptimisticBet,
+                            onBetFailed: _dropOptimisticBet,
                             onBetSuccess: (command, orderIds) {
-                              _appendLocalMessage(command);
+                              _completeOptimisticBet(command, orderIds);
                               _rememberSuccessfulBet(command);
                               _appendBetSlip(command, orderIds: orderIds);
                             },

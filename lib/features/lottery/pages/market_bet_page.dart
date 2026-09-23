@@ -31,12 +31,17 @@ class MarketBetPage extends ConsumerStatefulWidget {
     required this.roomId,
     required this.gameId,
     this.embedded = false,
+    this.onBetStart,
+    this.onBetFailed,
     this.onBetSuccess,
   });
 
   final String roomId;
   final String gameId;
   final bool embedded;
+  /// 点发送后立刻上屏，返回本地消息 id。失败时用 [onBetFailed] 撤回。
+  final String Function(String command)? onBetStart;
+  final void Function(String localId)? onBetFailed;
   final void Function(String command, List<String> orderIds)? onBetSuccess;
 
   @override
@@ -71,6 +76,8 @@ class _MarketBetPageState extends ConsumerState<MarketBetPage> {
             gameId: widget.gameId,
             canBet: canBet,
             betGuard: _betGuard,
+            onBetStart: widget.onBetStart,
+            onBetFailed: widget.onBetFailed,
             onBetSuccess: widget.onBetSuccess,
           ),
         ),
@@ -91,6 +98,8 @@ class _MarketBetBody extends ConsumerStatefulWidget {
     required this.gameId,
     required this.canBet,
     required this.betGuard,
+    this.onBetStart,
+    this.onBetFailed,
     this.onBetSuccess,
   });
 
@@ -98,6 +107,8 @@ class _MarketBetBody extends ConsumerStatefulWidget {
   final String gameId;
   final bool canBet;
   final SubmitGuard betGuard;
+  final String Function(String command)? onBetStart;
+  final void Function(String localId)? onBetFailed;
   final void Function(String command, List<String> orderIds)? onBetSuccess;
 
   @override
@@ -237,6 +248,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     final items = _itemsFromStored(text);
     _submitLocked = true;
     _submitting.value = true;
+    final localId = widget.onBetStart?.call(text);
     try {
       final done = await widget.betGuard.run((requestId) async {
         return ref.read(lotteryRepositoryProvider).submitBet(
@@ -247,7 +259,10 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               requestId: requestId,
             );
       });
-      if (done == null || !mounted) return;
+      if (done == null || !mounted) {
+        if (localId != null) widget.onBetFailed?.call(localId);
+        return;
+      }
       unawaited(
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
@@ -255,6 +270,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       widget.onBetSuccess?.call(text, done);
       AppToast.success('重投成功');
     } catch (e) {
+      if (localId != null) widget.onBetFailed?.call(localId);
       AppToast.error(e.toString());
     } finally {
       _submitLocked = false;
@@ -385,11 +401,13 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     }
     _submitLocked = true;
     _submitting.value = true;
+    final localId = widget.onBetStart?.call(command);
     try {
       final machineItems = <Map<String, dynamic>>[];
       for (final key in selected) {
         final code = uiKeyToPlayCode(key);
         if (code == null) {
+          if (localId != null) widget.onBetFailed?.call(localId);
           AppToast.error('玩法无法识别: $key');
           return;
         }
@@ -405,7 +423,10 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               requestId: requestId,
             );
       });
-      if (done == null || !mounted) return;
+      if (done == null || !mounted) {
+        if (localId != null) widget.onBetFailed?.call(localId);
+        return;
+      }
       unawaited(
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
@@ -415,6 +436,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       AppToast.success('下注成功');
       _reset();
     } catch (e) {
+      if (localId != null) widget.onBetFailed?.call(localId);
       AppToast.error(e.toString());
     } finally {
       _submitLocked = false;

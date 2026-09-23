@@ -258,4 +258,61 @@ void main() {
     expect(LotteryPeriodHelper.bettingCountdownSeconds(next, nextAt), 45);
     expect(LotteryPeriodHelper.openRemainSeconds(next, nextAt), 75);
   });
+
+  test('开奖中停过几秒后，同期仍在未来的开奖时刻可以退出开奖中', () {
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    final openAt = t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch;
+    final sealAt = t0.millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          countdownSeconds: 10,
+          openAtEpochMs: openAt,
+          sealSeconds: 30,
+          sealAtEpochMs: sealAt,
+        ),
+      ],
+      t0,
+    );
+    final opened = t0.add(const Duration(seconds: 10));
+    engine.onSecondTick(opened);
+    final drawing = engine.displayGame('JS_SC', opened);
+    expect(LotteryPeriodHelper.phaseOf(drawing, opened), LotteryDisplayPhase.drawing);
+
+    final tooSoon = opened.add(const Duration(seconds: 1));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 20,
+      openAtEpochMs: tooSoon.add(const Duration(seconds: 20)).millisecondsSinceEpoch,
+      sealAtEpochMs: tooSoon.millisecondsSinceEpoch,
+      sealSeconds: 30,
+      now: tooSoon,
+    );
+    expect(
+      LotteryPeriodHelper.phaseOf(engine.displayGame('JS_SC', tooSoon), tooSoon),
+      LotteryDisplayPhase.drawing,
+    );
+
+    final later = opened.add(LotteryPeriodEngine.stuckDrawingGrace);
+    final serverOpen = later.add(const Duration(seconds: 18));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 18,
+      openAtEpochMs: serverOpen.millisecondsSinceEpoch,
+      sealAtEpochMs: later.millisecondsSinceEpoch,
+      sealSeconds: 30,
+      now: later,
+    );
+    final recovered = engine.displayGame('JS_SC', later);
+    expect(recovered.currentIssue, '34136341');
+    expect(LotteryPeriodHelper.phaseOf(recovered, later), LotteryDisplayPhase.sealed);
+    expect(LotteryPeriodHelper.openRemainSeconds(recovered, later), 18);
+    expect(LotteryPeriodHelper.statusClockSeconds(recovered, later), 18);
+  });
 }

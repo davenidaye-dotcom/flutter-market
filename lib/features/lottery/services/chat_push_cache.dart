@@ -162,8 +162,13 @@ class ChatPushCache {
         dedupeKey;
     _keysByRoom.putIfAbsent(roomId, () => <String>{});
     _bufferByRoom.putIfAbsent(roomId, () => <_CachedChatPush>[]);
-    // 只清「同逻辑期」但旧长号 dedupeKey 的别名，不删已存在的 logicalKey 本身
-    _purgeAliasDuplicates(roomId, gameId, normalized, logicalKey);
+    final tailKind = normalized.type == ChatMessageType.text ||
+        normalized.type == ChatMessageType.betReceipt;
+    // 只清「同逻辑期」但旧长号 dedupeKey 的别名，不删已存在的 logicalKey 本身。
+    // 下注原文和回执没有长短号别名，跳过整表扫描。
+    if (!tailKind) {
+      _purgeAliasDuplicates(roomId, gameId, normalized, logicalKey);
+    }
     final keys = _keysByRoom[roomId]!;
     if (keys.contains(logicalKey)) {
       if (_isSealDedupeKey(logicalKey) &&
@@ -194,7 +199,9 @@ class ChatPushCache {
         push: LotteryChatPush(gameId: gameId, message: normalized),
       ),
     );
-    _invalidateGameCache(roomId, gameId);
+    if (!_appendTimelineTail(roomId, gameId, normalized)) {
+      _invalidateGameCache(roomId, gameId);
+    }
     _schedulePersist(roomId);
     return true;
   }
@@ -765,6 +772,83 @@ class ChatPushCache {
   void _invalidateGameCache(String roomId, String gameId) {
     _timelineCache.remove('$roomId:$gameId');
     _historyRowsCache.removeWhere((k, _) => k.startsWith('$roomId:$gameId:'));
+  }
+
+  /// 新消息能排在当前时间线最后时直接接上。返回 false 表示需要整表重排。
+  bool _appendTimelineTail(
+    String roomId,
+    String gameId,
+    ChatMessageModel message,
+  ) {
+    final cacheKey = '$roomId:$gameId';
+    final cached = _timelineCache[cacheKey];
+    if (cached == null) return false;
+    if (cached.any((m) => m.id == message.id)) return true;
+    if (!appendsAtTimelineTail(cached, message)) return false;
+    _timelineCache[cacheKey] = [...cached, message];
+    return true;
+  }
+
+  void dropMessage({
+    required String roomId,
+    required String gameId,
+    required String dedupeKey,
+  }) {
+    _keysByRoom[roomId]?.remove(dedupeKey);
+    _bufferByRoom[roomId]?.removeWhere((e) => e.dedupeKey == dedupeKey);
+    final cacheKey = '$roomId:$gameId';
+    final cached = _timelineCache[cacheKey];
+    if (cached == null) return;
+    _timelineCache[cacheKey] = [
+      for (final m in cached)
+        if (m.id != dedupeKey) m,
+    ];
+  }
+
+  /// 本地点发送的下注，在拿到注单号后改成和服务端同一条，避免回声再插一条。
+  void adoptLocalBet({
+    required String roomId,
+    required String gameId,
+    required String localId,
+    required String orderId,
+  }) {
+    final serverId = 'bet-chat-$gameId-$orderId';
+    final keys = _keysByRoom[roomId];
+    final buffer = _bufferByRoom[roomId];
+    if (keys == null || buffer == null) return;
+    ChatMessageModel? local;
+    buffer.removeWhere((e) {
+      if (e.dedupeKey != localId) return false;
+      local = e.push.message;
+      return true;
+    });
+    keys.remove(localId);
+    final cacheKey = '$roomId:$gameId';
+    final cached = _timelineCache[cacheKey];
+    if (keys.contains(serverId)) {
+      if (cached != null) {
+        _timelineCache[cacheKey] = [
+          for (final m in cached)
+            if (m.id != localId) m,
+        ];
+      }
+      return;
+    }
+    final kept = local;
+    if (kept == null) return;
+    final adopted = kept.copyWith(id: serverId);
+    keys.add(serverId);
+    buffer.add(
+      _CachedChatPush(
+        dedupeKey: serverId,
+        push: LotteryChatPush(gameId: gameId, message: adopted),
+      ),
+    );
+    if (cached != null) {
+      _timelineCache[cacheKey] = [
+        for (final m in cached) m.id == localId ? adopted : m,
+      ];
+    }
   }
 
   void _invalidateRoomCache(String roomId) {

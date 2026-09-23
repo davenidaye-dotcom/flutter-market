@@ -50,6 +50,9 @@ class _GameSlot {
   DateTime? openDeadline;
   int? prevCd;
 
+  /// 第一次进入开奖中的时刻。用来判断是不是停太久。
+  DateTime? drawingSince;
+
   /// 本期还在未来的开奖时刻。过了封盘点后钉住，换期才放开。
   int? armedOpenAtMs;
   String armedIssue = '';
@@ -58,8 +61,8 @@ class _GameSlot {
 /// 期态：距封盘用 sealAtEpochMs，封盘中用 openAtEpochMs，与 web `lotteryFeed` 同一套时刻。
 /// 聊天封盘线不在这里生成，只消费后端 WS / 历史消息。
 final class LotteryPeriodEngine {
-  /// 兼容旧测试引用；开奖中最短展示由 WS 换期包到达决定，不再人为 hold。
-  static const revealHold = Duration(milliseconds: 800);
+  /// 开奖中超过这段时间，才接受服务端仍在未来的同期开奖时刻。
+  static const stuckDrawingGrace = Duration(seconds: 3);
 
   final Map<String, _GameSlot> _slots = {};
 
@@ -107,6 +110,7 @@ final class LotteryPeriodEngine {
     for (final g in list) {
       final existing = _slots[g.id];
       if (existing != null) {
+        _noteDrawing(existing, now);
         final advances = _incomingIssueAdvances(existing, g.currentIssue);
         _arm(existing, now);
         final pinned = !advances && _epochsFrozen(existing, now);
@@ -125,9 +129,12 @@ final class LotteryPeriodEngine {
             sealAtMs: g.sealAtEpochMs,
             now: now,
           );
+        } else {
+          _maybeUnstickDrawing(existing, g.openAtEpochMs, now);
         }
         _mergeHttpDraw(existing, g);
         if (!pinned) _recoverStuckCountdown(existing, g, now);
+        _noteDrawing(existing, now);
         _arm(existing, now);
         continue;
       }
@@ -242,6 +249,7 @@ final class LotteryPeriodEngine {
     final first = !slot.wsSynced;
     if (first) slot.wsSynced = true;
 
+    _noteDrawing(slot, clock);
     final advances = _incomingIssueAdvances(slot, issue);
     _arm(slot, clock);
     final pinned = !advances && _epochsFrozen(slot, clock);
@@ -255,6 +263,7 @@ final class LotteryPeriodEngine {
     }
 
     // 封盘后钉死到换期。同期未封盘时，开奖时刻只允许提前，不能把剩余拉长。
+    // 开奖中停过几秒后，服务端这一期的开奖时刻若还在未来，则采纳并退出开奖中。
     if (!pinned) {
       _applyEpochs(
         slot,
@@ -271,7 +280,10 @@ final class LotteryPeriodEngine {
           force: first && slot.openDeadline == null,
         );
       }
+    } else {
+      _maybeUnstickDrawing(slot, openAtEpochMs, clock);
     }
+    _noteDrawing(slot, clock);
     _arm(slot, clock);
 
     var draws = const <DrawRevealEvent>[];
@@ -312,6 +324,7 @@ final class LotteryPeriodEngine {
 
     for (final slot in _slots.values) {
       _arm(slot, now);
+      _noteDrawing(slot, now);
       final cd = _secondsLeft(slot, now);
       if (slot.prevCd != cd) {
         slot.prevCd = cd;
@@ -510,6 +523,55 @@ final class LotteryPeriodEngine {
     if (issue.isEmpty || open <= now.millisecondsSinceEpoch) return;
     slot.armedOpenAtMs = open;
     slot.armedIssue = issue;
+  }
+
+  /// 记下进入开奖中的时刻；倒计时恢复后清掉。
+  void _noteDrawing(_GameSlot slot, DateTime now) {
+    if (_secondsLeft(slot, now) <= 0) {
+      slot.drawingSince ??= now;
+    } else {
+      slot.drawingSince = null;
+    }
+  }
+
+  /// 开奖中已停满 [LotteryPeriodEngine.stuckDrawingGrace]，且服务端开奖时刻仍在未来。
+  bool _shouldUnstickDrawing(_GameSlot slot, DateTime now, int? openAtMs) {
+    if (openAtMs == null || openAtMs <= now.millisecondsSinceEpoch) return false;
+    if (_secondsLeft(slot, now) > 0) return false;
+    final since = slot.drawingSince;
+    if (since == null) return false;
+    return now.difference(since) >= LotteryPeriodEngine.stuckDrawingGrace;
+  }
+
+  void _maybeUnstickDrawing(_GameSlot slot, int? openAtMs, DateTime now) {
+    if (!_shouldUnstickDrawing(slot, now, openAtMs)) return;
+    _adoptFutureOpenWhileDrawing(slot, openAtMs!, now);
+  }
+
+  /// 退出卡住的开奖中。封盘时刻保持在当前或更早，继续显示「封盘中，距离开奖」。
+  void _adoptFutureOpenWhileDrawing(
+    _GameSlot slot,
+    int openAtMs,
+    DateTime now,
+  ) {
+    final nowMs = now.millisecondsSinceEpoch;
+    if (openAtMs <= nowMs) return;
+    final prevOpen = slot.model.openAtEpochMs ?? 0;
+    final prevSeal = slot.model.sealAtEpochMs ?? 0;
+    var sealAt = prevSeal;
+    if (prevOpen > prevSeal && prevSeal > 0) {
+      sealAt = openAtMs - (prevOpen - prevSeal);
+    }
+    if (sealAt <= 0 || sealAt > nowMs) {
+      sealAt = nowMs;
+    }
+    slot.openDeadline = DateTime.fromMillisecondsSinceEpoch(openAtMs);
+    slot.model = slot.model.copyWith(
+      openAtEpochMs: openAtMs,
+      sealAtEpochMs: sealAt,
+    );
+    slot.drawingSince = null;
+    slot.prevCd = _secondsLeft(slot, now);
   }
 
   /// 本期开奖与封盘时刻都已在手：提前量固定，后到的 sealAt 不再改距封盘。

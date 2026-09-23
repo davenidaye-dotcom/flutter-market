@@ -209,6 +209,26 @@ int _stableTieBreak(ChatMessageModel a, ChatMessageModel b) {
   return a.id.compareTo(b.id);
 }
 
+/// 下注原文和回执若已经排在时间线末尾，可以直接接上，不必重排 15 期。
+bool appendsAtTimelineTail(
+  List<ChatMessageModel> timeline,
+  ChatMessageModel incoming,
+) {
+  if (incoming.type != ChatMessageType.text &&
+      incoming.type != ChatMessageType.betReceipt) {
+    return false;
+  }
+  if (timeline.isEmpty) return true;
+  final last = timeline.last;
+  final byIssue = _compareMessagesByIssue(incoming, last);
+  if (byIssue < 0) return false;
+  if (byIssue > 0) return true;
+  final byPhase = _phaseOrder(incoming).compareTo(_phaseOrder(last));
+  if (byPhase < 0) return false;
+  if (byPhase > 0) return true;
+  return _stableTieBreak(incoming, last) >= 0;
+}
+
 int _timeSortKey(String raw) {
   final t = raw.trim();
   if (t.isEmpty) return 0;
