@@ -97,7 +97,7 @@ void main() {
     expect(LotteryPeriodHelper.sealRemainSeconds(g, t0), 45);
   });
 
-  test('HTTP 仅 openAt：无假 10s 封盘窗，保持距封盘=距开奖', () {
+  test('HTTP 仅 openAt：没有封盘时刻时不把整段开奖剩余当成距封盘', () {
     final openAt = t0.add(const Duration(seconds: 75));
     final g = LotteryGameModel(
       id: 'JS_SC',
@@ -111,7 +111,8 @@ void main() {
     expect(LotteryPeriodHelper.phaseOf(g, t0), LotteryDisplayPhase.betting);
     final nearOpen = t0.add(const Duration(seconds: 66));
     expect(LotteryPeriodHelper.phaseOf(g, nearOpen), LotteryDisplayPhase.betting);
-    expect(LotteryPeriodHelper.bettingCountdownSeconds(g, nearOpen), 9);
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(g, nearOpen), 0);
+    expect(LotteryPeriodHelper.openRemainSeconds(g, nearOpen), 9);
   });
 
   test('期态条数字是离开奖剩余，封盘点从 31 接到 30', () {
