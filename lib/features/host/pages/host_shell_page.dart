@@ -7,7 +7,9 @@ import '../../../config/router/route_paths.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/host_bottom_nav.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../providers/host_apply_notice_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
+import '../widgets/host_apply_notice_dialog.dart';
 
 /// Host shell with pending audit badge from API
 class HostShellPage extends ConsumerStatefulWidget {
@@ -26,6 +28,8 @@ class HostShellPage extends ConsumerStatefulWidget {
 
 class _HostShellPageState extends ConsumerState<HostShellPage> {
   Timer? _badgeTimer;
+  bool _dialogShowing = false;
+  String? _dialogForId;
 
   @override
   void initState() {
@@ -71,9 +75,36 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
     }
   }
 
+  Future<void> _maybeShowApplyDialog(HostApplyNotice? notice) async {
+    if (!mounted || notice == null) return;
+    if (_dialogShowing && _dialogForId == notice.applicationId) return;
+    if (_dialogShowing) return;
+    _dialogShowing = true;
+    _dialogForId = notice.applicationId;
+    try {
+      await showHostApplyNoticeDialog(context, ref, notice);
+    } finally {
+      _dialogShowing = false;
+      _dialogForId = null;
+      // 队列下一条
+      if (mounted) {
+        final next = ref.read(hostApplyNoticeProvider);
+        if (next != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            unawaited(_maybeShowApplyDialog(next));
+          });
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final badge = ref.watch(hostPendingAuditProvider).total;
+    ref.listen<HostApplyNotice?>(hostApplyNoticeProvider, (prev, next) {
+      if (next == null) return;
+      unawaited(_maybeShowApplyDialog(next));
+    });
     return AppPageScaffold(
       body: widget.navigationShell,
       bottomNavigationBar: HostBottomNavBar(

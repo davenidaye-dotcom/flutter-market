@@ -27,6 +27,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   flutter_native_splash: ^2.4.6
   encrypt: ^5.0.3
+  audioplayers: ^6.8.1
 
 dev_dependencies:
   flutter_test:
@@ -42,6 +43,7 @@ flutter:
     - assets/bootstrap/
     - assets/avatars/
     - assets/icons/
+    - assets/sounds/
 
 # 原生启动页：由 flutter_native_splash 生成 Android/iOS 配置，避免手写 MainActivity/主题导致黑屏
 flutter_native_splash:

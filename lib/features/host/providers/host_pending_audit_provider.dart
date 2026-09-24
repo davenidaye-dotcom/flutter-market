@@ -61,6 +61,19 @@ class HostPendingAuditNotifier extends Notifier<HostPendingAuditCounts> {
     }
   }
 
+  /// WS 新待审到达时乐观 +1
+  void bump(AuditType type) {
+    final c = state;
+    switch (type) {
+      case AuditType.up:
+        state = c.copyWith(up: c.up + 1);
+      case AuditType.down:
+        state = c.copyWith(down: c.down + 1);
+      case AuditType.join:
+        state = c.copyWith(enter: c.enter + 1);
+    }
+  }
+
   Future<void> refresh() async {
     try {
       final repo = ref.read(ownerRepositoryProvider);

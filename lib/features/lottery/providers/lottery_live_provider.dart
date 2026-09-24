@@ -11,6 +11,7 @@ import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/providers.dart';
 import '../../auth/providers/auth_session_provider.dart';
+import '../../host/providers/host_apply_notice_provider.dart';
 import '../engine/lottery_period_engine.dart';
 import '../services/chat_push_cache.dart';
 import '../utils/bet_receipt_format.dart';
@@ -1240,6 +1241,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    // 房主：上下分/进房申请 WS 推送 → 全局审核提醒
+    if (type == 'APPLY_NOTICE' && _wsIsHost) {
+      unawaited(_forwardApplyNotice(payload));
+      return;
+    }
+
     final gameType = _gameTypeFromEvent(event, payload);
     if (gameType == null || gameType.isEmpty) {
       if (type == 'RESYNC') {
@@ -1531,6 +1538,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         pair: _pairOf(payload),
       ),
     );
+  }
+
+  Future<void> _forwardApplyNotice(Map<String, dynamic> payload) async {
+    try {
+      await _ref
+          .read(hostApplyNoticeProvider.notifier)
+          .onWsApplyNotice(payload);
+    } catch (_) {}
   }
 
   Map<String, dynamic> _wsPayload(Map<String, dynamic> event) {
