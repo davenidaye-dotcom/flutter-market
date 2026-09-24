@@ -34,8 +34,7 @@ class ChatMessageItem extends StatelessWidget {
         message.type == ChatMessageType.betListCheck) {
       return _RobotBubble(
         message: message,
-        // 中奖列表、竞猜核对列表对齐模板图正文。
-        fontSize: message.type == ChatMessageType.betReceipt ? 13.sp : 16.sp,
+        fontSize: 16.sp,
       );
     }
     if (_isRobotSystemLayout) {
@@ -97,7 +96,7 @@ class ChatMessageItem extends StatelessWidget {
     return Text(
       message.content,
       style: TextStyle(
-        fontSize: 13.sp,
+        fontSize: 16.sp,
         color: Colors.black,
         fontWeight: FontWeight.bold,
       ),
@@ -200,7 +199,7 @@ class _UserBetBubble extends StatelessWidget {
                   child: Text(
                     message.content,
                     style: TextStyle(
-                      fontSize: 13.sp,
+                      fontSize: 16.sp,
                       height: 1.35,
                       color: Colors.black,
                       fontWeight: FontWeight.bold,
@@ -238,7 +237,7 @@ class _SystemNotice extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: TextStyle(
-          fontSize: 13.sp,
+          fontSize: 16.sp,
           color: const Color(0xFFE65100),
           fontWeight: FontWeight.w600,
           height: 1.35,
