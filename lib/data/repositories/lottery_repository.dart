@@ -6,6 +6,13 @@ import '../../features/lottery/utils/lottery_period_ui.dart';
 import '../models/chat_message_model.dart';
 import '../models/lottery_game_model.dart';
 
+class BetSubmitResult {
+  const BetSubmitResult({required this.orderIds, this.content = ''});
+
+  final List<String> orderIds;
+  final String content;
+}
+
 class LotteryRepository {
   LotteryRepository({ApiClient? client}) : _client = client ?? ApiClient.instance;
 
@@ -256,7 +263,7 @@ class LotteryRepository {
     return parts.last;
   }
 
-  Future<List<String>> submitBet({
+  Future<BetSubmitResult> submitBet({
     required String roomId,
     required String gameId,
     required String command,
@@ -290,11 +297,16 @@ class LotteryRepository {
     );
     if (resp is Map) {
       final ids = resp['orderIds'];
+      final content = '${resp['content'] ?? ''}'.trim();
       if (ids is List) {
-        return ids.map((e) => '$e').where((e) => e.isNotEmpty).toList();
+        return BetSubmitResult(
+          orderIds: ids.map((e) => '$e').where((e) => e.isNotEmpty).toList(),
+          content: content,
+        );
       }
+      return BetSubmitResult(orderIds: const [], content: content);
     }
-    return const [];
+    return const BetSubmitResult(orderIds: []);
   }
 
   Future<int> cancelIssueBets({

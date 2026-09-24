@@ -176,7 +176,7 @@ class FakeLotteryRepository extends LotteryRepository {
       (rows: drawHistory, total: drawHistory.length);
 
   @override
-  Future<List<String>> submitBet({
+  Future<BetSubmitResult> submitBet({
     required String roomId,
     required String gameId,
     required String command,
@@ -184,7 +184,7 @@ class FakeLotteryRepository extends LotteryRepository {
     List<Map<String, dynamic>>? items,
     String? requestId,
   }) async =>
-      betOrderIds;
+      BetSubmitResult(orderIds: betOrderIds);
 
   @override
   Future<List<Map<String, dynamic>>> getLongDragon({

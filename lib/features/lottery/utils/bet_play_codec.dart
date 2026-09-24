@@ -23,7 +23,8 @@ String? uiKeyToPlayCode(String uiKey) {
       upper.startsWith('TM-') ||
       upper.startsWith('POS-') ||
       upper.startsWith('DT-') ||
-      upper.startsWith('GYH_')) {
+      upper.startsWith('GYH_') ||
+      upper.startsWith('GYH-')) {
     return upper;
   }
   final parts = key.split('/');
@@ -75,12 +76,8 @@ int? _rankIndex(String label) {
 }
 
 String? _sumValueCode(int v) {
-  if ({3, 4, 18, 19}.contains(v)) return 'GYH_3';
-  if ({5, 6, 16, 17}.contains(v)) return 'GYH_5';
-  if ({7, 8, 14, 15}.contains(v)) return 'GYH_7';
-  if ({9, 10, 12, 13}.contains(v)) return 'GYH_9';
-  if (v == 11) return 'GYH_11';
-  return null;
+  if (v < 3 || v > 19) return null;
+  return 'GYH-$v';
 }
 
 /// 聊天/指令框文本是否像机器 playCode（不应作为 command 发送）
@@ -90,5 +87,6 @@ bool isMachinePlayCode(String text) {
       p.startsWith('TM-') ||
       p.startsWith('POS-') ||
       p.startsWith('DT-') ||
-      p.startsWith('GYH_');
+      p.startsWith('GYH_') ||
+      p.startsWith('GYH-');
 }

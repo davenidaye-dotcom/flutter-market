@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
@@ -355,7 +356,7 @@ class _PlayerCard extends StatelessWidget {
     for (final k in keys) {
       if (row[k] != null) return hostNumStr(row[k], fraction: 2);
     }
-    return '0';
+    return '0.00';
   }
 
   HostSignedPnl _signed(List<String> keys) {
@@ -363,6 +364,15 @@ class _PlayerCard extends StatelessWidget {
       if (row[k] != null) return HostSignedPnl.of(row[k]);
     }
     return HostSignedPnl.of(0);
+  }
+
+  Future<void> _copyId(BuildContext context, String id) async {
+    if (id.isEmpty) {
+      AppToast.info('暂无ID');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: id));
+    AppToast.success('已复制ID');
   }
 
   @override
@@ -375,94 +385,93 @@ class _PlayerCard extends StatelessWidget {
     final returned = _n(['rebatePaid']);
     final pending = _n(['rebatePending']);
     final playerResult = _signed(['playerResult']);
-    final agent = row['isAgent'] == true || row['isAgent'] == 1 || row['isAgent'] == 'true';
     final commPaid = _n(['commissionPaid']);
     final commPending = _n(['commissionPending']);
 
-    return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12.r),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12.r),
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(12.w, 12.h, 8.w, 12.h),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  UserAvatar(
-                    codeOrUrl: avatar,
-                    radius: 18.r,
-                    backgroundColor: const Color(0xFFBDE0FE),
-                  ),
-                  SizedBox(width: 10.w),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700),
+    return HostWhiteCard(
+      padding: EdgeInsets.fromLTRB(12.w, 12.h, 8.w, 12.h),
+      onTap: onTap,
+      child: Column(
+          children: [
+            Row(
+              children: [
+                UserAvatar(
+                  codeOrUrl: avatar,
+                  radius: 22.r,
+                  backgroundColor: const Color(0xFFBDE0FE),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
+                      ),
+                      SizedBox(height: 4.h),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              'ID: $id',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                            ),
                           ),
-                        ),
-                        SizedBox(width: 8.w),
-                        Text(
-                          'ID: $id',
-                          style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Icon(Icons.chevron_right, size: 20.sp, color: AppColors.textHint),
-                ],
-              ),
-              SizedBox(height: 12.h),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _kv('注额', bet),
-                        SizedBox(height: 8.h),
-                        _kv('游戏结果', gameResult.text, valueColor: gameResult.color),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _kv('已返回水', returned),
-                        SizedBox(height: 8.h),
-                        _kv('待返回水', pending),
-                        if (agent) ...[
-                          SizedBox(height: 8.h),
-                          _kv('已返抽佣', commPaid),
-                          SizedBox(height: 8.h),
-                          _kv('待返抽佣', commPending),
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              _copyId(context, id);
+                            },
+                            child: Padding(
+                              padding: EdgeInsets.only(left: 6.w, right: 4.w),
+                              child: Text(
+                                '复制',
+                                style: TextStyle(fontSize: 12.sp, color: AppColors.navBlue),
+                              ),
+                            ),
+                          ),
                         ],
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _kv('玩家结果', playerResult.text, valueColor: playerResult.color),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+                ),
+                Icon(Icons.chevron_right, size: 20.sp, color: AppColors.textHint),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            _pair('注额', bet, '玩家结果', playerResult.text, rightColor: playerResult.color),
+            SizedBox(height: 8.h),
+            _pair('已返回水', returned, '待返回水', pending),
+            SizedBox(height: 8.h),
+            _pair('已返抽佣', commPaid, '待返抽佣', commPending),
+            SizedBox(height: 8.h),
+            _pair('游戏结果', gameResult.text, '', '', leftColor: gameResult.color),
+          ],
         ),
-      ),
+    );
+  }
+
+  Widget _pair(
+    String leftLabel,
+    String leftValue,
+    String rightLabel,
+    String rightValue, {
+    Color? leftColor,
+    Color? rightColor,
+  }) {
+    return Row(
+      children: [
+        Expanded(child: _kv(leftLabel, leftValue, valueColor: leftColor)),
+        if (rightLabel.isNotEmpty)
+          Expanded(child: _kv(rightLabel, rightValue, valueColor: rightColor))
+        else
+          const Expanded(child: SizedBox.shrink()),
+      ],
     );
   }
 
@@ -472,7 +481,7 @@ class _PlayerCard extends StatelessWidget {
         children: [
           TextSpan(
             text: '$label ',
-            style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
+            style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
           ),
           TextSpan(
             text: value,

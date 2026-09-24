@@ -42,7 +42,7 @@ class MarketBetPage extends ConsumerStatefulWidget {
   /// 点发送后立刻上屏，返回本地消息 id。失败时用 [onBetFailed] 撤回。
   final String Function(String command)? onBetStart;
   final void Function(String localId)? onBetFailed;
-  final void Function(String command, List<String> orderIds)? onBetSuccess;
+  final void Function(String command, List<String> orderIds, String content)? onBetSuccess;
 
   @override
   ConsumerState<MarketBetPage> createState() => _MarketBetPageState();
@@ -109,7 +109,7 @@ class _MarketBetBody extends ConsumerStatefulWidget {
   final SubmitGuard betGuard;
   final String Function(String command)? onBetStart;
   final void Function(String localId)? onBetFailed;
-  final void Function(String command, List<String> orderIds)? onBetSuccess;
+  final void Function(String command, List<String> orderIds, String content)? onBetSuccess;
 
   @override
   ConsumerState<_MarketBetBody> createState() => _MarketBetBodyState();
@@ -262,7 +262,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
       if (!mounted) return;
-      widget.onBetSuccess?.call(text, done);
+      widget.onBetSuccess?.call(text, done.orderIds, done.content);
       AppToast.success('重投成功');
     } catch (e) {
       if (localId != null) widget.onBetFailed?.call(localId);
@@ -426,7 +426,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
       if (!mounted) return;
-      widget.onBetSuccess?.call(command, done);
+      widget.onBetSuccess?.call(command, done.orderIds, done.content);
       _rememberBet(command);
       AppToast.success('下注成功');
       _reset();

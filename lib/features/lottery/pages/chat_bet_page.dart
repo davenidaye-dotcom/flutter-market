@@ -782,10 +782,13 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         final orderIssue = '${row['issueNo'] ?? row['issue_no'] ?? ''}';
         if (orderIssue != issue) continue;
         final orderId = '${row['orderId'] ?? row['order_id'] ?? ''}';
+        final content = '${row['content'] ?? ''}'.trim();
         final playName =
             '${row['playName'] ?? row['play_name'] ?? row['playCode'] ?? ''}';
         final amount = row['amount'];
-        final label = playName.isNotEmpty ? '$playName/$amount' : '$amount';
+        final label = content.isNotEmpty
+            ? content
+            : (playName.isNotEmpty ? '$playName/$amount' : '$amount');
         slips.add(
           BetSlipRow(
             issue: issue,
@@ -1298,13 +1301,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     final localId = _publishOptimisticBet(command);
     try {
       final done = await _betGuard.run((requestId) async {
-        final orderIds = await ref.read(lotteryRepositoryProvider).submitBet(
+        return ref.read(lotteryRepositoryProvider).submitBet(
               roomId: widget.roomId,
               gameId: _gameId,
               command: command,
               requestId: requestId,
             );
-        return orderIds;
       });
       if (done == null || !mounted) {
         _dropOptimisticBet(localId);
@@ -1322,9 +1324,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
           accountId: _accountId,
         ),
       );
-      _completeOptimisticBet(command, done);
+      final slip = done.content.trim().isNotEmpty ? done.content.trim() : command;
+      _completeOptimisticBet(command, done.orderIds);
       _rememberSuccessfulBet(command);
-      _appendBetSlip(command, orderIds: done);
+      _appendBetSlip(slip, orderIds: done.orderIds);
       AppToast.success('下注成功');
     } catch (e) {
       _dropOptimisticBet(localId);
@@ -1784,10 +1787,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                             embedded: true,
                             onBetStart: _publishOptimisticBet,
                             onBetFailed: _dropOptimisticBet,
-                            onBetSuccess: (command, orderIds) {
+                            onBetSuccess: (command, orderIds, content) {
+                              final slip = content.trim().isNotEmpty ? content.trim() : command;
                               _completeOptimisticBet(command, orderIds);
                               _rememberSuccessfulBet(command);
-                              _appendBetSlip(command, orderIds: orderIds);
+                              _appendBetSlip(slip, orderIds: orderIds);
                             },
                           );
                         },
