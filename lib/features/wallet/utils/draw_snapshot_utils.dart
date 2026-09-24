@@ -42,6 +42,8 @@ String ledgerChangeLabel(String type) {
       return '回水';
     case 'REDPACK':
       return '红包';
+    case 'COMMISSION':
+      return '代理佣金';
     case 'UP':
     case 'OWNER_CREDIT_UP':
       return '上分';
