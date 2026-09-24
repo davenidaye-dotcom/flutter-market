@@ -21,6 +21,7 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
     with DateRangePageMixin {
   Map<String, dynamic> _data = {};
   bool _loading = false;
+  bool _unbound = false;
 
   @override
   void initState() {
@@ -32,9 +33,23 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
   void onQuery() => _load();
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _unbound = false;
+    });
     try {
-      final data = await ref.read(ownerRepositoryProvider).getFeipanReports(
+      final repo = ref.read(ownerRepositoryProvider);
+      final status = await repo.getFeipanStatus();
+      if (status['bound'] != true) {
+        if (!mounted) return;
+        setState(() {
+          _unbound = true;
+          _data = {};
+          _loading = false;
+        });
+        return;
+      }
+      final data = await repo.getFeipanReports(
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
           );
@@ -83,7 +98,14 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
           Expanded(
             child: _loading
                 ? const AppPageLoading()
-                : GridView.builder(
+                : _unbound
+                    ? Center(
+                        child: Text(
+                          '请先绑定代理会员',
+                          style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                        ),
+                      )
+                    : GridView.builder(
                     padding: EdgeInsets.all(16.w),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,

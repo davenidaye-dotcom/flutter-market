@@ -40,6 +40,7 @@ class FlyBalancePage extends ConsumerStatefulWidget {
 class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
+  bool _unbound = false;
   int _typeIndex = 0;
 
   static const _types = [
@@ -70,9 +71,23 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _unbound = false;
+    });
     try {
-      final data = await ref.read(ownerRepositoryProvider).getFeipanPointsChanges(
+      final repo = ref.read(ownerRepositoryProvider);
+      final status = await repo.getFeipanStatus();
+      if (status['bound'] != true) {
+        if (!mounted) return;
+        setState(() {
+          _unbound = true;
+          _rows = [];
+          _loading = false;
+        });
+        return;
+      }
+      final data = await repo.getFeipanPointsChanges(
             changeType: _typeKeys[_typeIndex],
             pageSize: 50,
           );
@@ -91,7 +106,7 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '飞盘额度变更',
+      title: '额度变更',
       body: Column(
         children: [
           Padding(
@@ -154,7 +169,14 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
           Expanded(
             child: _loading
                 ? const AppPageLoading()
-                : _rows.isEmpty
+                : _unbound
+                    ? Center(
+                        child: Text(
+                          '请先绑定代理会员',
+                          style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                        ),
+                      )
+                    : _rows.isEmpty
                     ? Center(
                         child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)),
                       )

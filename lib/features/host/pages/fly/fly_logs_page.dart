@@ -20,6 +20,7 @@ class FlyLogsPage extends ConsumerStatefulWidget {
 class _FlyLogsPageState extends ConsumerState<FlyLogsPage> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
+  bool _unbound = false;
 
   @override
   void initState() {
@@ -28,9 +29,23 @@ class _FlyLogsPageState extends ConsumerState<FlyLogsPage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _unbound = false;
+    });
     try {
-      final data = await ref.read(ownerRepositoryProvider).getFeipanOpLogs();
+      final repo = ref.read(ownerRepositoryProvider);
+      final status = await repo.getFeipanStatus();
+      if (status['bound'] != true) {
+        if (!mounted) return;
+        setState(() {
+          _unbound = true;
+          _rows = [];
+          _loading = false;
+        });
+        return;
+      }
+      final data = await repo.getFeipanOpLogs();
       if (!mounted) return;
       setState(() {
         _rows = hostRowsOf(data);
@@ -46,10 +61,17 @@ class _FlyLogsPageState extends ConsumerState<FlyLogsPage> {
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '飞盘日志',
+      title: '操作日志',
       body: _loading
           ? const AppPageLoading()
-          : _rows.isEmpty
+          : _unbound
+              ? Center(
+                  child: Text(
+                    '请先绑定代理会员',
+                    style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                  ),
+                )
+              : _rows.isEmpty
               ? Center(child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)))
               : ListView.separated(
                   padding: EdgeInsets.all(16.w),

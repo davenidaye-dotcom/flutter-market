@@ -5,10 +5,9 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
-import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// 绑定代理会员 — status / bind / unbind / flight-switch / credit
+/// 绑定代理会员。账号和密码校验通过后替换本房当前绑定。
 class FlyBindPage extends ConsumerStatefulWidget {
   const FlyBindPage({super.key, required this.roomId});
   final String roomId;
@@ -18,22 +17,10 @@ class FlyBindPage extends ConsumerStatefulWidget {
 }
 
 class _FlyBindPageState extends ConsumerState<FlyBindPage> {
-  Map<String, dynamic> _status = {};
-  Map<String, dynamic> _credit = {};
-  bool _loading = true;
-  bool _switching = false;
   final _accountCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
-
-  bool get _bound => _status['bound'] == true;
-
-  bool get _flightEnabled => _status['flightEnabled'] == true;
-
-  @override
-  void initState() {
-    super.initState();
-    Future.microtask(_load);
-  }
+  bool _obscure = true;
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -42,79 +29,27 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
     super.dispose();
   }
 
-  Future<void> _load({bool silent = false}) async {
-    if (!silent && mounted) setState(() => _loading = true);
-    try {
-      final repo = ref.read(ownerRepositoryProvider);
-      final status = await repo.getFeipanStatus();
-      Map<String, dynamic> credit = {};
-      if (status['bound'] == true) {
-        try {
-          credit = await repo.getFeipanCredit();
-        } catch (e) {
-          // 绑定状态仍可展示；额度单独提示
-          if (mounted) AppToast.error(e.toString());
-        }
-      }
-      if (!mounted) return;
-      setState(() {
-        _status = status;
-        _credit = credit;
-        _loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      AppToast.error(e.toString());
-    }
-  }
-
   Future<void> _bind() async {
+    final username = _accountCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    if (username.isEmpty || password.isEmpty) {
+      AppToast.info('请填写代理会员账号和密码');
+      return;
+    }
+    if (_submitting) return;
+    setState(() => _submitting = true);
     try {
       await ref.read(ownerRepositoryProvider).bindFeipan({
-        'username': _accountCtrl.text.trim(),
-        'password': _passwordCtrl.text,
+        'username': username,
+        'password': password,
       });
-      AppToast.success('绑定成功');
-      await _load(silent: true);
-    } catch (e) {
-      AppToast.error(e.toString());
-    }
-  }
-
-  Future<void> _unbind() async {
-    final ok = await hostConfirm(
-      context,
-      title: '解绑',
-      message: '确认解绑？解绑后房间下注将不再成功飞出。',
-      danger: true,
-    );
-    if (!ok || !mounted) return;
-    try {
-      await ref.read(ownerRepositoryProvider).unbindFeipan();
-      AppToast.success('已解绑');
-      await _load(silent: true);
-    } catch (e) {
-      AppToast.error(e.toString());
-    }
-  }
-
-  Future<void> _toggleFlight(bool enabled) async {
-    if (_switching) return;
-    setState(() => _switching = true);
-    try {
-      await ref.read(ownerRepositoryProvider).updateFeipanFlightSwitch(
-            flightEnabled: enabled,
-          );
       if (!mounted) return;
-      setState(() {
-        _status = {..._status, 'flightEnabled': enabled};
-      });
-      AppToast.success(enabled ? '飞单已开启' : '飞单已关闭');
+      AppToast.success('绑定成功');
+      appSafePop(context);
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
-      if (mounted) setState(() => _switching = false);
+      if (mounted) setState(() => _submitting = false);
     }
   }
 
@@ -122,113 +57,80 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
       title: '绑定代理会员',
-      body: _loading
-          ? const AppPageLoading()
-          : ListView(
-              padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
+        children: [
+          Text(
+            '绑定代理会员',
+            style: TextStyle(
+              fontSize: 15.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.navBlue,
+            ),
+          ),
+          SizedBox(height: 10.h),
+          HostWhiteCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_bound) ...[
-                  HostWhiteCard(
-                    child: Column(
-                      children: [
-                        _row('代理会员', '${_status['username'] ?? '-'}'),
-                        _divider(),
-                        _row('状态', '已绑定', valueColor: AppColors.success),
-                        _divider(),
-                        _row('bindingId', '${_status['bindingId'] ?? '-'}'),
-                        _divider(),
-                        _row('agentAccountId', '${_status['agentAccountId'] ?? '-'}'),
-                        _divider(),
-                        _row('agentMemberId', '${_status['agentMemberId'] ?? '-'}'),
-                        _divider(),
-                        _row('可用额度', hostNumStr(_credit['available'], fraction: 2)),
-                        _divider(),
-                        _row('总额度', hostNumStr(_credit['totalCredit'], fraction: 2)),
-                        _divider(),
-                        _row('已占用', hostNumStr(_credit['occupied'], fraction: 2)),
-                        _divider(),
-                        _row('绑定时间', '${_status['boundAt'] ?? '-'}'),
-                        _divider(),
-                        Padding(
-                          padding: EdgeInsets.symmetric(vertical: 4.h),
-                          child: Row(
-                            children: [
-                              Text(
-                                '飞单开关',
-                                style: TextStyle(
-                                  fontSize: 13.sp,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                              const Spacer(),
-                              if (_switching)
-                                SizedBox(
-                                  width: 20.w,
-                                  height: 20.w,
-                                  child: const CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              else
-                                Switch(
-                                  value: _flightEnabled,
-                                  onChanged: _toggleFlight,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
+                Text('代理会员账号', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+                SizedBox(height: 6.h),
+                EmulatorSafeTextField(
+                  controller: _accountCtrl,
+                  decoration: InputDecoration(
+                    hintText: '请输入代理会员账号',
+                    filled: true,
+                    fillColor: const Color(0xFFF7F9FC),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                      borderSide: const BorderSide(color: Color(0xFFE6EAF0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                      borderSide: const BorderSide(color: Color(0xFFE6EAF0)),
                     ),
                   ),
-                  SizedBox(height: 16.h),
-                  HostPrimaryButton(
-                    label: '解绑',
-                    onPressed: _unbind,
-                    color: AppColors.danger,
-                  ),
-                ] else ...[
-                  HostWhiteCard(
-                    child: Column(
-                      children: [
-                        EmulatorSafeTextField(
-                          controller: _accountCtrl,
-                          decoration: const InputDecoration(
-                            labelText: '代理会员账号',
-                            hintText: '如 member001',
-                          ),
-                        ),
-                        EmulatorSafeTextField(
-                          controller: _passwordCtrl,
-                          obscureText: true,
-                          decoration: const InputDecoration(labelText: '密码'),
-                        ),
-                      ],
+                ),
+                SizedBox(height: 14.h),
+                Text('代理会员密码', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+                SizedBox(height: 6.h),
+                EmulatorSafeTextField(
+                  controller: _passwordCtrl,
+                  obscureText: _obscure,
+                  decoration: InputDecoration(
+                    hintText: '请输入代理会员密码',
+                    filled: true,
+                    fillColor: const Color(0xFFF7F9FC),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 12.h),
+                    suffixIcon: IconButton(
+                      onPressed: () => setState(() => _obscure = !_obscure),
+                      icon: Icon(
+                        _obscure ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        size: 18.sp,
+                      ),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                      borderSide: const BorderSide(color: Color(0xFFE6EAF0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                      borderSide: const BorderSide(color: Color(0xFFE6EAF0)),
                     ),
                   ),
-                  SizedBox(height: 16.h),
-                  HostPrimaryButton(label: '绑定', onPressed: _bind),
-                ],
+                ),
               ],
             ),
-    );
-  }
-
-  Widget _row(String k, String v, {Color? valueColor}) {
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: 10.h),
-      child: Row(
-        children: [
-          Text(k, style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
-          const Spacer(),
-          Flexible(
-            child: Text(
-              v,
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 13.sp, color: valueColor ?? AppColors.textPrimary),
-            ),
+          ),
+          SizedBox(height: 20.h),
+          HostPrimaryButton(
+            label: _submitting ? '绑定中…' : '登录并绑定',
+            enabled: !_submitting,
+            onPressed: _bind,
           ),
         ],
       ),
     );
   }
-
-  Widget _divider() => const Divider(height: 1, color: AppColors.divider);
 }
