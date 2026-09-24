@@ -397,12 +397,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     }
   }
 
-  void _dismissHistoryPanel() {
-    if (_historyExpandedNotifier.value) {
-      _historyExpandedNotifier.value = false;
-    }
-  }
-
   void _markOverlayOpened() {
     // 忽略同一手指抬起落到遮罩上；遮罩立即显示，不人为卡顿
     _overlayIgnoreDismissUntil =
@@ -412,8 +406,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   void _dismissOverlays() {
     final until = _overlayIgnoreDismissUntil;
     if (until != null && DateTime.now().isBefore(until)) return;
+    // 历史下拉只由顶栏球号行再点一次关闭，点聊天/输入不关
     _dismissTopPanel();
-    _dismissHistoryPanel();
   }
 
   void _toggleHistoryPanel() {
@@ -1831,7 +1825,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                 _setPanel(_BottomPanel.keypad);
                               }
                               _fabSelectedNotifier.value = null;
-                              _historyExpandedNotifier.value = false;
+                              // 历史下拉保持展开，仅再点顶栏球号行才关
                             },
                             onToggleMenu: () {
                               if (!canBet || !_acceptPanelToggle()) return;
@@ -1841,7 +1835,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     : _BottomPanel.menu,
                               );
                               _fabSelectedNotifier.value = null;
-                              _historyExpandedNotifier.value = false;
+                              // 历史下拉保持展开
                             },
                             onSend: _submitBet,
                             onInsert: _insertText,
@@ -1904,17 +1898,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                     },
                   ),
                 ),
-                // 注单/长龙/历史展开时：点聊天区关闭（面板已在顶栏下方，不再盖住缝）
+                // 仅注单/长龙展开时：点聊天区关闭。历史下拉不盖遮罩，点输入框可正常下注。
                 Positioned.fill(
-                  child: ListenableBuilder(
-                    listenable: Listenable.merge([
-                      _topPanelNotifier,
-                      _historyExpandedNotifier,
-                    ]),
-                    builder: (_, __) {
-                      final showTop = _topPanelNotifier.value != _TopPanel.none;
-                      final showHist = _historyExpandedNotifier.value;
-                      if (!showTop && !showHist) {
+                  child: ValueListenableBuilder<_TopPanel>(
+                    valueListenable: _topPanelNotifier,
+                    builder: (_, topPanel, __) {
+                      if (topPanel == _TopPanel.none) {
                         return const SizedBox.shrink();
                       }
                       return GestureDetector(
