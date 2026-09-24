@@ -530,16 +530,20 @@ class OwnerRepository {
     await _client.post('/owner/feipan/unbind');
   }
 
-  /// 飞单总开关 / 彩种开关。`gameType`+`gameEnabled` 可按彩种；仅 `flightEnabled` 为全局。
+  /// 飞单总开关 / 彩种开关 / 飞单比例 / 起飞金额。
   Future<void> updateFeipanFlightSwitch({
     bool? flightEnabled,
     String? gameType,
     bool? gameEnabled,
+    num? flightRatio,
+    num? minAmount,
   }) async {
     await _client.put('/owner/feipan/flight-switch', data: {
       if (flightEnabled != null) 'flightEnabled': flightEnabled,
       if (gameType != null && gameType.isNotEmpty) 'gameType': gameType,
       if (gameEnabled != null) 'gameEnabled': gameEnabled,
+      if (flightRatio != null) 'flightRatio': flightRatio,
+      if (minAmount != null) 'minAmount': minAmount,
     });
   }
 

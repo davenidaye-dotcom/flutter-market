@@ -100,7 +100,12 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
     }
   }
 
-  Future<void> _setGame(String gameType, bool enabled) async {
+  Future<void> _saveGameConfig(
+    String gameType, {
+    bool? enabled,
+    num? flightRatio,
+    num? minAmount,
+  }) async {
     if (!_bound) {
       _needBind();
       return;
@@ -111,22 +116,91 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
       await ref.read(ownerRepositoryProvider).updateFeipanFlightSwitch(
             gameType: gameType,
             gameEnabled: enabled,
+            flightRatio: flightRatio,
+            minAmount: minAmount,
           );
       if (!mounted) return;
       setState(() {
         _games = [
           for (final g in _games)
             if ('${g['gameType']}' == gameType)
-              {...g, 'enabled': enabled}
+              {
+                ...g,
+                if (enabled != null) 'enabled': enabled,
+                if (flightRatio != null) 'flightRatio': flightRatio,
+                if (minAmount != null) 'minAmount': minAmount,
+              }
             else
               g,
         ];
       });
+      if (flightRatio != null || minAmount != null) {
+        AppToast.success('已保存');
+      }
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  Future<void> _editRatio(String gameType, dynamic current) async {
+    if (!_bound) {
+      _needBind();
+      return;
+    }
+    final text = await hostInputSheet(
+      context,
+      title: '飞单比例',
+      initial: _plainNum(current ?? 100),
+      hint: '0～100，50 表示飞出一半',
+      suffixText: '%',
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    );
+    if (text == null || !mounted) return;
+    final v = num.tryParse(text.trim());
+    if (v == null || v < 0 || v > 100) {
+      AppToast.error('飞单比例须为 0～100');
+      return;
+    }
+    await _saveGameConfig(gameType, flightRatio: v);
+  }
+
+  Future<void> _editMinAmount(String gameType, dynamic current) async {
+    if (!_bound) {
+      _needBind();
+      return;
+    }
+    final text = await hostInputSheet(
+      context,
+      title: '起飞金额',
+      initial: _plainNum(current ?? 1),
+      hint: '订单金额小于该值则不飞单',
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    );
+    if (text == null || !mounted) return;
+    final v = num.tryParse(text.trim());
+    if (v == null || v < 0) {
+      AppToast.error('起飞金额不能为负');
+      return;
+    }
+    await _saveGameConfig(gameType, minAmount: v);
+  }
+
+  String _plainNum(dynamic value) {
+    final n = value is num ? value : num.tryParse('$value');
+    if (n == null) return '';
+    if (n == n.roundToDouble()) return '${n.toInt()}';
+    return n.toString();
+  }
+
+  String _ratioText(dynamic value) {
+    final raw = _plainNum(value ?? 100);
+    return raw.isEmpty ? '100%' : '$raw%';
+  }
+
+  Future<void> _setGame(String gameType, bool enabled) async {
+    await _saveGameConfig(gameType, enabled: enabled);
   }
 
   Future<void> _unbind() async {
@@ -395,8 +469,10 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
     final type = '${game['gameType'] ?? ''}';
     final name = '${game['gameName'] ?? type}';
     final on = game['enabled'] == true;
+    final ratio = game['flightRatio'] ?? 100;
+    final minAmount = game['minAmount'] ?? 1;
     return HostWhiteCard(
-      padding: EdgeInsets.fromLTRB(12.w, 12.h, 8.w, 8.h),
+      padding: EdgeInsets.fromLTRB(12.w, 8.h, 8.w, 12.h),
       child: Column(
         children: [
           Row(
@@ -421,28 +497,96 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
               ),
             ],
           ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () {
-                if (!_bound) {
-                  _needBind();
-                  return;
-                }
-                pushHostPage(
-                  context,
-                  FlyOddsPage(
-                    roomId: widget.roomId,
-                    gameType: type,
-                    gameName: name,
-                  ),
-                );
-              },
-              icon: Icon(Icons.tune, size: 16.sp, color: AppColors.navBlue),
-              label: Text('设置', style: TextStyle(fontSize: 13.sp, color: AppColors.navBlue)),
-            ),
+          SizedBox(height: 4.h),
+          Row(
+            children: [
+              Expanded(
+                child: _configChip(
+                  icon: Icons.percent,
+                  label: '飞单比例',
+                  value: _ratioText(ratio),
+                  onTap: () => _editRatio(type, ratio),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: _configChip(
+                  icon: Icons.payments_outlined,
+                  label: '起飞金额',
+                  value: _plainNum(minAmount).isEmpty ? '1' : _plainNum(minAmount),
+                  onTap: () => _editMinAmount(type, minAmount),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: _configChip(
+                  icon: Icons.tune,
+                  label: '设置',
+                  value: '赔率',
+                  onTap: () {
+                    if (!_bound) {
+                      _needBind();
+                      return;
+                    }
+                    pushHostPage(
+                      context,
+                      FlyOddsPage(
+                        roomId: widget.roomId,
+                        gameType: type,
+                        gameName: name,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _configChip({
+    required IconData icon,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: const Color(0xFFF4F7FB),
+      borderRadius: BorderRadius.circular(10.r),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10.r),
+        onTap: _busy ? null : onTap,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(8.w, 8.h, 4.w, 8.h),
+          child: Row(
+            children: [
+              Icon(icon, size: 14.sp, color: const Color(0xFF8A94A6)),
+              SizedBox(width: 4.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                    ),
+                    Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.keyboard_arrow_down, size: 16.sp, color: AppColors.textHint),
+            ],
+          ),
+        ),
       ),
     );
   }
