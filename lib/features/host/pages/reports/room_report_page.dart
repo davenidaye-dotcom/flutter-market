@@ -375,6 +375,9 @@ class _PlayerCard extends StatelessWidget {
     final returned = _n(['rebatePaid']);
     final pending = _n(['rebatePending']);
     final playerResult = _signed(['playerResult']);
+    final agent = row['isAgent'] == true || row['isAgent'] == 1 || row['isAgent'] == 'true';
+    final commPaid = _n(['commissionPaid']);
+    final commPending = _n(['commissionPending']);
 
     return Material(
       color: Colors.white,
@@ -434,9 +437,15 @@ class _PlayerCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _kv('已返', returned),
+                        _kv('已返回水', returned),
                         SizedBox(height: 8.h),
-                        _kv('待返', pending),
+                        _kv('待返回水', pending),
+                        if (agent) ...[
+                          SizedBox(height: 8.h),
+                          _kv('已返抽佣', commPaid),
+                          SizedBox(height: 8.h),
+                          _kv('待返抽佣', commPending),
+                        ],
                       ],
                     ),
                   ),
