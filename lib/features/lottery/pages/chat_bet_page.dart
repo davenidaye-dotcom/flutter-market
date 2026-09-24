@@ -1852,7 +1852,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                 Positioned(
                   right: 0,
                   top: 40.h,
-                  child: ValueListenableBuilder<int?>(
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: _historyExpandedNotifier,
+                    builder: (_, historyOpen, __) {
+                      if (historyOpen) return const SizedBox.shrink();
+                      return ValueListenableBuilder<int?>(
                     valueListenable: _fabSelectedNotifier,
                     builder: (_, fabSelected, __) {
                       return _FloatingActions(
@@ -1895,6 +1899,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                           _topPanelNotifier.value = _TopPanel.none;
                         },
                       );
+                    },
+                  );
                     },
                   ),
                 ),
