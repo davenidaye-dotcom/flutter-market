@@ -1339,7 +1339,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   String? _guessBetAmountText(String command) {
-    // 1/大/10  大/100  多个指令空格分隔时汇总数字段
+    // 1/大/10  大/100  大100  多个指令空格分隔时汇总数字段
+    final shorthand = RegExp(r'^[大小单双]([1-9]\d*)$');
     final parts = command.split(RegExp(r'\s+'));
     final amounts = <String>[];
     for (final p in parts) {
@@ -1347,7 +1348,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       if (segs.length >= 2) {
         final last = segs.last.trim();
         if (num.tryParse(last) != null) amounts.add(last);
+        continue;
       }
+      final hit = shorthand.firstMatch(p.trim());
+      if (hit != null) amounts.add(hit.group(1)!);
     }
     if (amounts.isEmpty) return null;
     if (amounts.length == 1) return amounts.first;
