@@ -156,12 +156,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   void initState() {
     super.initState();
     _amountCtrl.text = '${_presets[_amountPreset]}';
-    for (final rank in _twoSideRanks) {
-      _collapsed.add('两面-$rank');
-    }
-    for (final rank in _ranks) {
-      _collapsed.add('名次-$rank');
-    }
+    // 两面 / 1-10名 默认全部展开（_collapsed 为空即展开）
   }
 
   @override

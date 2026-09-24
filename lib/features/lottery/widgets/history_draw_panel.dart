@@ -49,11 +49,18 @@ abstract final class HistoryDrawLayout {
   /// 开奖数字的绝对字号。顶栏和历史表共用，另加 1.sp。
   static double ballDigitSize() => ballSize() * ballFontScale() + 1.sp;
 
-  /// 红框里的号码方框比格子算出的边长再大 2.sp。
-  static double ballBoxBoost() => 2.sp;
+  /// 球间距：对齐 FlipCountdown compact（0.5.w×2）。
+  static double ballGap() => LotteryBallStyle.gap();
+
+  /// 球圆角：对齐 FlipCountdown compact。
+  static double ballRadius() => LotteryBallStyle.radius();
+
+  /// 不再加大方框（会吃掉间隔）；保留兼容。
+  @Deprecated('Use ballGap; boost removed to keep spacing')
+  static double ballBoxBoost() => 0;
 
   static const int visibleRows = 10;
-  static double rowHeight() => 24.h + ballBoxBoost();
+  static double rowHeight() => 24.h;
   static double rowGap() => 1.h;
   static double headerHeight() => 28.h;
   static double listPadTop() => 1.h;
@@ -141,20 +148,21 @@ class HistoryDrawPanel extends StatelessWidget {
     final pad = HistoryDrawLayout.hPad();
 
     return Material(
-      color: Colors.transparent,
+      color: Colors.white,
       child: Container(
         height: panelHeight(context),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           color: Colors.white,
+          // 只向下投影，顶边与状态栏无缝贴合
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.14),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+              color: Color(0x24000000),
+              blurRadius: 8,
+              offset: Offset(0, 4),
             ),
           ],
         ),
-        clipBehavior: Clip.antiAlias,
+        clipBehavior: Clip.hardEdge,
         child: Column(
           children: [
             const _Header(),
@@ -256,11 +264,35 @@ class _DataRow extends StatelessWidget {
 
   final HistoryDrawRow row;
 
-  static const _dragonTiger = Color(0xFF7A7A7A);
+  static const _yinBlue = Color(0xFF1E88E5);
 
   static String _issueTail(String issue) {
     if (issue.length <= 4) return issue;
     return issue.substring(issue.length - 4);
+  }
+
+  static Color _sideColor(String ch) {
+    // 大/双/龙 红色；小/单/虎 蓝色
+    if (ch == '大' || ch == '双' || ch == '龙') return AppColors.danger;
+    if (ch == '小' || ch == '单' || ch == '虎') return _yinBlue;
+    return const Color(0xFF5A5A5A);
+  }
+
+  static TextSpan _coloredChars(String text, {double? fontSize, FontWeight? weight}) {
+    return TextSpan(
+      children: [
+        for (final rune in text.runes)
+          TextSpan(
+            text: String.fromCharCode(rune),
+            style: TextStyle(
+              fontSize: fontSize,
+              height: 1.1,
+              color: _sideColor(String.fromCharCode(rune)),
+              fontWeight: weight ?? FontWeight.w600,
+            ),
+          ),
+      ],
+    );
   }
 
   @override
@@ -288,31 +320,32 @@ class _DataRow extends StatelessWidget {
         middle: LotteryBallRow(
           numbers: row.numbers,
           expandSlots: true,
+          gap: HistoryDrawLayout.ballGap(),
           digitFontSize: HistoryDrawLayout.ballDigitSize(),
-          boxBoost: HistoryDrawLayout.ballBoxBoost(),
         ),
-        gy: Text(
-          '$sum$size$oddEven',
+        gy: Text.rich(
+          TextSpan(
+            children: [
+              TextSpan(
+                text: '$sum',
+                style: TextStyle(
+                  fontSize: 11.sp,
+                  height: 1.1,
+                  color: const Color(0xFF5A5A5A),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              _coloredChars('$size$oddEven', fontSize: 11.sp),
+            ],
+          ),
           textAlign: TextAlign.center,
           maxLines: 1,
-          style: TextStyle(
-            fontSize: 11.sp,
-            height: 1.1,
-            color: AppColors.danger,
-            fontWeight: FontWeight.w600,
-          ),
         ),
-        dt: Text(
-          dt,
+        dt: Text.rich(
+          _coloredChars(dt, fontSize: 11.sp, weight: FontWeight.w500),
           textAlign: TextAlign.center,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 11.sp,
-            height: 1.1,
-            color: _dragonTiger,
-            fontWeight: FontWeight.w500,
-          ),
         ),
       ),
     );

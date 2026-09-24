@@ -5,6 +5,7 @@ import '../../../data/models/chat_message_model.dart';
 import '../../../shared/widgets/lottery_ball.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../utils/draw_result_parse.dart';
+import 'history_draw_panel.dart';
 
 bool _isRobotName(String raw) {
   final s = raw.trim();
@@ -34,7 +35,8 @@ class ChatMessageItem extends StatelessWidget {
         message.type == ChatMessageType.betListCheck) {
       return _RobotBubble(
         message: message,
-        fontSize: 16.sp,
+        // 投注成功 / 竞猜核对 / 中奖核对 正文统一字号
+        fontSize: 14.sp,
       );
     }
     if (_isRobotSystemLayout) {
@@ -63,7 +65,7 @@ class ChatMessageItem extends StatelessWidget {
                     message.time.trim().isEmpty
                         ? _displaySender(message.sender)
                         : '${_displaySender(message.sender)}  ${message.time}',
-                    style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                   ),
                   SizedBox(height: 4.h),
                   Container(
@@ -96,7 +98,7 @@ class ChatMessageItem extends StatelessWidget {
     return Text(
       message.content,
       style: TextStyle(
-        fontSize: 16.sp,
+        fontSize: 14.sp,
         color: Colors.black,
         fontWeight: FontWeight.bold,
       ),
@@ -132,7 +134,7 @@ class _RobotBubble extends StatelessWidget {
                     final name = _displaySender(message.sender);
                     return message.time.trim().isEmpty ? name : '$name  ${message.time}';
                   }(),
-                  style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                 ),
                 SizedBox(height: 4.h),
                 Container(
@@ -186,7 +188,7 @@ class _UserBetBubble extends StatelessWidget {
               children: [
                 Text(
                   message.time.trim().isEmpty ? name : '$name  ${message.time}',
-                  style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                 ),
                 SizedBox(height: 4.h),
                 Container(
@@ -199,7 +201,7 @@ class _UserBetBubble extends StatelessWidget {
                   child: Text(
                     message.content,
                     style: TextStyle(
-                      fontSize: 16.sp,
+                      fontSize: 14.sp,
                       height: 1.35,
                       color: Colors.black,
                       fontWeight: FontWeight.bold,
@@ -237,7 +239,7 @@ class _SystemNotice extends StatelessWidget {
         text,
         textAlign: TextAlign.center,
         style: TextStyle(
-          fontSize: 16.sp,
+          fontSize: 14.sp,
           color: const Color(0xFFE65100),
           fontWeight: FontWeight.w600,
           height: 1.35,
@@ -292,7 +294,7 @@ class _ResultCard extends StatelessWidget {
             '开奖结果',
             style: TextStyle(
               color: Colors.white70,
-              fontSize: 12.sp,
+              fontSize: 13.sp,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -302,7 +304,7 @@ class _ResultCard extends StatelessWidget {
               '第$issue期',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 18.sp,
+                fontSize: 19.sp,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 0.5,
               ),
@@ -310,16 +312,24 @@ class _ResultCard extends StatelessWidget {
           ],
           if (ranks.isNotEmpty) ...[
             SizedBox(height: 10.h),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                const count = 10;
-                final gap = 2.w;
-                final size = ((constraints.maxWidth - gap * (count - 1)) / count)
-                    .clamp(14.0, 20.w);
-                return LotteryBallRow(
-                  numbers: ranks,
-                  ballSize: size,
-                  gap: gap,
+            // 与下注页顶栏开奖球：同一套框宽 / 字号（按顶栏 middle 列宽算）
+            Builder(
+              builder: (context) {
+                final topMiddleW = MediaQuery.sizeOf(context).width -
+                    HistoryDrawLayout.hPad() * 2 -
+                    HistoryDrawLayout.issueW() -
+                    HistoryDrawLayout.issueGap() -
+                    HistoryDrawLayout.gyW() -
+                    HistoryDrawLayout.dtW();
+                return SizedBox(
+                  width: topMiddleW,
+                  height: HistoryDrawLayout.rowHeight(),
+                  child: LotteryBallRow(
+                    numbers: ranks,
+                    expandSlots: true,
+                    gap: HistoryDrawLayout.ballGap(),
+                    digitFontSize: HistoryDrawLayout.ballDigitSize(),
+                  ),
                 );
               },
             ),
@@ -327,7 +337,7 @@ class _ResultCard extends StatelessWidget {
             SizedBox(height: 8.h),
             Text(
               message.content,
-              style: TextStyle(color: Colors.white, fontSize: 13.sp, height: 1.35),
+              style: TextStyle(color: Colors.white, fontSize: 14.sp, height: 1.35),
             ),
           ],
         ],

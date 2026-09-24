@@ -4,6 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
 
+/// 开奖球视觉规范：间隔 / 圆角对齐 FlipCountdown compact（margin 0.5.w×2、radius 2.r）。
+abstract final class LotteryBallStyle {
+  static double gap() => 1.w;
+  static double radius() => 2.r;
+}
+
 /// 开奖号码球
 class LotteryBall extends StatelessWidget {
   const LotteryBall({
@@ -23,6 +29,7 @@ class LotteryBall extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = size ?? 22.w;
+    final radius = LotteryBallStyle.radius();
     if (placeholder) {
       return Container(
         width: s,
@@ -30,7 +37,8 @@ class LotteryBall extends StatelessWidget {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: const Color(0xFF5D4037),
-          borderRadius: BorderRadius.circular(4.r),
+          borderRadius: BorderRadius.circular(radius),
+          boxShadow: AppColors.ballBoxShadows,
         ),
         child: Text(
           '-',
@@ -44,8 +52,10 @@ class LotteryBall extends StatelessWidget {
       height: s,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(4.r),
+        gradient: AppColors.ballGradient(color),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: AppColors.ballBorderColor(color), width: 0.6),
+        boxShadow: AppColors.ballBoxShadows,
       ),
       child: Text(
         '$number',
@@ -68,11 +78,12 @@ class LotteryBallRow extends StatelessWidget {
     this.placeholder = false,
     this.ballSize,
     this.gap,
-    /// true：10 列等宽，方框铺满格子并与表头「一」～「十」对齐。
+    /// true：10 列等宽，方框居中，列间保留 [gap]（默认对齐倒计时）。
     this.expandSlots = false,
     this.fontScale = 0.48,
     /// 指定后数字用这个绝对字号，不随方框变大。
     this.digitFontSize,
+    @Deprecated('勿再加大吃掉间隔，保留参数仅为兼容调用')
     this.boxBoost = 0,
   });
 
@@ -91,9 +102,9 @@ class LotteryBallRow extends StatelessWidget {
       return LayoutBuilder(
         builder: (context, constraints) {
           final slot = constraints.maxWidth / 10;
-          final slotGap = 1.w;
-          var size = slot - slotGap + boxBoost;
-          if (size > slot) size = slot;
+          // 与 FlipCountdown compact 数字间隔一致：左右各 0.5.w → 合计 1.w
+          final slotGap = gap ?? LotteryBallStyle.gap();
+          var size = slot - slotGap;
           final maxH = constraints.maxHeight;
           if (maxH.isFinite && maxH > 0 && maxH < size) {
             size = maxH;
@@ -120,7 +131,7 @@ class LotteryBallRow extends StatelessWidget {
         },
       );
     }
-    final spacing = gap ?? 3.w;
+    final spacing = gap ?? LotteryBallStyle.gap();
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerLeft,

@@ -322,7 +322,7 @@ class LiveHallGameCountdown extends ConsumerWidget {
             child: FlipCountdown(
               seconds: LotteryPeriodHelper.bettingCountdownSeconds(game, now),
               compact: true,
-              digitColor: AppColors.danger,
+              digitColor: AppColors.countdownGreen,
             ),
           ),
         ),

@@ -27,25 +27,49 @@ abstract final class AppColors {
   static const sidebarActive = Color(0xFF4A698A);
   static const sidebarInactive = Color(0xFFF0F0F0);
 
-  /// 开奖号码方框色，取自房间模板截图。
+  /// 开奖号码方框色，对齐 ar198 号码盘截图采样。
   static const ballColors = <int, Color>{
-    1: Color(0xFFF9F100),
-    2: Color(0xFF0C8AEB),
-    3: Color(0xFF4A4A4A),
-    4: Color(0xFFF1780F),
-    5: Color(0xFF77F6F6),
-    6: Color(0xFF5437ED),
-    7: Color(0xFFE3E3E3),
-    8: Color(0xFFED2D0D),
-    9: Color(0xFF770D06),
-    10: Color(0xFF0FB60C),
+    1: Color(0xFFE3DB08),
+    2: Color(0xFF0491DA),
+    3: Color(0xFF494949),
+    4: Color(0xFFFA7505),
+    5: Color(0xFF1AE0E3),
+    6: Color(0xFF5334F9),
+    7: Color(0xFFBEBEBE),
+    8: Color(0xFFF82805),
+    9: Color(0xFF750A04),
+    10: Color(0xFF0BBA08),
   };
 
-  /// 1、5、7 是浅底，白字看不清，用深色；其余保持白字。
+  /// 开奖球号统一白字（彩种列表 / 下注页对齐）。
   static Color ballDigitColor(int number) {
-    if (number == 1 || number == 5 || number == 7) {
-      return const Color(0xFF333333);
-    }
     return const Color(0xFFFFFFFF);
+  }
+
+  /// 球框轻阴影 + 边缘，贴近截图立体感（不改框尺寸）。
+  static List<BoxShadow> get ballBoxShadows => [
+        BoxShadow(
+          color: const Color(0x40000000),
+          blurRadius: 1.5,
+          offset: const Offset(0, 1),
+        ),
+      ];
+
+  static Color ballBorderColor(Color fill) {
+    return Color.lerp(fill, const Color(0xFF000000), 0.18)!;
+  }
+
+  /// 轻微垂直渐变，模拟截图里的按钮高光。
+  static LinearGradient ballGradient(Color fill) {
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      colors: [
+        Color.lerp(fill, const Color(0xFFFFFFFF), 0.14)!,
+        fill,
+        Color.lerp(fill, const Color(0xFF000000), 0.10)!,
+      ],
+      stops: const [0.0, 0.48, 1.0],
+    );
   }
 }

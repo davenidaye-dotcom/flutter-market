@@ -102,6 +102,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   final _panelNotifier = ValueNotifier<_BottomPanel>(_BottomPanel.none);
   final _topPanelNotifier = ValueNotifier<_TopPanel>(_TopPanel.none);
   final _historyExpandedNotifier = ValueNotifier(false);
+  /// 历史面板首次打开后保活，避免每次展开重建 EasyRefresh 卡顿。
+  final _historyPanelMounted = ValueNotifier(false);
   final _historyLoadingNotifier = ValueNotifier(false);
   final _longDragonRowsNotifier = ValueNotifier<List<LongDragonRow>?>(null);
   final _longDragonLoadingNotifier = ValueNotifier(false);
@@ -128,6 +130,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   final _showJumpBottomNotifier = ValueNotifier(false);
   Timer? _draftSaveTimer;
   Timer? _historyRowsDebounce;
+  DateTime? _overlayIgnoreDismissUntil;
   bool _disposed = false;
   int _chatSubGen = 0;
   String _accountId = '';
@@ -400,9 +403,38 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     }
   }
 
+  void _markOverlayOpened() {
+    // 忽略同一手指抬起落到遮罩上；遮罩立即显示，不人为卡顿
+    _overlayIgnoreDismissUntil =
+        DateTime.now().add(const Duration(milliseconds: 200));
+  }
+
   void _dismissOverlays() {
+    final until = _overlayIgnoreDismissUntil;
+    if (until != null && DateTime.now().isBefore(until)) return;
     _dismissTopPanel();
     _dismissHistoryPanel();
+  }
+
+  void _toggleHistoryPanel() {
+    if (_historyExpandedNotifier.value) {
+      _historyExpandedNotifier.value = false;
+      return;
+    }
+    // 按下即展开：先灌缓存再翻状态，网络刷新丢到帧后
+    if (_topPanelNotifier.value != _TopPanel.none) {
+      _topPanelNotifier.value = _TopPanel.none;
+    }
+    _refreshHistoryRows();
+    if (!_historyPanelMounted.value) {
+      _historyPanelMounted.value = true;
+    }
+    _historyExpandedNotifier.value = true;
+    _markOverlayOpened();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_disposed || !mounted || !_historyExpandedNotifier.value) return;
+      unawaited(_ensureHistoryPanelReady());
+    });
   }
 
   /// 首帧挂载后才能读 MediaQuery（initState 里调用会崩）。
@@ -912,6 +944,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _panelNotifier.dispose();
     _topPanelNotifier.dispose();
     _historyExpandedNotifier.dispose();
+    _historyPanelMounted.dispose();
     _historyLoadingNotifier.dispose();
     _longDragonRowsNotifier.dispose();
     _longDragonLoadingNotifier.dispose();
@@ -1475,7 +1508,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
   Future<void> _ensureHistoryPanelReady() async {
     final gen = ++_historyReadyGen;
-    _historyLoadingNotifier.value = true;
+    final hasRows = _historyDisplayRowsNotifier.value.isNotEmpty;
+    // 有缓存先上屏，不盖转圈；无缓存才 loading
+    if (!hasRows) _historyLoadingNotifier.value = true;
     try {
       await ref
           .read(roomLotteryLiveProvider(widget.roomId).notifier)
@@ -1569,21 +1604,14 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
             gameId: activeGameId,
             topPanelListenable: _topPanelNotifier,
             historyExpandedListenable: _historyExpandedNotifier,
-            onToggleHistory: () {
-              final next = !_historyExpandedNotifier.value;
-              _historyExpandedNotifier.value = next;
-              if (next) {
-                _topPanelNotifier.value = _TopPanel.none;
-                _refreshHistoryRows();
-                unawaited(_ensureHistoryPanelReady());
-              }
-            },
+            onToggleHistory: _toggleHistoryPanel,
             onBetSlip: () {
               final next = _topPanelNotifier.value == _TopPanel.betSlip
                   ? _TopPanel.none
                   : _TopPanel.betSlip;
               _topPanelNotifier.value = next;
               _historyExpandedNotifier.value = false;
+              if (next != _TopPanel.none) _markOverlayOpened();
               if (_panel != _BottomPanel.none) _setPanel(_BottomPanel.none);
               _fabSelectedNotifier.value = null;
             },
@@ -1591,10 +1619,27 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
               final open = _topPanelNotifier.value != _TopPanel.longDragon;
               _topPanelNotifier.value = open ? _TopPanel.longDragon : _TopPanel.none;
               _historyExpandedNotifier.value = false;
+              if (open) _markOverlayOpened();
               if (_panel != _BottomPanel.none) _setPanel(_BottomPanel.none);
               _fabSelectedNotifier.value = null;
               if (open) unawaited(_loadLongDragon());
             },
+          ),
+          // 紧贴顶栏下方：不浮在聊天上，避免缝里透出消息
+          _StatusDropdownSlot(
+            roomId: widget.roomId,
+            gameId: activeGameId,
+            historyExpandedListenable: _historyExpandedNotifier,
+            historyMountedListenable: _historyPanelMounted,
+            topPanelListenable: _topPanelNotifier,
+            rowsListenable: _historyDisplayRowsNotifier,
+            historyLoadingListenable: _historyLoadingNotifier,
+            betSlipsListenable: _betSlipsNotifier,
+            longDragonRowsListenable: _longDragonRowsNotifier,
+            longDragonLoadingListenable: _longDragonLoadingNotifier,
+            onHistoryRetry: () => unawaited(_ensureHistoryPanelReady()),
+            onHistoryEpochChange: _refreshHistoryRows,
+            onCancelBetSlipRow: _cancelBetSlipRow,
           ),
           Expanded(
             child: Stack(
@@ -1851,7 +1896,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                     },
                   ),
                 ),
-                // 注单/长龙/历史展开时：点面板外区域关闭（必须在面板之下，否则吞掉上拉下拉）
+                // 注单/长龙/历史展开时：点聊天区关闭（面板已在顶栏下方，不再盖住缝）
                 Positioned.fill(
                   child: ListenableBuilder(
                     listenable: Listenable.merge([
@@ -1869,76 +1914,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                         behavior: HitTestBehavior.opaque,
                         child: const ColoredBox(color: Color(0x03000000)),
                       );
-                    },
-                  ),
-                ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: ValueListenableBuilder<bool>(
-                    valueListenable: _historyExpandedNotifier,
-                    builder: (_, expanded, __) {
-                      if (!expanded) return const SizedBox.shrink();
-                      return _HistoryOverlayPanel(
-                        roomId: widget.roomId,
-                        gameId: activeGameId,
-                        rowsListenable: _historyDisplayRowsNotifier,
-                        loadingListenable: _historyLoadingNotifier,
-                        onRetry: () => unawaited(_ensureHistoryPanelReady()),
-                        onEpochChange: _refreshHistoryRows,
-                      );
-                    },
-                  ),
-                ),
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: ValueListenableBuilder<_TopPanel>(
-                    valueListenable: _topPanelNotifier,
-                    builder: (_, topPanel, __) {
-                      switch (topPanel) {
-                        case _TopPanel.betSlip:
-                          return ValueListenableBuilder<List<BetSlipRow>>(
-                            valueListenable: _betSlipsNotifier,
-                            builder: (_, rows, __) {
-                              final issue = ref
-                                      .read(roomLotteryLiveProvider(widget.roomId))
-                                      .gameById(_gameId)
-                                      ?.currentIssue ??
-                                  '';
-                              final pending = rows
-                                  .where((r) => issue.isEmpty || r.issue == issue)
-                                  .toList();
-                              return BetSlipPanel(
-                                rows: pending,
-                                onCancelRow: _cancelBetSlipRow,
-                              );
-                            },
-                          );
-                        case _TopPanel.longDragon:
-                          return ValueListenableBuilder<bool>(
-                            valueListenable: _longDragonLoadingNotifier,
-                            builder: (_, loading, __) {
-                              if (loading &&
-                                  (_longDragonRowsNotifier.value?.isEmpty ?? true)) {
-                                return SizedBox(
-                                  height: LongDragonPanel.panelHeight(context),
-                                  child: const AppPageLoading(),
-                                );
-                              }
-                              return ValueListenableBuilder<List<LongDragonRow>?>(
-                                valueListenable: _longDragonRowsNotifier,
-                                builder: (_, rows, __) {
-                                  return LongDragonPanel(rows: rows ?? const []);
-                                },
-                              );
-                            },
-                          );
-                        case _TopPanel.none:
-                          return const SizedBox.shrink();
-                      }
                     },
                   ),
                 ),
@@ -2188,25 +2163,15 @@ class _ChatGameStatusSection extends ConsumerWidget {
       return SizedBox(height: 56.h);
     }
 
-    return ValueListenableBuilder<bool>(
-      valueListenable: historyExpandedListenable,
-      builder: (_, historyExpanded, __) {
-        return ValueListenableBuilder<_TopPanel>(
-          valueListenable: topPanelListenable,
-          builder: (_, topPanel, __) {
-            return _GameStatusBar(
-              roomId: roomId,
-              gameId: gameId,
-              currentIssue: currentIssue,
-              historyExpanded: historyExpanded,
-              topPanel: topPanel,
-              onToggleHistory: onToggleHistory,
-              onBetSlip: onBetSlip,
-              onLongDragon: onLongDragon,
-            );
-          },
-        );
-      },
+    return _GameStatusBar(
+      roomId: roomId,
+      gameId: gameId,
+      currentIssue: currentIssue,
+      topPanelListenable: topPanelListenable,
+      historyExpandedListenable: historyExpandedListenable,
+      onToggleHistory: onToggleHistory,
+      onBetSlip: onBetSlip,
+      onLongDragon: onLongDragon,
     );
   }
 }
@@ -2237,8 +2202,8 @@ class _GameStatusBar extends StatelessWidget {
     required this.roomId,
     required this.gameId,
     required this.currentIssue,
-    required this.historyExpanded,
-    required this.topPanel,
+    required this.topPanelListenable,
+    required this.historyExpandedListenable,
     required this.onToggleHistory,
     required this.onBetSlip,
     required this.onLongDragon,
@@ -2247,87 +2212,128 @@ class _GameStatusBar extends StatelessWidget {
   final String roomId;
   final String gameId;
   final String currentIssue;
-  final bool historyExpanded;
-  final _TopPanel topPanel;
+  final ValueListenable<_TopPanel> topPanelListenable;
+  final ValueListenable<bool> historyExpandedListenable;
   final VoidCallback onToggleHistory;
   final VoidCallback onBetSlip;
   final VoidCallback onLongDragon;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: Colors.white,
-      padding: EdgeInsets.symmetric(
-        horizontal: HistoryDrawLayout.hPad(),
-        vertical: 8.h,
-      ),
-      child: Column(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        historyExpandedListenable,
+        topPanelListenable,
+      ]),
+      builder: (_, __) {
+        final flushBottom = historyExpandedListenable.value ||
+            topPanelListenable.value != _TopPanel.none;
+        return Container(
+          color: Colors.white,
+          padding: EdgeInsets.fromLTRB(
+            HistoryDrawLayout.hPad(),
+            8.h,
+            HistoryDrawLayout.hPad(),
+            // 下拉展开时去掉底 padding，与面板顶边贴死
+            flushBottom ? 0 : 8.h,
+          ),
+          child: Column(
             children: [
-              _StatusIssueColumn(label: currentIssue),
-              SizedBox(width: HistoryDrawLayout.issueGap()),
-              Expanded(
-                child: LiveLotteryPeriodCountdownRow(
-                  roomId: roomId,
-                  gameId: gameId,
-                  showIssue: false,
-                  countdownColor: AppColors.countdownGreen,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  _StatusIssueColumn(label: currentIssue),
+                  SizedBox(width: HistoryDrawLayout.issueGap()),
+                  Expanded(
+                    child: LiveLotteryPeriodCountdownRow(
+                      roomId: roomId,
+                      gameId: gameId,
+                      showIssue: false,
+                      countdownColor: AppColors.countdownGreen,
+                    ),
+                  ),
+                  ValueListenableBuilder<_TopPanel>(
+                    valueListenable: topPanelListenable,
+                    builder: (_, topPanel, __) {
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            onTap: onBetSlip,
+                            behavior: HitTestBehavior.opaque,
+                            child: _pillBtn('注单', active: topPanel == _TopPanel.betSlip),
+                          ),
+                          SizedBox(width: 6.w),
+                          GestureDetector(
+                            onTap: onLongDragon,
+                            behavior: HitTestBehavior.opaque,
+                            child: _pillBtn('长龙', active: topPanel == _TopPanel.longDragon),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ],
+              ),
+              SizedBox(height: 6.h),
+              SizedBox(
+                height: HistoryDrawLayout.rowHeight(),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Pk10AlignRow(
+                      issue: LiveLatestDrawIssueText(
+                        roomId: roomId,
+                        gameId: gameId,
+                        compact: true,
+                        emptyLabel: '--',
+                        style: HistoryDrawLayout.issueStyle(),
+                      ),
+                      middle: LiveLatestDrawBalls(
+                        roomId: roomId,
+                        gameId: gameId,
+                        expandSlots: true,
+                        digitFontSize: HistoryDrawLayout.ballDigitSize(),
+                        gap: HistoryDrawLayout.ballGap(),
+                      ),
+                      gy: LiveLatestDrawSumText(
+                        roomId: roomId,
+                        gameId: gameId,
+                        prefix: '',
+                        style: TextStyle(
+                          fontSize: 11.sp,
+                          height: 1.1,
+                          color: AppColors.danger,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      dt: ValueListenableBuilder<bool>(
+                        valueListenable: historyExpandedListenable,
+                        builder: (_, expanded, __) {
+                          return Icon(
+                            expanded
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: AppColors.primary,
+                            size: 18.sp,
+                          );
+                        },
+                      ),
+                    ),
+                    Positioned.fill(
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onToggleHistory,
+                        child: const ColoredBox(color: Color(0x00000000)),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              GestureDetector(
-                onTap: onBetSlip,
-                child: _pillBtn('注单', active: topPanel == _TopPanel.betSlip),
-              ),
-              SizedBox(width: 6.w),
-              GestureDetector(
-                onTap: onLongDragon,
-                child: _pillBtn('长龙', active: topPanel == _TopPanel.longDragon),
               ),
             ],
           ),
-          SizedBox(height: 6.h),
-          GestureDetector(
-            onTap: onToggleHistory,
-            behavior: HitTestBehavior.opaque,
-            child: Pk10AlignRow(
-              issue: LiveLatestDrawIssueText(
-                roomId: roomId,
-                gameId: gameId,
-                compact: true,
-                emptyLabel: '--',
-                style: HistoryDrawLayout.issueStyle(),
-              ),
-              middle: LiveLatestDrawBalls(
-                roomId: roomId,
-                gameId: gameId,
-                expandSlots: true,
-                digitFontSize: HistoryDrawLayout.ballDigitSize(),
-                boxBoost: HistoryDrawLayout.ballBoxBoost(),
-              ),
-              gy: LiveLatestDrawSumText(
-                roomId: roomId,
-                gameId: gameId,
-                prefix: '',
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  height: 1.1,
-                  color: AppColors.danger,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              dt: Icon(
-                historyExpanded
-                    ? Icons.keyboard_arrow_up
-                    : Icons.keyboard_arrow_down,
-                color: AppColors.primary,
-                size: 18.sp,
-              ),
-            ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -2431,6 +2437,118 @@ class _FloatingActions extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 顶栏正下方下拉槽：历史/注单/长龙紧贴状态栏，不浮在聊天上（避免缝里透消息）。
+class _StatusDropdownSlot extends ConsumerWidget {
+  const _StatusDropdownSlot({
+    required this.roomId,
+    required this.gameId,
+    required this.historyExpandedListenable,
+    required this.historyMountedListenable,
+    required this.topPanelListenable,
+    required this.rowsListenable,
+    required this.historyLoadingListenable,
+    required this.betSlipsListenable,
+    required this.longDragonRowsListenable,
+    required this.longDragonLoadingListenable,
+    required this.onHistoryRetry,
+    required this.onHistoryEpochChange,
+    required this.onCancelBetSlipRow,
+  });
+
+  final String roomId;
+  final String gameId;
+  final ValueListenable<bool> historyExpandedListenable;
+  final ValueListenable<bool> historyMountedListenable;
+  final ValueListenable<_TopPanel> topPanelListenable;
+  final ValueListenable<List<HistoryDrawRow>> rowsListenable;
+  final ValueListenable<bool> historyLoadingListenable;
+  final ValueListenable<List<BetSlipRow>> betSlipsListenable;
+  final ValueListenable<List<LongDragonRow>?> longDragonRowsListenable;
+  final ValueListenable<bool> longDragonLoadingListenable;
+  final VoidCallback onHistoryRetry;
+  final VoidCallback onHistoryEpochChange;
+  final Future<void> Function(int index) onCancelBetSlipRow;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        historyExpandedListenable,
+        historyMountedListenable,
+        topPanelListenable,
+      ]),
+      builder: (_, __) {
+        final hist = historyExpandedListenable.value;
+        final top = topPanelListenable.value;
+        if (!hist && top == _TopPanel.none) {
+          return const SizedBox.shrink();
+        }
+
+        Widget panel;
+        if (hist) {
+          if (!historyMountedListenable.value) {
+            return const SizedBox.shrink();
+          }
+          panel = _HistoryOverlayPanel(
+            roomId: roomId,
+            gameId: gameId,
+            rowsListenable: rowsListenable,
+            loadingListenable: historyLoadingListenable,
+            onRetry: onHistoryRetry,
+            onEpochChange: onHistoryEpochChange,
+          );
+        } else if (top == _TopPanel.betSlip) {
+          panel = ValueListenableBuilder<List<BetSlipRow>>(
+            valueListenable: betSlipsListenable,
+            builder: (_, rows, __) {
+              final issue = ref
+                      .read(roomLotteryLiveProvider(roomId))
+                      .gameById(gameId)
+                      ?.currentIssue ??
+                  '';
+              final pending = rows
+                  .where((r) => issue.isEmpty || r.issue == issue)
+                  .toList();
+              return BetSlipPanel(
+                rows: pending,
+                onCancelRow: onCancelBetSlipRow,
+              );
+            },
+          );
+        } else {
+          panel = ValueListenableBuilder<bool>(
+            valueListenable: longDragonLoadingListenable,
+            builder: (_, loading, __) {
+              if (loading &&
+                  (longDragonRowsListenable.value?.isEmpty ?? true)) {
+                return SizedBox(
+                  height: LongDragonPanel.panelHeight(context),
+                  child: const ColoredBox(
+                    color: Colors.white,
+                    child: AppPageLoading(),
+                  ),
+                );
+              }
+              return ValueListenableBuilder<List<LongDragonRow>?>(
+                valueListenable: longDragonRowsListenable,
+                builder: (_, rows, __) {
+                  return LongDragonPanel(rows: rows ?? const []);
+                },
+              );
+            },
+          );
+        }
+
+        // 白底顶条盖住与状态栏的接缝，滚动时不会透出聊天
+        return ColoredBox(
+          color: Colors.white,
+          child: panel,
+        );
+      },
     );
   }
 }

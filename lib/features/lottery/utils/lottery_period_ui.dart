@@ -151,7 +151,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
   final TextStyle? issueStyle;
   final TextStyle? sealedStyle;
   final TextStyle? drawingStyle;
-  /// 距封盘翻页钟和「距离开奖 N 秒」。开奖中仍用红色。
+  /// 距封盘翻页钟颜色。「封盘中/开奖中」文案默认红色，与彩种列表对齐。
   final Color countdownColor;
 
   double get _rowHeight => compactCountdown ? 18.h : 26.h;
@@ -182,7 +182,6 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
       fontWeight: FontWeight.w600,
       height: 1,
     );
-    final countdownLabel = phaseLabel.copyWith(color: countdownColor);
 
     return switch (phase) {
       LotteryDisplayPhase.drawing => _phaseRow(
@@ -208,7 +207,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
                 TextSpan(
                   text:
                       '封盘中，距离开奖${LotteryPeriodHelper.statusClockSeconds(game, now)}秒',
-                  style: sealedStyle ?? countdownLabel,
+                  style: sealedStyle ?? phaseLabel,
                 ),
               ],
             ),
