@@ -89,6 +89,7 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
       title: '设置备注',
       initial: _remark.text,
       hint: '房间备注（仅本房间可见）',
+      systemKeyboard: true,
     );
     if (text == null) return;
     _remark.text = text;

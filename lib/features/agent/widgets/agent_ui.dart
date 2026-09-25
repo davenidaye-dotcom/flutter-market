@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../config/env/env_config.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
@@ -41,7 +42,7 @@ final agentGameOptionsProvider = FutureProvider<List<Map<String, String>>>((ref)
           'type': (g['type'] ?? '').toString(),
           'typeName': (g['typeName'] ?? g['type'] ?? '').toString(),
         },
-  ].where((e) => e['type']!.isNotEmpty).toList();
+  ].where((e) => agentLiveGameTypes.contains(e['type'])).toList();
 });
 
 /// Game names from lottery/info PROFILE
@@ -66,33 +67,120 @@ String agentAccountStatusLabel(String? status) {
   }
 }
 
-/// 账户类型 → 中文（优先后端 accountTypeName）
+/// 账户类型 → 中文。代理会员按账户类型显示，不沿用后端旧文案「会员」。
 String agentAccountTypeLabel(Map<String, dynamic> row) {
-  final name = row['accountTypeName']?.toString();
-  if (name != null && name.isNotEmpty && !_looksLikeEnum(name)) return name;
   switch (row['accountType']?.toString()) {
     case 'AGENT_MEMBER':
-      return '会员';
+      return '代理会员';
     case 'AGENT':
       final level = row['agentLevel'];
       if (level is num && level > 0) return '${level.toInt()}级代理';
+      final agentName = row['accountTypeName']?.toString();
+      if (agentName != null && agentName.endsWith('级代理')) return agentName;
       return '代理';
     case 'AGENT_DELEGATE':
       return '协管';
-    default:
-      return row['accountType']?.toString() ?? '—';
   }
+  final name = row['accountTypeName']?.toString();
+  if (name == '会员') return '代理会员';
+  if (name != null && name.isNotEmpty && !_looksLikeEnum(name)) return name;
+  return row['accountType']?.toString() ?? '—';
 }
 
 bool _looksLikeEnum(String s) => s.contains('_') && s == s.toUpperCase();
 
+/// 已上线彩种。报表、收付统计、个人信息只显示这两个。
+const agentLiveGameTypes = {'JS_SC', 'AZXY10'};
+
+List<Map<String, dynamic>> agentLiveGames(List<Map<String, dynamic>> games) {
+  return [
+    for (final g in games)
+      if (agentLiveGameTypes.contains('${g['type']}')) g,
+  ];
+}
+
 String agentBalanceLabel(dynamic balance) {
   if (balance == null) return '0';
-  if (balance is num) {
-    if (balance == balance.roundToDouble()) return '${balance.toInt()}';
-    return balance.toStringAsFixed(2);
+  return displayNumber(balance);
+}
+
+/// 代理页共用底色和圆角卡，对齐报表查询已落地的卡片。
+abstract final class AgentChrome {
+  static const pageBg = Color(0xFFF4F7FB);
+  static const cardBorder = Color(0xFFE3E8EF);
+  static const fieldBg = Color(0xFFF7F9FC);
+  static const accent = Color(0xFF4E9BA3);
+  static const pnlUp = Color(0xFF2E9E5B);
+  static const ink = Color(0xFF222222);
+}
+
+class AgentSurface extends StatelessWidget {
+  const AgentSurface({super.key, required this.child, this.padding, this.margin});
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+  final EdgeInsetsGeometry? margin;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: margin ?? EdgeInsets.symmetric(horizontal: 12.w),
+      padding: padding ?? EdgeInsets.all(12.w),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: AgentChrome.cardBorder),
+      ),
+      child: child,
+    );
   }
-  return balance.toString();
+}
+
+/// 指标：标签在上，数字不折行。signed 时正数绿、负数红。
+class AgentMetric extends StatelessWidget {
+  const AgentMetric({
+    super.key,
+    required this.label,
+    required this.value,
+    this.signed = false,
+    this.alignStart = false,
+  });
+
+  final String label;
+  final dynamic value;
+  final bool signed;
+  final bool alignStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = displayNumber(value);
+    final n = num.tryParse(text) ?? 0;
+    final color = !signed
+        ? AgentChrome.ink
+        : n > 0
+            ? AgentChrome.pnlUp
+            : n < 0
+                ? AppColors.danger
+                : AgentChrome.ink;
+    return Column(
+      crossAxisAlignment: alignStart ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+      children: [
+        Text(label, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+        SizedBox(height: 4.h),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alignStart ? Alignment.centerLeft : Alignment.center,
+          child: Text(
+            text,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: color),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// 代理侧栏 — 竞品「代理菜单栏.png」
@@ -210,12 +298,10 @@ class AgentTopBar extends ConsumerWidget {
 
   String _fmt(dynamic v) {
     if (v == null) return '--';
-    if (v is num) {
-      if (v == v.roundToDouble()) return '${v.toInt()}';
-      return v.toStringAsFixed(2);
-    }
     final s = '$v'.trim();
-    return s.isEmpty ? '--' : s;
+    if (s.isEmpty) return '--';
+    if (v is! num && num.tryParse(s) == null) return s;
+    return displayNumber(v);
   }
 
   @override
@@ -234,64 +320,73 @@ class AgentTopBar extends ConsumerWidget {
         color: Colors.white,
         border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0))),
       ),
-      padding: EdgeInsets.fromLTRB(4.w, 6.h, 52.w, 8.h),
-      child: Row(
+      padding: EdgeInsets.fromLTRB(4.w, 4.h, 12.w, 8.h),
+      child: Column(
         children: [
-          Builder(
-            builder: (ctx) => IconButton(
-              icon: Icon(Icons.menu, size: 22.sp, color: AppColors.textPrimary),
-              onPressed: () => Scaffold.of(ctx).openDrawer(),
-            ),
+          Row(
+            children: [
+              Builder(
+                builder: (ctx) => IconButton(
+                  icon: Icon(Icons.menu, size: 22.sp, color: AppColors.textPrimary),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.refresh, size: 22.sp, color: AppColors.navBlue),
+                onPressed: () {
+                  ref.invalidate(agentHeaderProvider);
+                  ref.invalidate(agentGamesProvider);
+                  onRefresh?.call();
+                },
+              ),
+              Expanded(
+                child: Text(
+                  'ID: $shownId',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 14.sp, color: Colors.red, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ),
-          IconButton(
-            icon: Icon(Icons.refresh, size: 22.sp, color: AppColors.navBlue),
-            onPressed: () {
-              ref.invalidate(agentHeaderProvider);
-              ref.invalidate(agentGamesProvider);
-              onRefresh?.call();
-            },
+          Padding(
+            padding: EdgeInsets.only(left: 12.w, right: 4.w),
+            child: headerAsync.isLoading
+                ? Align(
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(
+                      width: 16.w,
+                      height: 16.w,
+                      child: const CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: _balanceCell('下级余额', sub)),
+                      SizedBox(width: 12.w),
+                      Expanded(child: _balanceCell('余额', balance)),
+                    ],
+                  ),
           ),
-          Expanded(
-            child: Text(
-              'ID: $shownId',
-              style: TextStyle(fontSize: 14.sp, color: Colors.red, fontWeight: FontWeight.w600),
-            ),
-          ),
-          SizedBox(width: 12.w),
-          if (headerAsync.isLoading)
-            SizedBox(
-              width: 16.w,
-              height: 16.w,
-              child: const CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _balanceLine('下级余额', sub),
-                _balanceLine('余额', balance),
-              ],
-            ),
         ],
       ),
     );
   }
 
-  static Widget _balanceLine(String label, String value) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+  static Widget _balanceCell(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          width: 56.w,
+        Text(label, style: TextStyle(fontSize: 11.sp, color: Colors.red, height: 1.2)),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
           child: Text(
-            label,
-            textAlign: TextAlign.right,
-            style: TextStyle(fontSize: 12.sp, color: Colors.red, height: 1.25),
+            value,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(fontSize: 13.sp, color: Colors.red, fontWeight: FontWeight.w700, height: 1.2),
           ),
-        ),
-        Text(
-          ': $value',
-          style: TextStyle(fontSize: 12.sp, color: Colors.red, height: 1.25),
         ),
       ],
     );
@@ -322,126 +417,76 @@ class AgentPageFrame extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AgentTopBar(onRefresh: onRefresh),
-          if (title.isNotEmpty)
-            titleOnBar
-                ? Container(
-                    width: double.infinity,
-                    color: const Color(0xFFF0F0F0),
-                    padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
-                    child: Text(title, style: TextStyle(fontSize: 15.sp, color: AppColors.textSecondary)),
-                  )
-                : Padding(
-                    padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 4.h),
-                    child: Text(title, style: TextStyle(fontSize: 15.sp, color: AppColors.textSecondary)),
-                  ),
-          Expanded(child: child),
+          Expanded(
+            child: ColoredBox(
+              color: AgentChrome.pageBg,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (title.isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, titleOnBar ? 0 : 4.h),
+                      child: Text(title, style: TextStyle(fontSize: 15.sp, color: AppColors.textSecondary)),
+                    ),
+                  Expanded(child: child),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-enum AgentGameTabStyle { info, payment }
-
-/// 游戏 Tab — 个人信息：青绿字+竖线；收付统计：绿字+下划线
+/// 游戏 Tab：下划线，不再套整条方框。
 class AgentGameTabs extends StatelessWidget {
   const AgentGameTabs({
     super.key,
     required this.games,
     required this.current,
     required this.onChanged,
-    this.style = AgentGameTabStyle.info,
   });
 
   final List<String> games;
   final int current;
   final ValueChanged<int> onChanged;
-  final AgentGameTabStyle style;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 8.w),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFCCCCCC)),
-        color: Colors.white,
-      ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(
           children: [
-            for (var i = 0; i < games.length; i++) ...[
-              if (i > 0) Container(width: 1, height: 32.h, color: const Color(0xFFDDDDDD)),
+            for (var i = 0; i < games.length; i++)
               GestureDetector(
                 onTap: () => onChanged(i),
                 child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                  decoration: style == AgentGameTabStyle.payment && current == i
-                      ? const BoxDecoration(
-                          border: Border(bottom: BorderSide(color: Color(0xFF4CAF50), width: 2)),
-                        )
-                      : null,
+                  margin: EdgeInsets.only(right: 18.w),
+                  padding: EdgeInsets.only(bottom: 6.h, top: 4.h),
+                  decoration: BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(
+                        color: current == i ? AgentChrome.accent : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                  ),
                   child: Text(
                     games[i],
                     style: TextStyle(
-                      fontSize: 12.sp,
-                      color: current == i
-                          ? (style == AgentGameTabStyle.payment
-                              ? const Color(0xFF4CAF50)
-                              : const Color(0xFF5A9AA8))
-                          : AppColors.textSecondary,
-                      fontWeight: current == i ? FontWeight.w600 : FontWeight.normal,
+                      fontSize: 14.sp,
+                      color: current == i ? AgentChrome.accent : AppColors.textSecondary,
+                      fontWeight: current == i ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                 ),
               ),
-            ],
           ],
         ),
       ),
-    );
-  }
-}
-
-/// 代理表格边框容器
-class AgentBorderBox extends StatelessWidget {
-  const AgentBorderBox({super.key, required this.child, this.padding, this.margin});
-
-  final Widget child;
-  final EdgeInsetsGeometry? padding;
-  final EdgeInsetsGeometry? margin;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: margin ?? EdgeInsets.symmetric(horizontal: 8.w),
-      padding: padding ?? EdgeInsets.all(8.w),
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFAAAAAA)),
-        color: Colors.white,
-      ),
-      child: child,
-    );
-  }
-}
-
-/// 收付统计 — 带边框的数值格
-class AgentStatCell extends StatelessWidget {
-  const AgentStatCell({super.key, this.value = '0'});
-
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
-      height: 28.h,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        border: Border.all(color: const Color(0xFFCCCCCC)),
-        color: Colors.white,
-      ),
-      child: Text(value, style: TextStyle(fontSize: 12.sp)),
     );
   }
 }
@@ -511,14 +556,15 @@ class AgentTealButton extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
         decoration: BoxDecoration(
-          color: outlined ? Colors.white : const Color(0xFF4E9BA3),
-          border: Border.all(color: const Color(0xFF4E9BA3)),
+          color: outlined ? Colors.white : AgentChrome.accent,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(color: outlined ? AgentChrome.cardBorder : AgentChrome.accent),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 13.sp,
-            color: outlined ? const Color(0xFF666666) : Colors.white,
+            color: outlined ? AppColors.textPrimary : Colors.white,
           ),
         ),
       ),
@@ -547,39 +593,8 @@ class AgentReportQuickBtn extends StatelessWidget {
         padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
         decoration: BoxDecoration(
           color: active ? const Color(0xFF5D708C) : const Color(0xFF66A15B),
-          borderRadius: BorderRadius.circular(2.r),
+          borderRadius: BorderRadius.circular(8.r),
         ),
-        child: Text(label, style: TextStyle(fontSize: 12.sp, color: Colors.white)),
-      ),
-    );
-  }
-}
-
-/// 额度变动快捷日期
-class AgentQuotaQuickBtn extends StatelessWidget {
-  const AgentQuotaQuickBtn({
-    super.key,
-    required this.label,
-    required this.active,
-    required this.onTap,
-    this.blue = false,
-  });
-
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  final bool blue;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = active
-        ? (blue ? const Color(0xFF5B7B9D) : const Color(0xFF76AB5B))
-        : (blue ? const Color(0xFF5B7B9D) : const Color(0xFF76AB5B));
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
-        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2.r)),
         child: Text(label, style: TextStyle(fontSize: 12.sp, color: Colors.white)),
       ),
     );
@@ -615,8 +630,7 @@ class AgentGamePickerOverlay extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _item('全部游戏', 0),
-              for (var i = 0; i < games.length; i++) _item(games[i], i + 1),
+              for (var i = 0; i < games.length; i++) _item(games[i], i),
             ],
           ),
         ),

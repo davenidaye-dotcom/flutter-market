@@ -9,11 +9,15 @@ import '../../../wallet/widgets/date_range_filter.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// 彩票回水报表 — GET /owner/room/rebate/report
-/// 房级合计 + data.members[]（username / paid / ratio / turnover）
+/// 彩票回水报表，或代理抽佣报表。房级合计 + data.members[]。
 class RebateReportPage extends ConsumerStatefulWidget {
-  const RebateReportPage({super.key, required this.roomId});
+  const RebateReportPage({
+    super.key,
+    required this.roomId,
+    this.commission = false,
+  });
   final String roomId;
+  final bool commission;
 
   @override
   ConsumerState<RebateReportPage> createState() => _RebateReportPageState();
@@ -36,10 +40,16 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
   Future<void> _load({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getRebateReport(
-            startDate: DateRangeFilter.format(start),
-            endDate: DateRangeFilter.format(end),
-          );
+      final repo = ref.read(ownerRepositoryProvider);
+      final data = widget.commission
+          ? await repo.getCommissionReport(
+              startDate: DateRangeFilter.format(start),
+              endDate: DateRangeFilter.format(end),
+            )
+          : await repo.getRebateReport(
+              startDate: DateRangeFilter.format(start),
+              endDate: DateRangeFilter.format(end),
+            );
       if (!mounted) return;
       setState(() {
         _data = data;
@@ -74,7 +84,7 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
   Widget build(BuildContext context) {
     final members = _members;
     return HostSubPageScaffold(
-      title: '彩票回水报表',
+      title: widget.commission ? '代理抽佣报表' : '彩票回水报表',
       body: Column(
         children: [
           SizedBox(height: 8.h),
@@ -110,15 +120,24 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
                                 ),
                               ),
                               SizedBox(height: 12.h),
-                              _metricRow('应回水', _data['accrued']),
+                              _metricRow(
+                                widget.commission ? '应抽佣' : '应回水',
+                                _data['accrued'],
+                              ),
                               _metricRow('已发放', _data['paid']),
                               _metricRow(
                                 '待领取',
                                 _data['pending'],
                                 valueColor: const Color(0xFF2E7D32),
                               ),
-                              _metricRow('未回笔数', _data['unpaidCount']),
-                              _metricRow('未回流水', _data['unpaidTurnover']),
+                              _metricRow(
+                                widget.commission ? '未发笔数' : '未回笔数',
+                                _data['unpaidCount'],
+                              ),
+                              _metricRow(
+                                widget.commission ? '未发流水' : '未回流水',
+                                _data['unpaidTurnover'],
+                              ),
                               _metricRow('有效流水', _data['turnover']),
                               Divider(height: 20.h, color: AppColors.divider),
                               _metricRow('自行领取', _data['selfPaid']),
@@ -133,7 +152,7 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
                             padding: EdgeInsets.only(top: 24.h),
                             child: Center(
                               child: Text(
-                                '暂无按人明细',
+                                widget.commission ? '暂无抽佣明细' : '暂无按人明细',
                                 style: TextStyle(
                                   fontSize: 14.sp,
                                   color: AppColors.textHint,

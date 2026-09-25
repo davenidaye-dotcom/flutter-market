@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
 import '../../../shared/widgets/app_page_loading.dart';
@@ -47,7 +48,7 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
             type: _currentType,
           );
       if (!mounted) return;
-      final games = _asMapList(data['games']);
+      final games = agentLiveGames(_asMapList(data['games']));
       final items = _asMapList(data['items']);
       // PROFILE 响应自带 header.displayId（代理接口文档 §2）
       final lotteryHeader = data['header'] is Map
@@ -106,8 +107,8 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
                   style: OutlinedButton.styleFrom(
                     backgroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                    side: const BorderSide(color: Color(0xFF333333)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(0)),
+                    side: const BorderSide(color: AgentChrome.cardBorder),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
                   ),
                   child: Text('\u5237\u65b0\u5217\u8868', style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary)),
                 ),
@@ -124,41 +125,20 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
             ),
           SizedBox(height: 8.h),
           Expanded(
-            child: AgentBorderBox(
+            child: AgentSurface(
               padding: EdgeInsets.zero,
               child: _loading && _items.isEmpty
                   ? const AppPageLoading()
-                  : SingleChildScrollView(
-                      child: Table(
-                        border: TableBorder.all(color: const Color(0xFF333333), width: 0.8),
-                        columnWidths: const {
-                          0: FlexColumnWidth(2.2),
-                          1: FlexColumnWidth(1.2),
-                          2: FlexColumnWidth(1.4),
-                          3: FlexColumnWidth(1.2),
-                        },
-                        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                        children: [
-                          TableRow(
-                            decoration: const BoxDecoration(color: Color(0xFFF0F0F0)),
-                            children: [
-                              _h('\u73a9\u6cd5'),
-                              _h('\u8d54\u7387'),
-                              _h('\u5355\u671f\u9650\u989d'),
-                              _h('\u5355\u6ce8\u6700\u4f4e'),
-                            ],
+                  : Column(
+                      children: [
+                        _oddsHeader(),
+                        Expanded(
+                          child: ListView.builder(
+                            itemCount: _items.length,
+                            itemBuilder: (_, i) => _oddsRow(_items[i]),
                           ),
-                          for (final row in _items)
-                            TableRow(
-                              children: [
-                                _c(row['playName']?.toString() ?? ''),
-                                _c(_numStr(row['odds'])),
-                                _c(_numStr(row['periodLimit'])),
-                                _c(_numStr(row['minBet'])),
-                              ],
-                            ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
             ),
           ),
@@ -168,14 +148,66 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
     );
   }
 
-  Widget _h(String t) => Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 4.w),
-        child: Text(t, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
+  Widget _oddsHeader() {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 8.w),
+      decoration: BoxDecoration(
+        color: AgentChrome.fieldBg,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
+        border: const Border(bottom: BorderSide(color: AgentChrome.cardBorder)),
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 22, child: _head('\u73a9\u6cd5', align: TextAlign.left)),
+          Expanded(flex: 12, child: _head('\u8d54\u7387')),
+          Expanded(flex: 14, child: _head('\u5355\u671f\u9650\u989d')),
+          Expanded(flex: 12, child: _head('\u5355\u6ce8\u6700\u4f4e')),
+        ],
+      ),
+    );
+  }
+
+  Widget _oddsRow(Map<String, dynamic> row) {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 8.w),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AgentChrome.cardBorder)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 22,
+            child: Text(
+              row['playName']?.toString() ?? '',
+              maxLines: 2,
+              style: TextStyle(fontSize: 12.sp, height: 1.3, color: AppColors.textPrimary),
+            ),
+          ),
+          Expanded(flex: 12, child: _num(_numStr(row['odds']))),
+          Expanded(flex: 14, child: _num(_numStr(row['periodLimit']))),
+          Expanded(flex: 12, child: _num(_numStr(row['minBet']))),
+        ],
+      ),
+    );
+  }
+
+  Widget _head(String t, {TextAlign align = TextAlign.center}) => Text(
+        t,
+        textAlign: align,
+        maxLines: 1,
+        softWrap: false,
+        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
       );
 
-  Widget _c(String t) => Padding(
-        padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 4.w),
-        child: Text(t, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.sp)),
+  Widget _num(String t) => FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          t,
+          maxLines: 1,
+          softWrap: false,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AgentChrome.ink),
+        ),
       );
 }
 
@@ -189,9 +221,5 @@ List<Map<String, dynamic>> _asMapList(dynamic v) {
 
 String _numStr(dynamic v) {
   if (v == null) return '';
-  if (v is num) {
-    if (v == v.roundToDouble()) return '${v.toInt()}';
-    return v.toString();
-  }
-  return v.toString();
+  return displayNumber(v);
 }

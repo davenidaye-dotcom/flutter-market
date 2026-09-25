@@ -1,4 +1,5 @@
 import '../../core/network/api_client.dart';
+import '../../shared/format/display_number.dart';
 import '../../core/network/session_store.dart';
 import '../../features/lottery/utils/bet_receipt_format.dart';
 import '../../features/lottery/utils/draw_result_parse.dart';
@@ -17,6 +18,21 @@ class LotteryRepository {
   LotteryRepository({ApiClient? client}) : _client = client ?? ApiClient.instance;
 
   final ApiClient _client;
+
+  /// 房主在倍率页保存的房间赔率。playCode → 展示用数字。
+  Future<Map<String, String>> getRoomOdds(String gameType) async {
+    final data = await _client.get('/member/rooms/odds', query: {
+      'gameType': gameType,
+    });
+    if (data is! List) return const {};
+    final out = <String, String>{};
+    for (final raw in data.whereType<Map>()) {
+      final code = '${raw['playCode'] ?? ''}'.trim();
+      if (code.isEmpty) continue;
+      out[code] = displayNumber(raw['odds']);
+    }
+    return out;
+  }
 
   Future<List<LotteryGameModel>> getGames(
     String roomId, {

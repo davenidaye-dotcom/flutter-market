@@ -122,18 +122,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   }
 
   String _numText(dynamic v, {bool keepDecimal = false}) {
-    if (v == null) return '0';
-    final n = v is num ? v : num.tryParse('$v');
-    if (n == null) return '$v';
-    if (keepDecimal) {
-      if (n == n.roundToDouble()) return '${n.toInt()}';
-      var s = n.toStringAsFixed(3);
-      s = s.replaceFirst(RegExp(r'0+$'), '');
-      s = s.replaceFirst(RegExp(r'\.$'), '');
-      return s;
-    }
-    if (n == n.roundToDouble()) return '${n.toInt()}';
-    return n.toStringAsFixed(2);
+    return hostNumStr(keepDecimal ? v : v);
   }
 
   double get _step => double.tryParse(_stepCtrl.text.trim()) ?? 0.01;

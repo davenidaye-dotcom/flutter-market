@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
+import '../../../../shared/format/play_title.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/app_pull_refresh.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
@@ -260,7 +261,7 @@ class _BetLineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = '${row['title'] ?? '—'}';
+    final title = rankBetTitle(row);
     final issue = '${row['issueNo'] ?? ''}'.trim();
     final issueLabel = issue.isEmpty
         ? ''

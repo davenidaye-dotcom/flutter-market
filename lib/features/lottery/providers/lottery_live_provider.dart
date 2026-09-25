@@ -120,6 +120,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   Future<void>? _wsConnectInflight;
   final Set<String> _wsSubscribedTopics = {};
   final _chatPushController = StreamController<LotteryChatPush>.broadcast();
+  final _csPushController = StreamController<CsChatPush>.broadcast();
   bool _drawHistoryPreloaded = false;
   Future<void>? _drawHistoryPreload;
   final Map<String, Future<void>> _drawLoadByGame = {};
@@ -144,6 +145,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   final Map<String, _PendingWinList> _pendingWinListByKey = {};
 
   Stream<LotteryChatPush> get chatPushes => _chatPushController.stream;
+
+  Stream<CsChatPush> get csPushes => _csPushController.stream;
 
   bool get drawHistoryPreloaded => _drawHistoryPreloaded;
 
@@ -1160,6 +1163,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _syncWsSubscriptions();
       if (isReconnect) {
         unawaited(_refreshGamesFromServer());
+        _emitCs(const CsChatPush(resync: true));
       }
     } catch (_) {
       if (!mounted || _wsDisposed || gen != _wsConnectGen) return;
@@ -1244,6 +1248,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     // 房主：上下分/进房申请 WS 推送 → 全局审核提醒
     if (type == 'APPLY_NOTICE' && _wsIsHost) {
       unawaited(_forwardApplyNotice(payload));
+      return;
+    }
+
+    // 客服私聊：user 频道，没有彩种。先于 gameType 判断，避免被当成游戏事件丢掉。
+    if (type == 'CS_MESSAGE') {
+      _emitCs(_csPushFrom(payload));
       return;
     }
 
@@ -1540,6 +1550,30 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     );
   }
 
+  void _emitCs(CsChatPush push) {
+    if (_csPushController.isClosed) return;
+    if (!push.resync && !_csRoomMatches(push.roomId)) return;
+    _csPushController.add(push);
+  }
+
+  CsChatPush _csPushFrom(Map<String, dynamic> payload) {
+    return CsChatPush(
+      messageId: '${payload['messageId'] ?? payload['id'] ?? ''}',
+      accountId: '${payload['accountId'] ?? ''}',
+      roomId: '${payload['roomId'] ?? ''}',
+      direction: '${payload['direction'] ?? ''}'.toUpperCase(),
+      content: payload['content']?.toString() ?? '',
+      createdAt: payload['createdAt']?.toString() ?? '',
+    );
+  }
+
+  bool _csRoomMatches(String got) {
+    if (got.isEmpty) return true;
+    final numeric = SessionStore.instance.roomId ?? '';
+    if (numeric.isNotEmpty && got == numeric) return true;
+    return got == roomId;
+  }
+
   Future<void> _forwardApplyNotice(Map<String, dynamic> payload) async {
     try {
       await _ref
@@ -1809,6 +1843,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _ws = null;
     unawaited(dead?.dispose() ?? Future.value());
     unawaited(_chatPushController.close());
+    unawaited(_csPushController.close());
     super.dispose();
   }
 }
@@ -1827,6 +1862,46 @@ class _PendingWinList {
 
 extension on List<String> {
   String? get lastOrNull => isEmpty ? null : last;
+}
+
+List<Map<String, dynamic>> mergeCsHistory(
+  List<Map<String, dynamic>> server,
+  List<Map<String, dynamic>> local,
+) {
+  final serverIds = {
+    for (final m in server)
+      if ((m['id'] ?? '').toString().isNotEmpty) (m['id'] ?? '').toString(),
+  };
+  final extra = local.where((m) {
+    final id = (m['id'] ?? '').toString();
+    final dir = (m['direction'] ?? '').toString().toUpperCase();
+    final content = (m['content'] ?? '').toString();
+    if (id.isNotEmpty) return !serverIds.contains(id);
+    return !server.any((s) =>
+        (s['direction'] ?? '').toString().toUpperCase() == dir &&
+        (s['content'] ?? '').toString() == content);
+  });
+  return [...server, ...extra];
+}
+
+class CsChatPush {
+  const CsChatPush({
+    this.resync = false,
+    this.messageId = '',
+    this.accountId = '',
+    this.roomId = '',
+    this.direction = '',
+    this.content = '',
+    this.createdAt = '',
+  });
+
+  final bool resync;
+  final String messageId;
+  final String accountId;
+  final String roomId;
+  final String direction;
+  final String content;
+  final String createdAt;
 }
 
 final roomLotteryLiveProvider = StateNotifierProvider.autoDispose

@@ -80,6 +80,27 @@ String? _sumValueCode(int v) {
   return 'GYH-$v';
 }
 
+/// 注单码 → 房主赔率档，与 BetJudge.oddsKeyOf 一致。
+String? oddsKeyOf(String? playCode) {
+  if (playCode == null || playCode.isEmpty) return null;
+  final p = playCode.toUpperCase();
+  if (p.startsWith('TM-') || p == 'TM') return 'TM';
+  if (p.startsWith('LM-') || p == 'LM') return 'LM';
+  if (p.startsWith('POS-') || p == 'POS') return 'POS';
+  if (p.startsWith('DT-') || p == 'DT') return 'DT';
+  if (p.startsWith('GYH_')) return p;
+  if (p.startsWith('GYH-')) {
+    final n = int.tryParse(p.substring(4));
+    if (n == 11) return 'GYH_11';
+    if (n == 3 || n == 4 || n == 18 || n == 19) return 'GYH_3';
+    if (n == 5 || n == 6 || n == 16 || n == 17) return 'GYH_5';
+    if (n == 7 || n == 8 || n == 14 || n == 15) return 'GYH_7';
+    if (n == 9 || n == 10 || n == 12 || n == 13) return 'GYH_9';
+    return p;
+  }
+  return null;
+}
+
 /// 聊天/指令框文本是否像机器 playCode（不应作为 command 发送）
 bool isMachinePlayCode(String text) {
   final p = text.trim().toUpperCase();

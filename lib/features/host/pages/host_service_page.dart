@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../lottery/providers/lottery_live_provider.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
+import '../../../shared/widgets/keyboard_input_lift.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/host_ui.dart';
 import 'host_shell_page.dart';
@@ -46,11 +50,27 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   _CsSession? _open;
   List<_CsSession> _sessions = [];
   bool _loading = true;
+  StreamSubscription<CsChatPush>? _csSub;
 
   @override
   void initState() {
     super.initState();
+    _csSub = ref
+        .read(roomLotteryLiveProvider(widget.roomId).notifier)
+        .csPushes
+        .listen(_onCsPush);
     Future.microtask(_bootstrap);
+  }
+
+  @override
+  void dispose() {
+    _csSub?.cancel();
+    super.dispose();
+  }
+
+  void _onCsPush(CsChatPush push) {
+    if (!mounted || _open != null) return;
+    unawaited(_loadSessions(silent: true));
   }
 
   Future<void> _bootstrap() async {
@@ -82,8 +102,8 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
     await _loadSessions();
   }
 
-  Future<void> _loadSessions() async {
-    setState(() => _loading = true);
+  Future<void> _loadSessions({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final data = await ref.read(ownerRepositoryProvider).getCsSessions();
       final rows = data['rows'];
@@ -118,6 +138,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
     if (_open != null) {
       final fromMember = (widget.openAccountId ?? '').trim().isNotEmpty;
       return _ChatView(
+        roomId: widget.roomId,
         session: _open!,
         onBack: () {
           // 会员详情发起私聊：返回直接关页回到详情；底栏进客服：退回会话列表
@@ -261,8 +282,13 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
 }
 
 class _ChatView extends ConsumerStatefulWidget {
-  const _ChatView({required this.session, required this.onBack});
+  const _ChatView({
+    required this.roomId,
+    required this.session,
+    required this.onBack,
+  });
 
+  final String roomId;
   final _CsSession session;
   final VoidCallback onBack;
 
@@ -272,40 +298,100 @@ class _ChatView extends ConsumerStatefulWidget {
 
 class _ChatViewState extends ConsumerState<_ChatView> {
   final _ctrl = TextEditingController();
-  final _msgs = <(bool, String)>[];
+  final _scroll = ScrollController();
+  final _msgs = <Map<String, dynamic>>[];
   bool _loading = true;
+  StreamSubscription<CsChatPush>? _csSub;
 
   @override
   void initState() {
     super.initState();
+    _csSub = ref
+        .read(roomLotteryLiveProvider(widget.roomId).notifier)
+        .csPushes
+        .listen(_onCsPush);
     Future.microtask(_loadMessages);
   }
 
   @override
   void dispose() {
+    _csSub?.cancel();
     _ctrl.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
-  Future<void> _loadMessages() async {
-    setState(() => _loading = true);
+  void _onCsPush(CsChatPush push) {
+    if (!mounted) return;
+    if (push.resync) {
+      unawaited(_loadMessages(silent: true));
+      return;
+    }
+    if (push.accountId.isNotEmpty && push.accountId != widget.session.accountId) {
+      return;
+    }
+    _ingest({
+      'id': push.messageId,
+      'direction': push.direction,
+      'content': push.content,
+      'createdAt': push.createdAt,
+    });
+  }
+
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+      }
+    });
+  }
+
+  void _ingest(Map<String, dynamic> row) {
+    final id = (row['id'] ?? '').toString();
+    final content = row['content']?.toString() ?? '';
+    final dir = (row['direction'] ?? '').toString().toUpperCase();
+    _msgs.removeWhere((m) =>
+        (m['id'] ?? '').toString().isEmpty &&
+        (m['direction'] ?? '').toString().toUpperCase() == dir &&
+        (m['content'] ?? '').toString() == content);
+    final exists = id.isNotEmpty && _msgs.any((m) => (m['id'] ?? '').toString() == id);
+    if (!exists) {
+      _msgs.add({
+        'id': id,
+        'direction': dir,
+        'content': content,
+        'createdAt': row['createdAt']?.toString() ?? '',
+      });
+    }
+    if (!mounted) return;
+    setState(() {});
+    _scrollToEnd();
+  }
+
+  Future<void> _loadMessages({bool silent = false}) async {
+    if (!silent) setState(() => _loading = true);
     try {
       final list = await ref.read(ownerRepositoryProvider).getCsMessages(
             widget.session.accountId,
             limit: 50,
           );
       if (!mounted) return;
+      final server = list
+          .map((m) => {
+                'id': '${m['id'] ?? ''}',
+                'direction': (m['direction'] ?? '').toString(),
+                'content': m['content']?.toString() ?? '',
+                'createdAt': m['createdAt']?.toString() ?? '',
+              })
+          .toList();
+      final local = [for (final m in _msgs) Map<String, dynamic>.from(m)];
       setState(() {
         _msgs
           ..clear()
-          ..addAll(
-            list.map((m) {
-              final out = (m['direction'] ?? '').toString().toUpperCase() == 'OUT';
-              return (out, m['content']?.toString() ?? '');
-            }),
-          );
+          ..addAll(mergeCsHistory(server, local));
         _loading = false;
       });
+      _scrollToEnd();
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
@@ -316,17 +402,32 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   Future<void> _send() async {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
+    final optimistic = {
+      'id': '',
+      'direction': 'OUT',
+      'content': t,
+      'createdAt': '',
+    };
+    setState(() {
+      _msgs.add(optimistic);
+      _ctrl.clear();
+    });
+    _scrollToEnd();
     try {
-      await ref.read(ownerRepositoryProvider).sendCsReply(
+      final saved = await ref.read(ownerRepositoryProvider).sendCsReply(
             widget.session.accountId,
             t,
           );
       if (!mounted) return;
-      setState(() {
-        _msgs.add((true, t));
-        _ctrl.clear();
+      _ingest({
+        'id': '${saved['id'] ?? ''}',
+        'direction': '${saved['direction'] ?? 'OUT'}',
+        'content': '${saved['content'] ?? t}',
+        'createdAt': '${saved['createdAt'] ?? ''}',
       });
     } catch (e) {
+      if (!mounted) return;
+      setState(() => _msgs.remove(optimistic));
       AppToast.error(e.toString());
     }
   }
@@ -343,10 +444,13 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                 child: _loading
                     ? const AppPageLoading()
                     : ListView.builder(
+                        controller: _scroll,
                         padding: EdgeInsets.all(16.w),
                         itemCount: _msgs.length,
                         itemBuilder: (_, i) {
-                          final (mine, text) = _msgs[i];
+                          final m = _msgs[i];
+                          final mine = (m['direction'] ?? '').toString().toUpperCase() == 'OUT';
+                          final text = m['content']?.toString() ?? '';
                           return Align(
                             alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
                             child: Container(
@@ -368,7 +472,8 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                         },
                       ),
               ),
-              Container(
+              KeyboardInputLift(
+                child: Container(
                 color: Colors.white,
                 padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
                 child: Row(
@@ -376,6 +481,11 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                     Expanded(
                       child: EmulatorSafeTextField(
                         controller: _ctrl,
+                        keyboardType: TextInputType.text,
+                        enableSuggestions: true,
+                        autocorrect: true,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
                         decoration: InputDecoration(
                           hintText: '输入回复（用户端显示为房间客服）',
                           hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
@@ -386,6 +496,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                     TextButton(onPressed: _send, child: const Text('发送')),
                   ],
                 ),
+              ),
               ),
             ],
           ),

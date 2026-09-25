@@ -9,10 +9,16 @@ class AgentRepository {
   Future<Map<String, dynamic>> getLotteryInfo({
     required String scene,
     String? type,
+    String? issueNo,
+    String? issueFrom,
+    String? issueTo,
   }) async {
     final data = await _client.get('/agent/lottery/info', query: {
       'scene': scene,
       if (type != null && type.isNotEmpty) 'type': type,
+      if (issueNo != null && issueNo.isNotEmpty) 'issueNo': issueNo,
+      if (issueFrom != null && issueFrom.isNotEmpty) 'issueFrom': issueFrom,
+      if (issueTo != null && issueTo.isNotEmpty) 'issueTo': issueTo,
     });
     return _asMap(data);
   }

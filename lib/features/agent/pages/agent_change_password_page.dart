@@ -72,39 +72,55 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
     final username = ref.watch(authSessionProvider.select((s) => s.user?.username ?? '—'));
 
     return AgentPageFrame(
-      title: '',
+      title: '修改密码',
       child: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: 20.w),
+        padding: EdgeInsets.fromLTRB(0, 8.h, 0, 24.h),
         child: Column(
           children: [
-            SizedBox(height: 24.h),
-            Text('请为您账号', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
-            SizedBox(height: 8.h),
-            Text(username, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700)),
-            SizedBox(height: 8.h),
-            Text('设置一个新的密码', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
-            SizedBox(height: 32.h),
-            _field('旧密码', '请输入旧密码', _oldCtrl),
-            _field('新密码', '请输入新密码', _newCtrl, obscure: true),
-            _field('确认密码', '请确认密码', _confirmCtrl, obscure: true),
-            SizedBox(height: 32.h),
-            GestureDetector(
-              onTap: _loading ? null : _submit,
-              child: Container(
-                width: double.infinity,
-                height: 44.h,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF66A3B0),
-                  borderRadius: BorderRadius.circular(4.r),
+            AgentSurface(
+              child: Column(
+                children: [
+                  Text('请为您账号', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+                  SizedBox(height: 6.h),
+                  Text(username, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink)),
+                  SizedBox(height: 6.h),
+                  Text('设置一个新的密码', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+                ],
+              ),
+            ),
+            SizedBox(height: 10.h),
+            AgentSurface(
+              child: Column(
+                children: [
+                  _field('旧密码', '请输入旧密码', _oldCtrl),
+                  SizedBox(height: 8.h),
+                  _field('新密码', '请输入新密码', _newCtrl, obscure: true),
+                  SizedBox(height: 8.h),
+                  _field('确认密码', '请确认密码', _confirmCtrl, obscure: true),
+                ],
+              ),
+            ),
+            SizedBox(height: 16.h),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12.w),
+              child: GestureDetector(
+                onTap: _loading ? null : _submit,
+                child: Container(
+                  width: double.infinity,
+                  height: 44.h,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: AgentChrome.accent,
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  child: _loading
+                      ? SizedBox(
+                          width: 22.w,
+                          height: 22.w,
+                          child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text('确定', style: TextStyle(fontSize: 16.sp, color: Colors.white, fontWeight: FontWeight.w600)),
                 ),
-                child: _loading
-                    ? SizedBox(
-                        width: 22.w,
-                        height: 22.w,
-                        child: const CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : Text('确定', style: TextStyle(fontSize: 16.sp, color: Colors.white)),
               ),
             ),
           ],
@@ -114,31 +130,33 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
   }
 
   Widget _field(String label, String hint, TextEditingController ctrl, {bool obscure = false}) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            SizedBox(
-              width: 72.w,
-              child: Text(label, style: TextStyle(fontSize: 14.sp)),
-            ),
-            Expanded(
-              child: EmulatorSafeTextField(
-                controller: ctrl,
-                obscureText: obscure,
-                decoration: InputDecoration(
-                  hintText: hint,
-                  hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                  border: InputBorder.none,
-                  isDense: true,
-                ),
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 2.h),
+      decoration: BoxDecoration(
+        color: AgentChrome.fieldBg,
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: AgentChrome.cardBorder),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 72.w,
+            child: Text(label, style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink)),
+          ),
+          Expanded(
+            child: EmulatorSafeTextField(
+              controller: ctrl,
+              obscureText: obscure,
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                border: InputBorder.none,
+                isDense: true,
               ),
             ),
-          ],
-        ),
-        const Divider(height: 1, color: AppColors.divider),
-        SizedBox(height: 8.h),
-      ],
+          ),
+        ],
+      ),
     );
   }
 }

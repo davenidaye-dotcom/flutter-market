@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../wallet/widgets/date_range_filter.dart';
@@ -21,7 +22,6 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   int _quick = 0;
   int _gameIndex = 0;
   int _sourceIndex = 0;
-  bool _showGamePicker = false;
   bool _loading = false;
   String? _error;
   late DateTime _start;
@@ -40,6 +40,10 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
 
   static const _sourceLabels = ['全部来源', 'Web直属', '房主飞单'];
   static const _sourceKeys = ['ALL', 'WEB_DIRECT', 'OWNER_FLIGHT'];
+  static const _fallbackGames = <Map<String, String>>[
+    {'type': 'JS_SC', 'typeName': '极速赛车'},
+    {'type': 'AZXY10', 'typeName': '澳洲幸运10'},
+  ];
 
   String get _gameLabel => _gameIndex == 0
       ? '全部游戏'
@@ -80,9 +84,12 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   Future<void> _loadGames() async {
     try {
       final options = await ref.read(agentGameOptionsProvider.future);
-      if (mounted) setState(() => _gameOptions = options);
-    } catch (_) {
-      if (mounted) setState(() => _gameOptions = const []);
+      if (!mounted) return;
+      setState(() => _gameOptions = options.isEmpty ? _fallbackGames : options);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _gameOptions = _fallbackGames);
+      AppToast.error(e.toString());
     }
   }
 
@@ -210,183 +217,122 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   @override
   Widget build(BuildContext context) {
     final inTickets = _ticketMemberId != null;
-    return Stack(children: [
-      AgentPageFrame(
+    return AgentPageFrame(
         title: inTickets ? '注单明细' : '报表查询',
         titleOnBar: true,
         onRefresh: () => _load(fromPull: true),
-        child: Column(children: [
-          Expanded(
-            child: AgentBorderBox(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  if (_drill.isNotEmpty || inTickets) ...[
-                    _crumbBar(),
-                    SizedBox(height: 8.h),
-                  ],
-                  Wrap(
-                    spacing: 6.w,
-                    runSpacing: 6.h,
-                    children: [
-                      for (var i = 0; i < _quickItems.length; i++)
-                        AgentReportQuickBtn(
-                          label: _quickItems[i].label,
-                          active: _quick == i,
-                          onTap: () => _onQuick(i),
-                        ),
+        child: ColoredBox(
+          color: const Color(0xFFF4F7FB),
+          child: Column(children: [
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 8.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_drill.isNotEmpty || inTickets) ...[
+                      _crumbBar(),
+                      SizedBox(height: 8.h),
                     ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Row(children: [
-                    Expanded(child: _dateField(_start, () => _pickDate(isStart: true))),
-                    SizedBox(width: 8.w),
-                    Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
-                  ]),
-                  SizedBox(height: 10.h),
-                  Row(children: [
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _showGamePicker = true),
-                        child: Container(
-                          height: 36.h,
-                          padding: EdgeInsets.symmetric(horizontal: 10.w),
-                          decoration: BoxDecoration(border: Border.all(color: const Color(0xFFAAAAAA))),
-                          child: Row(children: [
-                            Expanded(child: Text(_gameLabel, style: TextStyle(fontSize: 13.sp))),
-                            Icon(Icons.arrow_drop_down, size: 20.sp),
-                          ]),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () async {
-                          final i = await showModalBottomSheet<int>(
-                            context: context,
-                            backgroundColor: Colors.white,
-                            builder: (ctx) => SafeArea(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  for (var j = 0; j < _sourceLabels.length; j++)
-                                    ListTile(
-                                      title: Text(_sourceLabels[j]),
-                                      onTap: () => Navigator.pop(ctx, j),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          );
-                          if (i != null) setState(() => _sourceIndex = i);
-                        },
-                        child: Container(
-                          height: 36.h,
-                          padding: EdgeInsets.symmetric(horizontal: 10.w),
-                          decoration: BoxDecoration(border: Border.all(color: const Color(0xFFAAAAAA))),
-                          child: Row(children: [
-                            Expanded(
-                              child: Text(_sourceLabels[_sourceIndex], style: TextStyle(fontSize: 13.sp)),
-                            ),
-                            Icon(Icons.arrow_drop_down, size: 20.sp),
-                          ]),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    AgentTealButton(
-                      label: '查询',
-                      onTap: () {
-                        setState(() => _showGamePicker = false);
-                        _load();
-                      },
-                    ),
-                  ]),
-                  SizedBox(height: 12.h),
-                  inTickets ? _ticketSummaryBar() : _summaryBar(),
-                  SizedBox(height: 8.h),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(border: Border.all(color: const Color(0xFFCCCCCC))),
-                      child: AppPullRefresh(
-                        onRefresh: () => _load(fromPull: true),
-                        child: _loading && _rows.isEmpty
-                            ? ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                children: const [
-                                  SizedBox(height: 120),
-                                  const AppPageLoading(),
-                                ],
-                              )
-                            : _error != null && _rows.isEmpty
-                                ? ListView(
-                                    physics: const AlwaysScrollableScrollPhysics(),
-                                    children: [
-                                      SizedBox(height: 120.h),
-                                      Center(
-                                        child: GestureDetector(
-                                          onTap: _load,
-                                          child: Text(
-                                            '加载失败，点击重试',
-                                            style: TextStyle(fontSize: 14.sp, color: AppColors.danger),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  )
-                                : _rows.isEmpty
-                                    ? ListView(
-                                        physics: const AlwaysScrollableScrollPhysics(),
-                                        children: [
-                                          SizedBox(height: 120.h),
-                                          Center(
-                                            child: Text(
-                                              '暂无数据',
-                                              style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                                            ),
-                                          ),
-                                        ],
-                                      )
-                                    : CustomScrollView(
-                                        physics: const AlwaysScrollableScrollPhysics(),
-                                        slivers: [
-                                          SliverToBoxAdapter(
-                                            child: inTickets ? _ticketHeader() : _drillHeader(),
-                                          ),
-                                          SliverList(
-                                            delegate: SliverChildBuilderDelegate(
-                                              (_, i) => inTickets
-                                                  ? _ticketRow(_rows[i], i)
-                                                  : _drillRow(_rows[i], i),
-                                              childCount: _rows.length,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                      ),
-                    ),
-                  ),
-                ],
+                    _filterCard(),
+                    SizedBox(height: 10.h),
+                    if (!inTickets) _summaryCard() else _ticketSummaryBar(),
+                    SizedBox(height: 10.h),
+                    Expanded(child: _resultList(inTickets)),
+                  ],
+                ),
               ),
             ),
-          ),
-          SizedBox(height: 8.h),
-        ]),
-      ),
-      if (_showGamePicker)
-        Positioned.fill(
-          child: AgentGamePickerOverlay(
-            games: ['全部游戏', ..._gameOptions.map((e) => e['typeName'] ?? e['type'] ?? '')],
-            selectedIndex: _gameIndex,
-            onSelect: (i) => setState(() {
-              _gameIndex = i;
-              _showGamePicker = false;
-            }),
-            onDismiss: () => setState(() => _showGamePicker = false),
-          ),
+          ]),
         ),
-    ]);
+    );
+  }
+
+  Widget _filterCard() {
+    return _surface(
+      child: Column(
+        children: [
+          Wrap(
+            spacing: 8.w,
+            runSpacing: 8.h,
+            children: [
+              for (var i = 0; i < _quickItems.length; i++)
+                AgentReportQuickBtn(
+                  label: _quickItems[i].label,
+                  active: _quick == i,
+                  onTap: () => _onQuick(i),
+                ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Row(children: [
+            Expanded(child: _dateField(_start, () => _pickDate(isStart: true))),
+            SizedBox(width: 8.w),
+            Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
+          ]),
+          SizedBox(height: 12.h),
+          Row(children: [
+            Expanded(child: _dropField(_gameLabel, _pickGame)),
+            SizedBox(width: 8.w),
+            Expanded(child: _dropField(_sourceLabels[_sourceIndex], _pickSource)),
+            SizedBox(width: 8.w),
+            GestureDetector(
+              onTap: _load,
+              child: Container(
+                height: 40.h,
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4E9BA3),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Text(
+                  '查询',
+                  style: TextStyle(fontSize: 14.sp, color: Colors.white, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickGame() async {
+    if (_gameOptions.isEmpty) await _loadGames();
+    if (!mounted) return;
+    final labels = ['全部游戏', ..._gameOptions.map((e) => e['typeName'] ?? e['type'] ?? '')];
+    final i = await _pickSheet(labels, _gameIndex);
+    if (i != null) setState(() => _gameIndex = i);
+  }
+
+  Future<void> _pickSource() async {
+    final i = await _pickSheet(_sourceLabels, _sourceIndex);
+    if (i != null) setState(() => _sourceIndex = i);
+  }
+
+  Future<int?> _pickSheet(List<String> labels, int selected) {
+    return showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(height: 8.h),
+            for (var j = 0; j < labels.length; j++)
+              ListTile(
+                title: Text(labels[j]),
+                trailing: j == selected ? Icon(Icons.check, color: AppColors.navBlue) : null,
+                onTap: () => Navigator.pop(ctx, j),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _crumbBar() {
@@ -416,131 +362,272 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     );
   }
 
-  Widget _summaryBar() {
+  Widget _summaryCard() {
     if (_summary.isEmpty) return const SizedBox.shrink();
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
-      color: const Color(0xFFF5F5F5),
-      child: Wrap(
-        spacing: 12.w,
-        runSpacing: 4.h,
+    final grid = <(String, dynamic, bool)>[
+      ('下注', _summary['betAmount'], false),
+      ('有效', _summary['validAmount'], false),
+      ('笔数', _summary['orderCount'], false),
+      ('人数', _summary['peopleCount'], false),
+      ('占成盈亏', _summary['sharePnl'] ?? _summary['shareAmount'], true),
+      ('上交货量', _summary['uplinkVolume'], false),
+    ];
+    return _surface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _summaryItem('下注', _summary['betAmount']),
-          _summaryItem('有效', _summary['validAmount']),
-          _summaryItem('笔数', _summary['orderCount']),
-          _summaryItem('人数', _summary['peopleCount']),
-          _summaryItem('占成盈亏', _summary['sharePnl'] ?? _summary['shareAmount']),
-          _summaryItem('返水净额', _summary['rebateNet'] ?? _summary['rebate']),
-          _summaryItem('综合盈亏', _summary['combinedPnl'] ?? _summary['winLoss']),
-          _summaryItem('上交货量', _summary['uplinkVolume']),
-          _summaryItem('上级交收', _summary['uplinkSettlement']),
+          for (var i = 0; i < grid.length; i += 3) ...[
+            if (i > 0) SizedBox(height: 12.h),
+            Row(
+              children: [
+                for (var j = 0; j < 3; j++)
+                  Expanded(
+                    child: i + j < grid.length
+                        ? AgentMetric(label: grid[i + j].$1, value: grid[i + j].$2, signed: grid[i + j].$3)
+                        : const SizedBox.shrink(),
+                  ),
+              ],
+            ),
+          ],
+          SizedBox(height: 8.h),
+          Row(
+            children: [
+              Expanded(child: _pair('返水净额', _summary['rebateNet'] ?? _summary['rebate'], signed: true)),
+              SizedBox(width: 8.w),
+              Expanded(child: _pair('综合盈亏', _summary['combinedPnl'] ?? _summary['winLoss'], signed: true)),
+            ],
+          ),
+          SizedBox(height: 6.h),
+          Row(
+            children: [
+              Expanded(child: _pair('上级交收', _summary['uplinkSettlement'], signed: true)),
+              SizedBox(width: 8.w),
+              Expanded(child: _pair('会员输赢', _summary['winLoss'], signed: true)),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _ticketSummaryBar() {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 8.h),
-      color: const Color(0xFFF5F5F5),
+    return _surface(
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       child: Text(
         '$_ticketMemberName · ${_rows.length} 条',
-        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+        style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
       ),
     );
   }
 
-  Widget _summaryItem(String label, dynamic value) {
-    return Text(
-      '$label: ${_numStr(value)}',
-      style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+  Widget _resultList(bool inTickets) {
+    return AppPullRefresh(
+      onRefresh: () => _load(fromPull: true),
+      child: _loading && _rows.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 80),
+                AppPageLoading(),
+              ],
+            )
+          : _error != null && _rows.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    SizedBox(height: 80.h),
+                    Center(
+                      child: GestureDetector(
+                        onTap: _load,
+                        child: Text(
+                          '加载失败，点击重试',
+                          style: TextStyle(fontSize: 14.sp, color: AppColors.danger),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : _rows.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(height: 80.h),
+                        Center(
+                          child: Text(
+                            '暂无数据',
+                            style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: _rows.length,
+                      separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                      itemBuilder: (_, i) => inTickets ? _ticketCard(_rows[i]) : _memberCard(_rows[i]),
+                    ),
     );
   }
 
-  Widget _drillHeader() {
-    return Container(
-      color: const Color(0xFFE8E8E8),
-      padding: EdgeInsets.symmetric(vertical: 8.h),
-      child: Row(
-        children: [
-          _headerCell('账号', flex: 3),
-          _headerCell('层级', flex: 2),
-          _headerCell('下注', flex: 2),
-          _headerCell('有效', flex: 2),
-          _headerCell('综合盈亏', flex: 2),
-        ],
-      ),
-    );
-  }
-
-  Widget _drillRow(Map<String, dynamic> row, int index) {
+  Widget _memberCard(Map<String, dynamic> row) {
     final name = '${row['displayName'] ?? row['username'] ?? row['accountId'] ?? '—'}';
     final level = '${row['levelName'] ?? row['level'] ?? '—'}';
     final canTap = row['drillable'] == true ||
         '${row['level'] ?? ''}'.toUpperCase().contains('MEMBER') ||
         row['accountId'] != null;
-    return InkWell(
-      onTap: canTap ? () => _openDrill(row) : null,
-      child: Container(
-        decoration: BoxDecoration(
-          color: index.isOdd ? const Color(0xFFFAFAFA) : Colors.white,
-          border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-        ),
-        padding: EdgeInsets.symmetric(vertical: 8.h),
-        child: Row(
-          children: [
-            _bodyCell(name, flex: 3, color: canTap ? AppColors.navBlue : null),
-            _bodyCell(level, flex: 2),
-            _bodyCell(_numStr(row['betAmount']), flex: 2),
-            _bodyCell(_numStr(row['validAmount']), flex: 2),
-            _bodyCell(
-              _numStr(row['combinedPnl'] ?? row['sharePnl'] ?? row['memberWin']),
-              flex: 2,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _ticketHeader() {
-    return Container(
-      color: const Color(0xFFE8E8E8),
-      padding: EdgeInsets.symmetric(vertical: 8.h),
-      child: Row(
-        children: [
-          _headerCell('期号', flex: 2),
-          _headerCell('玩法', flex: 3),
-          _headerCell('金额', flex: 2),
-          _headerCell('结果', flex: 2),
-          _headerCell('状态', flex: 2),
-        ],
-      ),
-    );
-  }
-
-  Widget _ticketRow(Map<String, dynamic> row, int index) {
-    return Container(
-      decoration: BoxDecoration(
-        color: index.isOdd ? const Color(0xFFFAFAFA) : Colors.white,
-        border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
-      ),
-      padding: EdgeInsets.symmetric(vertical: 8.h),
-      child: Row(
-        children: [
-          _bodyCell(row['issueNo']?.toString() ?? '—', flex: 2),
-          _bodyCell(
-            row['contentOdds']?.toString() ??
-                row['playName']?.toString() ??
-                row['gameName']?.toString() ??
-                '—',
-            flex: 3,
+    final pnl = row['combinedPnl'] ?? row['sharePnl'] ?? row['memberWin'];
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12.r),
+        onTap: canTap ? () => _openDrill(row) : null,
+        child: _surface(
+          padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w700,
+                        color: canTap ? AppColors.navBlue : const Color(0xFF222222),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Text(level, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                  SizedBox(width: 8.w),
+                  Text('占成 ${_ratioText(row['shareRatio'])}', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '余额 ${row['balance'] == null ? '—' : displayNumber(row['balance'])}',
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8.h),
+              Row(
+                children: [
+                  Expanded(child: _pair('下注', row['betAmount'])),
+                  SizedBox(width: 8.w),
+                  Expanded(child: _pair('有效', row['validAmount'])),
+                  SizedBox(width: 8.w),
+                  Expanded(child: _pair('笔数', row['orderCount'])),
+                ],
+              ),
+              SizedBox(height: 6.h),
+              Row(
+                children: [
+                  Expanded(child: _pair('占成盈亏', row['sharePnl'], signed: true)),
+                  SizedBox(width: 8.w),
+                  Expanded(child: _pair('上交货量', row['uplinkVolume'])),
+                ],
+              ),
+              SizedBox(height: 6.h),
+              Row(
+                children: [
+                  Expanded(child: _pair('综合盈亏', pnl, signed: true)),
+                  SizedBox(width: 8.w),
+                  Expanded(child: _pair('返水净额', row['rebateNet'], signed: true)),
+                ],
+              ),
+              SizedBox(height: 6.h),
+              _pair('上级交收', row['uplinkSettlement'], signed: true),
+            ],
           ),
-          _bodyCell(_numStr(row['amount']), flex: 2),
-          _bodyCell(_numStr(row['itemResult'] ?? row['selfResult']), flex: 2),
-          _bodyCell(_bizStatusLabel(row['status']?.toString()), flex: 2),
+        ),
+      ),
+    );
+  }
+
+  Widget _pair(String label, dynamic value, {bool signed = false}) {
+    final text = value == null ? '—' : displayNumber(value);
+    final n = num.tryParse(text) ?? 0;
+    final color = !signed
+        ? AgentChrome.ink
+        : n > 0
+            ? AgentChrome.pnlUp
+            : n < 0
+                ? AppColors.danger
+                : AgentChrome.ink;
+    return Row(
+      children: [
+        Text(
+          label,
+          maxLines: 1,
+          softWrap: false,
+          style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+        ),
+        SizedBox(width: 4.w),
+        Flexible(
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              text,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700, color: color),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _ratioText(dynamic value) {
+    if (value == null) return '—';
+    final n = value is num ? value.toDouble() : double.tryParse('$value'.trim());
+    if (n == null) return '—';
+    final pct = n.abs() <= 1 ? n * 100 : n;
+    return '${displayNumber(pct)}%';
+  }
+
+  Widget _ticketCard(Map<String, dynamic> row) {
+    final play = row['contentOdds']?.toString() ??
+        row['playName']?.toString() ??
+        row['gameName']?.toString() ??
+        '—';
+    return _surface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  row['issueNo']?.toString() ?? '—',
+                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                _bizStatusLabel(row['status']?.toString()),
+                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          SizedBox(height: 6.h),
+          Text(play, style: TextStyle(fontSize: 13.sp, color: const Color(0xFF333333))),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              Expanded(child: AgentMetric(label: '金额', value: row['amount'])),
+              Expanded(child: AgentMetric(label: '结果', value: row['itemResult'] ?? row['selfResult'], signed: true)),
+            ],
+          ),
         ],
       ),
     );
@@ -559,31 +646,53 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     }
   }
 
-  Widget _headerCell(String text, {required int flex}) => Expanded(
-        flex: flex,
-        child: Text(text, textAlign: TextAlign.center, style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w600)),
-      );
+  Widget _surface({required Widget child, EdgeInsetsGeometry? padding}) {
+    return Container(
+      width: double.infinity,
+      padding: padding ?? EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: const Color(0xFFE3E8EF)),
+      ),
+      child: child,
+    );
+  }
 
-  Widget _bodyCell(String text, {required int flex, Color? color}) => Expanded(
-        flex: flex,
-        child: Text(
-          text,
-          textAlign: TextAlign.center,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 11.sp, color: color ?? AppColors.textPrimary),
+  Widget _dropField(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 40.h,
+        padding: EdgeInsets.symmetric(horizontal: 10.w),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F9FC),
+          borderRadius: BorderRadius.circular(10.r),
+          border: Border.all(color: const Color(0xFFE3E8EF)),
         ),
-      );
+        child: Row(children: [
+          Expanded(
+            child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.sp)),
+          ),
+          Icon(Icons.keyboard_arrow_down, size: 18.sp, color: AppColors.textHint),
+        ]),
+      ),
+    );
+  }
 
   Widget _dateField(DateTime d, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 36.h,
-        padding: EdgeInsets.symmetric(horizontal: 8.w),
-        decoration: BoxDecoration(border: Border.all(color: const Color(0xFFAAAAAA))),
+        height: 40.h,
+        padding: EdgeInsets.symmetric(horizontal: 10.w),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F9FC),
+          borderRadius: BorderRadius.circular(10.r),
+          border: Border.all(color: const Color(0xFFE3E8EF)),
+        ),
         child: Row(children: [
-          Icon(Icons.access_time, size: 16.sp, color: AppColors.textHint),
+          Icon(Icons.calendar_today_outlined, size: 14.sp, color: AppColors.textHint),
           SizedBox(width: 6.w),
           Text(_fmt(d), style: TextStyle(fontSize: 13.sp)),
         ]),
@@ -592,11 +701,3 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 }
 
-String _numStr(dynamic v) {
-  if (v == null) return '0';
-  if (v is num) {
-    if (v == v.roundToDouble()) return '${v.toInt()}';
-    return v.toStringAsFixed(2);
-  }
-  return v.toString();
-}

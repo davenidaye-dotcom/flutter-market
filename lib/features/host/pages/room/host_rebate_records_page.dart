@@ -8,11 +8,16 @@ import '../../../wallet/widgets/date_range_filter.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// 彩票回水记录 — GET /owner/room/rebate/records（仅 kind=REBATE）
+/// 彩票回水记录，或代理抽佣记录。数据结构和筛选相同，kind 不同。
 class HostRebateRecordsPage extends ConsumerStatefulWidget {
-  const HostRebateRecordsPage({super.key, required this.roomId});
+  const HostRebateRecordsPage({
+    super.key,
+    required this.roomId,
+    this.commission = false,
+  });
 
   final String roomId;
+  final bool commission;
 
   @override
   ConsumerState<HostRebateRecordsPage> createState() =>
@@ -37,11 +42,18 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getRebateRecords(
-            startDate: DateRangeFilter.format(start),
-            endDate: DateRangeFilter.format(end),
-            pageSize: 200,
-          );
+      final repo = ref.read(ownerRepositoryProvider);
+      final data = widget.commission
+          ? await repo.getCommissionRecords(
+              startDate: DateRangeFilter.format(start),
+              endDate: DateRangeFilter.format(end),
+              pageSize: 200,
+            )
+          : await repo.getRebateRecords(
+              startDate: DateRangeFilter.format(start),
+              endDate: DateRangeFilter.format(end),
+              pageSize: 200,
+            );
       if (!mounted) return;
       final rows = hostRowsOf(data);
       setState(() {
@@ -74,7 +86,7 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
       'SELF' => '自行领取',
       'OWNER' => '房主一键',
       'SYSTEM' => '系统自动',
-      _ => '回水',
+      _ => widget.commission ? '抽佣' : '回水',
     };
   }
 
@@ -91,7 +103,7 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '彩票回水记录',
+      title: widget.commission ? '代理抽佣记录' : '彩票回水记录',
       body: Column(
         children: [
           SizedBox(height: 8.h),
@@ -112,7 +124,7 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
                 : _rows.isEmpty
                     ? Center(
                         child: Text(
-                          '暂无回水记录',
+                          widget.commission ? '暂无抽佣记录' : '暂无回水记录',
                           style: TextStyle(
                             fontSize: 14.sp,
                             color: AppColors.textHint,

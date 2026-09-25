@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/play_title.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
@@ -201,7 +202,7 @@ class _ItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = '${row['title'] ?? '—'}';
+    final title = rankBetTitle(row);
     final issue = '${row['issueNo'] ?? ''}'.trim();
     final issueLabel =
         issue.isEmpty ? '' : (issue.startsWith('第') ? issue : '第$issue期');
@@ -223,7 +224,7 @@ class _ItemRow extends StatelessWidget {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 12.h),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
@@ -252,36 +253,31 @@ class _ItemRow extends StatelessWidget {
             ),
           ),
           SizedBox(width: 8.w),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                display,
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w700,
-                  color: amountColor,
-                ),
+          Text(
+            display,
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w700,
+              color: amountColor,
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Container(
+            width: 34.w,
+            height: 34.w,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: badgeColor,
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              badgeText,
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
               ),
-              SizedBox(height: 8.h),
-              Container(
-                width: 34.w,
-                height: 34.w,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: badgeColor,
-                  shape: BoxShape.circle,
-                ),
-                child: Text(
-                  badgeText,
-                  style: TextStyle(
-                    fontSize: 13.sp,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ],
       ),

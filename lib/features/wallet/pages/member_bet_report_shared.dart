@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/utils/business_day.dart';
 import '../widgets/date_range_filter.dart';
 
@@ -127,11 +128,9 @@ class MemberBetDateBar extends StatelessWidget {
 }
 
 String memberBetMoney(dynamic v, {int fraction = 2, bool trimZero = false}) {
-  if (v == null) return fraction == 0 ? '0' : (trimZero ? '0' : '0.00');
-  final n = v is num ? v.toDouble() : double.tryParse('$v');
-  if (n == null) return '$v';
-  if (trimZero && n == n.roundToDouble()) return '${n.round()}';
-  return n.toStringAsFixed(fraction);
+  if (v == null) return '0';
+  if (fraction < 0 && !trimZero) return displayNumber(v);
+  return displayNumber(v);
 }
 
 Color memberBetPnlColor(dynamic v) {

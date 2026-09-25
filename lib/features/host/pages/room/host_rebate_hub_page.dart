@@ -8,7 +8,7 @@ import 'host_pending_commission_page.dart';
 import 'host_pending_rebate_page.dart';
 import 'host_rebate_records_page.dart';
 
-/// 回水：用户未回水 / 代理未返佣 / 记录 / 报表
+/// 回水：未回水、未返佣、回水记录/报表、抽佣记录/报表
 class HostRebateHubPage extends StatelessWidget {
   const HostRebateHubPage({super.key, required this.roomId});
 
@@ -44,6 +44,20 @@ class HostRebateHubPage extends StatelessWidget {
         const Color(0xFFBBDEFB),
         const Color(0xFF1565C0),
         RebateReportPage(roomId: roomId),
+      ),
+      _HubItem(
+        '代理抽佣记录',
+        Icons.receipt_long_outlined,
+        const Color(0xFFFFE0B2),
+        const Color(0xFFEF6C00),
+        HostRebateRecordsPage(roomId: roomId, commission: true),
+      ),
+      _HubItem(
+        '代理抽佣报表',
+        Icons.bar_chart,
+        const Color(0xFFD1C4E9),
+        const Color(0xFF5E35B1),
+        RebateReportPage(roomId: roomId, commission: true),
       ),
     ];
     return HostSubPageScaffold(

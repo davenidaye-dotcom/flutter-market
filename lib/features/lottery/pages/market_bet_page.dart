@@ -11,6 +11,7 @@ import '../../../core/network/session_store.dart';
 import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/lottery_ball.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -127,36 +128,64 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   final ValueNotifier<bool> _submitting = ValueNotifier(false);
   bool _submitLocked = false;
   DateTime? _lastToggleAt;
+  Map<String, String> _roomOdds = const {};
 
   static const _tabs = ['快捷', '两面', '1-10名', '冠亚和'];
   static const _ranks = ['冠军', '亚军', '三名', '四名', '五名', '六名', '七名', '八名', '九名', '十名'];
   static const _presets = [5, 10, 50, 100, 500];
   static const _twoSides = ['大', '小', '单', '双', '龙', '虎'];
-  static const _sumOdds = {
-    3: '42',
-    4: '42',
-    5: '21',
-    6: '21',
-    7: '12',
-    8: '12',
-    9: '8.5',
-    10: '8.5',
-    11: '8.5',
-    12: '8.5',
-    13: '12',
-    14: '12',
-    15: '21',
-    16: '21',
-    17: '42',
-    18: '42',
-  };
+  static const _sumValues = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
   static const _twoSideRanks = ['冠亚和', ..._ranks];
 
   @override
   void initState() {
     super.initState();
     _amountCtrl.text = '${_presets[_amountPreset]}';
-    // 两面 / 1-10名 默认全部展开（_collapsed 为空即展开）
+    Future.microtask(_loadRoomOdds);
+  }
+
+  Future<void> _loadRoomOdds() async {
+    try {
+      final host = ref.read(authSessionProvider).isHostSide;
+      final odds = host
+          ? _oddsFromOwner(await ref.read(ownerRepositoryProvider).getOdds(gameType: widget.gameId))
+          : await ref.read(lotteryRepositoryProvider).getRoomOdds(widget.gameId);
+      if (!mounted || odds.isEmpty) return;
+      setState(() => _roomOdds = odds);
+    } catch (_) {}
+  }
+
+  Map<String, String> _oddsFromOwner(Map<String, dynamic> data) {
+    final raw = data['items'];
+    if (raw is! List) return const {};
+    final out = <String, String>{};
+    for (final row in raw.whereType<Map>()) {
+      final code = '${row['playCode'] ?? ''}'.trim();
+      if (code.isEmpty) continue;
+      out[code] = displayNumber(row['odds']);
+    }
+    return out;
+  }
+
+  String _roomOdd(String? key) {
+    if (key == null) return '';
+    final v = _roomOdds[key];
+    if (v == null || v.isEmpty) return '';
+    return v;
+  }
+
+  String _oddsForUi(String uiKey) {
+    return _roomOdd(oddsKeyOf(uiKeyToPlayCode(uiKey)));
+  }
+
+  String _quickNumberOdds() {
+    final values = <String>[
+      for (final i in _quickRanks) i == 0 ? _roomOdd('TM') : _roomOdd('POS'),
+    ];
+    if (values.any((v) => v.isEmpty)) return '';
+    final unique = values.toSet();
+    if (unique.length == 1) return unique.first;
+    return unique.join('/');
   }
 
   @override
@@ -302,7 +331,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       any = true;
     }
     if (!any) return null;
-    return sum.toStringAsFixed(sum == sum.roundToDouble() ? 0 : 1);
+    return displayNumber(sum);
   }
 
   void _reset() {
@@ -548,7 +577,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               Expanded(
                 child: _BallOddsCell(
                   number: a,
-                  odds: '9.995',
+                  odds: _quickNumberOdds(),
                   selected: _quickNumberOn(selected, a),
                   onTap: () => _toggleQuickNumber(a),
                 ),
@@ -557,7 +586,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               Expanded(
                 child: _BallOddsCell(
                   number: b,
-                  odds: '9.995',
+                  odds: _quickNumberOdds(),
                   selected: _quickNumberOn(selected, b),
                   onTap: () => _toggleQuickNumber(b),
                 ),
@@ -596,7 +625,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
                     for (final side in sides)
                       _OddsCell(
                         label: side,
-                        odds: '1.998',
+                        odds: _oddsForUi('$rank/$side'),
                         selected: selected.contains('$rank/$side'),
                         onTap: () => _toggle('$rank/$side'),
                       ),
@@ -646,7 +675,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               Expanded(
                 child: _BallOddsCell(
                   number: a,
-                  odds: '9.995',
+                  odds: _oddsForUi('$rank/$a'),
                   selected: selected.contains('$rank/$a'),
                   onTap: () => _toggle('$rank/$a'),
                 ),
@@ -655,7 +684,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               Expanded(
                 child: _BallOddsCell(
                   number: b,
-                  odds: '9.995',
+                  odds: _oddsForUi('$rank/$b'),
                   selected: selected.contains('$rank/$b'),
                   onTap: () => _toggle('$rank/$b'),
                 ),
@@ -669,7 +698,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   }
 
   Widget _buildSum(Set<String> selected) {
-    final keys = _sumOdds.keys.toList()..sort();
+    final keys = _sumValues;
     return GridView.builder(
       padding: EdgeInsets.all(8.w),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
@@ -684,7 +713,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         final key = '冠亚和/$n';
         return _OddsCell(
           label: '$n',
-          odds: _sumOdds[n]!,
+          odds: _oddsForUi('冠亚和/$n'),
           selected: selected.contains(key),
           onTap: () => _toggle(key),
           expand: true,
@@ -1016,10 +1045,11 @@ class _OddsCell extends StatelessWidget {
                 text: label,
                 style: TextStyle(fontSize: 15.sp, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
               ),
-              TextSpan(
-                text: '  $odds',
-                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-              ),
+              if (odds.isNotEmpty)
+                TextSpan(
+                  text: '  $odds',
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                ),
             ],
           ),
         ),
@@ -1056,8 +1086,10 @@ class _BallOddsCell extends StatelessWidget {
         child: Row(
           children: [
             LotteryBall(number: number, size: 26.w),
-            SizedBox(width: 10.w),
-            Text(odds, style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+            if (odds.isNotEmpty) ...[
+              SizedBox(width: 10.w),
+              Text(odds, style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+            ],
           ],
         ),
       ),

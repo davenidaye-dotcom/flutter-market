@@ -34,6 +34,17 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
 
   bool get _flightOn => _status['flightEnabled'] == true;
 
+  bool get _allGamesOn =>
+      _bound &&
+      _flightOn &&
+      _games.isNotEmpty &&
+      _games.every((g) => g['enabled'] == true);
+
+  bool get _allGamesOff =>
+      _bound && !_flightOn && _games.every((g) => g['enabled'] != true);
+
+  static const _ratioSteps = <int>[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+
   @override
   void initState() {
     super.initState();
@@ -91,7 +102,12 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
             flightEnabled: enabled,
           );
       if (!mounted) return;
-      setState(() => _status = {..._status, 'flightEnabled': enabled});
+      setState(() {
+        _status = {..._status, 'flightEnabled': enabled};
+        _games = [
+          for (final g in _games) {...g, 'enabled': enabled},
+        ];
+      });
       AppToast.success(enabled ? '飞单已开启' : '飞单已关闭');
     } catch (e) {
       AppToast.error(e.toString());
@@ -103,6 +119,7 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
   Future<void> _saveGameConfig(
     String gameType, {
     bool? enabled,
+    bool? flightEnabled,
     num? flightRatio,
     num? minAmount,
   }) async {
@@ -114,6 +131,7 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
     setState(() => _busy = true);
     try {
       await ref.read(ownerRepositoryProvider).updateFeipanFlightSwitch(
+            flightEnabled: flightEnabled,
             gameType: gameType,
             gameEnabled: enabled,
             flightRatio: flightRatio,
@@ -121,6 +139,9 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
           );
       if (!mounted) return;
       setState(() {
+        if (flightEnabled != null) {
+          _status = {..._status, 'flightEnabled': flightEnabled};
+        }
         _games = [
           for (final g in _games)
             if ('${g['gameType']}' == gameType)
@@ -144,26 +165,103 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
     }
   }
 
-  Future<void> _editRatio(String gameType, dynamic current) async {
+  Future<void> _editRatio(String gameType, String gameName, dynamic current) async {
     if (!_bound) {
       _needBind();
       return;
     }
-    final text = await hostInputSheet(
-      context,
-      title: '飞单比例',
-      initial: _plainNum(current ?? 100),
-      hint: '0～100，50 表示飞出一半',
-      suffixText: '%',
-      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+    final picked = await _pickRatio(gameName, current);
+    if (picked == null || !mounted) return;
+    await _saveGameConfig(gameType, flightRatio: picked);
+  }
+
+  Future<int?> _pickRatio(String gameName, dynamic current) {
+    final currentInt = _stepRatio(current);
+    final title = gameName.trim().isEmpty ? '飞单比例' : '$gameName飞单比例';
+    return showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) {
+        final maxH = MediaQuery.sizeOf(ctx).height * 0.72;
+        return Container(
+          constraints: BoxConstraints(maxHeight: maxH),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4F7FB),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(height: 8.h),
+                Container(
+                  width: 36.w,
+                  height: 4.h,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD5DCE6),
+                    borderRadius: BorderRadius.circular(2.r),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.symmetric(vertical: 14.h),
+                  child: Text(
+                    title,
+                    style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 12.h),
+                    itemCount: _ratioSteps.length,
+                    separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                    itemBuilder: (_, i) {
+                      final step = _ratioSteps[i];
+                      final selected = currentInt == step;
+                      return Material(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12.r),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12.r),
+                          onTap: () => Navigator.pop(ctx, step),
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+                            child: Row(
+                              children: [
+                                Icon(Icons.percent, size: 16.sp, color: const Color(0xFF8A94A6)),
+                                SizedBox(width: 8.w),
+                                Expanded(
+                                  child: Text(
+                                    '$step%',
+                                    style: TextStyle(
+                                      fontSize: 15.sp,
+                                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                Icon(Icons.chevron_right, size: 18.sp, color: AppColors.textHint),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-    if (text == null || !mounted) return;
-    final v = num.tryParse(text.trim());
-    if (v == null || v < 0 || v > 100) {
-      AppToast.error('飞单比例须为 0～100');
-      return;
-    }
-    await _saveGameConfig(gameType, flightRatio: v);
+  }
+
+  int? _stepRatio(dynamic value) {
+    final n = value is num ? value : num.tryParse('$value');
+    if (n == null) return null;
+    final v = n.round();
+    return _ratioSteps.contains(v) ? v : null;
   }
 
   Future<void> _editMinAmount(String gameType, dynamic current) async {
@@ -171,17 +269,18 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
       _needBind();
       return;
     }
+    final shown = _plainNum(current);
     final text = await hostInputSheet(
       context,
       title: '起飞金额',
-      initial: _plainNum(current ?? 1),
-      hint: '订单金额小于该值则不飞单',
+      initial: shown.isEmpty ? '1' : shown,
+      hint: '必须大于 1，订单金额小于该值则不飞单',
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
     );
     if (text == null || !mounted) return;
     final v = num.tryParse(text.trim());
-    if (v == null || v < 0) {
-      AppToast.error('起飞金额不能为负');
+    if (v == null || v <= 1) {
+      AppToast.error('起飞金额必须大于 1');
       return;
     }
     await _saveGameConfig(gameType, minAmount: v);
@@ -200,7 +299,13 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
   }
 
   Future<void> _setGame(String gameType, bool enabled) async {
-    await _saveGameConfig(gameType, enabled: enabled);
+    final othersOn = _games.any(
+      (g) => '${g['gameType']}' != gameType && g['enabled'] == true,
+    );
+    bool? master;
+    if (enabled && !_flightOn) master = true;
+    if (!enabled && !othersOn) master = false;
+    await _saveGameConfig(gameType, enabled: enabled, flightEnabled: master);
   }
 
   Future<void> _unbind() async {
@@ -402,7 +507,7 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
                 icon: Icons.play_circle_outline,
                 color: const Color(0xFF4C9AFF),
                 label: '开启全部飞单',
-                highlighted: _bound && _flightOn,
+                highlighted: _allGamesOn,
                 onTap: () => _setMaster(true),
               ),
             ),
@@ -412,7 +517,7 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
                 icon: Icons.pause_circle_outline,
                 color: const Color(0xFFFF6B6B),
                 label: '关闭全部飞单',
-                highlighted: _bound && !_flightOn,
+                highlighted: _allGamesOff,
                 onTap: () => _setMaster(false),
               ),
             ),
@@ -505,7 +610,7 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
                   icon: Icons.percent,
                   label: '飞单比例',
                   value: _ratioText(ratio),
-                  onTap: () => _editRatio(type, ratio),
+                  onTap: () => _editRatio(type, name, ratio),
                 ),
               ),
               SizedBox(width: 8.w),

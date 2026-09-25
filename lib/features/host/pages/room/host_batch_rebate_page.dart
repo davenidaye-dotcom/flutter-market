@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/display_number.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../widgets/host_ui.dart';
 
@@ -69,7 +70,7 @@ class _HostBatchRebatePageState extends ConsumerState<HostBatchRebatePage> {
       context,
       title: '批量反水',
       message:
-          '确定向 $_eligibleCount 人发放反水，合计 ¥${_pendingTotal.toStringAsFixed(2)} 吗？',
+          '确定向 $_eligibleCount 人发放反水，合计 ¥${displayNumber(_pendingTotal)} 吗？',
     );
     if (!ok) return;
     try {
@@ -100,7 +101,7 @@ class _HostBatchRebatePageState extends ConsumerState<HostBatchRebatePage> {
                     children: [
                       _statRow('可发放人数', '$_eligibleCount 人'),
                       const Divider(height: 24, color: AppColors.divider),
-                      _statRow('待发放总额', '¥${_pendingTotal.toStringAsFixed(2)}'),
+                      _statRow('待发放总额', '¥${displayNumber(_pendingTotal)}'),
                     ],
                   ),
                 ),

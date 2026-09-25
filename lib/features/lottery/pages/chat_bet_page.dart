@@ -13,6 +13,7 @@ import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -1208,7 +1209,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       final claimed = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 0;
       if (!mounted) return;
       if (claimed > 0) {
-        AppToast.success('已领取回水 ${claimed.toStringAsFixed(2)}');
+        AppToast.success('已领取回水 ${displayNumber(claimed)}');
       } else {
         AppToast.info('暂无可领取回水');
       }

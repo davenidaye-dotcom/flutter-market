@@ -579,6 +579,13 @@ class OwnerRepository {
     await _client.put('/owner/feipan/odds', data: body);
   }
 
+  /// 用代理模板赔率覆盖当前彩种飞单赔率。仅 JS_SC、AZXY10。
+  Future<void> syncFeipanPk10Odds({required String gameType}) async {
+    await _client.post('/owner/feipan/odds/sync-pk10', query: {
+      'gameType': gameType,
+    });
+  }
+
   Future<Map<String, dynamic>> getFeipanPointsChanges({
     String changeType = 'ALL',
     int pageNum = 1,
@@ -788,6 +795,36 @@ class OwnerRepository {
     final data = await _client.post('/owner/room/commission/batch-advance', data: {
       'accountIds': accountIds,
       if (remark != null && remark.isNotEmpty) 'remark': remark,
+    });
+    return _asMap(data);
+  }
+
+  /// 代理抽佣记录 — GET /owner/room/commission/records（kind=COMMISSION）
+  Future<Map<String, dynamic>> getCommissionRecords({
+    String? startDate,
+    String? endDate,
+    String? accountId,
+    int pageNum = 1,
+    int pageSize = 50,
+  }) async {
+    final data = await _client.get('/owner/room/commission/records', query: {
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+      if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    return _asMap(data);
+  }
+
+  /// 代理抽佣报表 — GET /owner/room/commission/report
+  Future<Map<String, dynamic>> getCommissionReport({
+    String? startDate,
+    String? endDate,
+  }) async {
+    final data = await _client.get('/owner/room/commission/report', query: {
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
     });
     return _asMap(data);
   }

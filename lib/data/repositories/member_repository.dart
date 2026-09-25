@@ -40,8 +40,9 @@ class MemberRepository {
     return _asMapList(data);
   }
 
-  Future<void> sendCsMessage(String content) async {
-    await _client.post('/member/cs/messages', data: {'content': content});
+  Future<Map<String, dynamic>> sendCsMessage(String content) async {
+    final data = await _client.post('/member/cs/messages', data: {'content': content});
+    return _asMap(data);
   }
 
   Future<Map<String, dynamic>> getRoomIntro({required String gameType}) async {

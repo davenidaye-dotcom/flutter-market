@@ -4,11 +4,10 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/gradient_background.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
-import 'host_advance_rebate_page.dart';
 import 'host_default_rebate_page.dart';
 import 'host_odds_limits_page.dart';
 
-/// \u623f\u95f4\u8bbe\u7f6e\uff1a\u8d54\u7387 / \u56de\u6c34 / \u63d0\u524d\u8fd4\u70b9
+/// 房间设置：赔率 / 回水
 class HostRoomSettingsPage extends StatelessWidget {
   const HostRoomSettingsPage({super.key, required this.roomId});
 
@@ -19,7 +18,6 @@ class HostRoomSettingsPage extends StatelessWidget {
     final items = <(String, Widget)>[
       ('赔率设置', HostOddsLimitsPage(roomId: roomId)),
       ('默认回水', HostDefaultRebatePage(roomId: roomId)),
-      ('提前返点', HostAdvanceRebatePage(roomId: roomId)),
     ];
 
     return AppPageScaffold(

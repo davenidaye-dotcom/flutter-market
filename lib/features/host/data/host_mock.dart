@@ -1,5 +1,6 @@
 // 房主端列表解析 helpers（页面统一用 API 数据，不再使用静态假列表）
 import 'package:flutter/material.dart';
+import '../../../shared/format/display_number.dart';
 
 class _Member {
   const _Member(
@@ -177,26 +178,10 @@ List<Map<String, dynamic>> hostRowsOf(dynamic data) {
 }
 
 /// Format numeric API fields for host UI display.
-/// 避免 BigDecimal JSON 出现 `0E-8` 等科学计数法。
+/// 去掉小数尾零，不再按 fraction 补 0。fraction 仅保留给旧调用。
 String hostNumStr(dynamic value, {int fraction = 0}) {
-  if (value == null) return '0';
-  num? n;
-  if (value is num) {
-    n = value;
-  } else {
-    n = num.tryParse('$value');
-  }
-  if (n == null) return '$value';
-  if (n == 0) return fraction <= 0 ? '0' : (0).toStringAsFixed(fraction);
-
-  if (fraction <= 0) {
-    if (n == n.roundToDouble()) return '${n.toInt()}';
-    // 去掉尾随 0，避免科学计数法
-    var s = n.toStringAsFixed(8);
-    s = s.replaceFirst(RegExp(r'\.?0+$'), '');
-    return s.isEmpty ? '0' : s;
-  }
-  return n.toStringAsFixed(fraction);
+  if (fraction < 0) return displayNumber(value);
+  return displayNumber(value);
 }
 
 /// 盈亏：盈利 `+` 绿色，亏损 `-` 红色，零为中性色无符号。

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../wallet/widgets/date_range_filter.dart';
 import '../widgets/agent_ui.dart';
@@ -74,6 +75,13 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
   }
 
   String _fmt(DateTime d) => DateRangeFilter.format(d);
+
+  String _shown(dynamic v) {
+    if (v == null) return '—';
+    final s = '$v'.trim();
+    if (s.isEmpty) return '—';
+    return displayNumber(v);
+  }
 
   List<DateRangeQuickItem> _dayQuickItems() {
     return DateRangeFilter.buildQuickItems()
@@ -150,213 +158,194 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
   @override
   Widget build(BuildContext context) {
     return AgentPageFrame(
-      title: '',
+      title: '额度变动',
       child: Column(
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 4.h),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          SizedBox(height: 8.h),
+          AgentSurface(
+            child: Column(
               children: [
-                Text(
-                  '\u989d\u5ea6\u53d8\u52a8',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: AppColors.textSecondary,
-                  ),
+                Row(
+                  children: [
+                    Expanded(child: AgentMetric(label: '给下级上分', value: _summary['creditToSubUp'], alignStart: true)),
+                    Expanded(child: AgentMetric(label: '给下级下分', value: _summary['creditToSubDown'], alignStart: true)),
+                  ],
                 ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '给下级上分:${_summary['creditToSubUp'] ?? 0}',
-                        style: TextStyle(fontSize: 13.sp),
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        '给下级下分:${_summary['creditToSubDown'] ?? 0}',
-                        style: TextStyle(fontSize: 13.sp),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '上级上分:${_summary['creditFromParentUp'] ?? 0}',
-                        style: TextStyle(fontSize: 13.sp, color: Colors.red),
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        '上级下分:${_summary['creditFromParentDown'] ?? 0}',
-                        style: TextStyle(fontSize: 13.sp, color: Colors.red),
-                      ),
-                    ],
-                  ),
+                SizedBox(height: 12.h),
+                Row(
+                  children: [
+                    Expanded(child: AgentMetric(label: '上级上分', value: _summary['creditFromParentUp'], alignStart: true)),
+                    Expanded(child: AgentMetric(label: '上级下分', value: _summary['creditFromParentDown'], alignStart: true)),
+                  ],
                 ),
               ],
             ),
           ),
-          Expanded(
-            child: AgentBorderBox(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _dateField(_start, () => _pickDate(isStart: true)),
-                      ),
-                      SizedBox(width: 8.w),
-                      Expanded(
-                        child: _dateField(_end, () => _pickDate(isStart: false)),
-                      ),
+          SizedBox(height: 8.h),
+          AgentSurface(
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: _dateField(_start, () => _pickDate(isStart: true))),
+                    SizedBox(width: 8.w),
+                    Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
+                  ],
+                ),
+                SizedBox(height: 10.h),
+                Row(
+                  children: [
+                    Expanded(child: _typeField()),
+                    SizedBox(width: 8.w),
+                    for (var i = 0; i < _dayQuick.length; i++) ...[
+                      if (i > 0) SizedBox(width: 6.w),
+                      _quickChip(i),
                     ],
-                  ),
-                  SizedBox(height: 10.h),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: GestureDetector(
-                          onTap: () async {
-                            final i = await showModalBottomSheet<int>(
-                              context: context,
-                              backgroundColor: Colors.white,
-                              builder: (ctx) {
-                                return Material(
-                                  color: Colors.white,
-                                  child: SafeArea(
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        for (var j = 0; j < _types.length; j++)
-                                          ListTile(
-                                            tileColor: Colors.white,
-                                            title: Text(_types[j]),
-                                            onTap: () => Navigator.pop(ctx, j),
-                                          ),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            );
-                            if (i != null) setState(() => _typeIndex = i);
-                          },
-                          child: Container(
-                            height: 36.h,
-                            padding: EdgeInsets.symmetric(horizontal: 10.w),
-                            decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFFAAAAAA)),
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _types[_typeIndex],
-                                    style: TextStyle(fontSize: 13.sp),
-                                  ),
-                                ),
-                                Icon(Icons.arrow_drop_down, size: 20.sp),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 4.w),
-                      for (var i = 0; i < _dayQuick.length; i++) ...[
-                        if (i > 0) SizedBox(width: 4.w),
-                        AgentQuotaQuickBtn(
-                          label: _dayQuick[i].label,
-                          active: _quick == i,
-                          blue: i == 0,
-                          onTap: () {
-                            setState(() {
-                              _quick = i;
-                              _start = _end = _dayQuick[i].start;
-                            });
-                          },
-                        ),
-                      ],
-                      SizedBox(width: 4.w),
-                      AgentTealButton(
-                        label: '\u67e5\u8be2',
-                        onTap: () {
-                          _page = 1;
-                          _load();
-                        },
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 12.h),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFFCCCCCC)),
-                      ),
-                      child: _loading
-                          ? const AppPageLoading()
-                          : _rows.isEmpty
-                              ? Center(
-                                  child: Text(
-                                    '\u6682\u65e0\u6570\u636e',
-                                    style: TextStyle(
-                                      fontSize: 14.sp,
-                                      color: AppColors.textHint,
-                                    ),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  itemCount: _rows.length,
-                                  separatorBuilder: (_, _) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (_, i) {
-                                    final r = _rows[i];
-                                    return ListTile(
-                                      dense: true,
-                                      title: Text(
-                                        '${_changeTypeLabel('${r['changeType'] ?? ''}')}  ${r['amount'] ?? ''}',
-                                        style: TextStyle(fontSize: 13.sp),
-                                      ),
-                                      subtitle: Text(
-                                        '总额后:${r['totalAfter'] ?? '—'}  占用后:${r['occupiedAfter'] ?? '—'}  ${r['createdAt'] ?? ''}',
-                                        style: TextStyle(fontSize: 11.sp),
-                                      ),
-                                    );
-                                  },
-                                ),
+                    SizedBox(width: 8.w),
+                    AgentTealButton(
+                      label: '查询',
+                      onTap: () {
+                        _page = 1;
+                        _load();
+                      },
                     ),
-                  ),
-                  AgentPaginationBar(
-                    compact: true,
-                    page: _page,
-                    totalPages: _totalPages,
-                    total: _total,
-                    onPrev: () {
-                      if (_page > 1) {
-                        setState(() => _page--);
-                        _load();
-                      }
-                    },
-                    onNext: () {
-                      if (_page < _totalPages) {
-                        setState(() => _page++);
-                        _load();
-                      }
-                    },
-                  ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ),
           ),
           SizedBox(height: 8.h),
+          Expanded(child: _changeList()),
+          AgentPaginationBar(
+            page: _page,
+            totalPages: _totalPages,
+            total: _total,
+            onPrev: () {
+              if (_page > 1) {
+                setState(() => _page--);
+                _load();
+              }
+            },
+            onNext: () {
+              if (_page < _totalPages) {
+                setState(() => _page++);
+                _load();
+              }
+            },
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _quickChip(int i) {
+    final active = _quick == i;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _quick = i;
+          _start = _end = _dayQuick[i].start;
+        });
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+        decoration: BoxDecoration(
+          color: active ? AgentChrome.accent : Colors.white,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(color: active ? AgentChrome.accent : AgentChrome.cardBorder),
+        ),
+        child: Text(
+          _dayQuick[i].label,
+          style: TextStyle(fontSize: 12.sp, color: active ? Colors.white : AppColors.textPrimary),
+        ),
+      ),
+    );
+  }
+
+  Widget _typeField() {
+    return GestureDetector(
+      onTap: () async {
+        final i = await showModalBottomSheet<int>(
+          context: context,
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+          ),
+          builder: (ctx) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: 8.h),
+                  for (var j = 0; j < _types.length; j++)
+                    ListTile(
+                      title: Text(_types[j]),
+                      onTap: () => Navigator.pop(ctx, j),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+        if (i != null) setState(() => _typeIndex = i);
+      },
+      child: Container(
+        height: 40.h,
+        padding: EdgeInsets.symmetric(horizontal: 10.w),
+        decoration: BoxDecoration(
+          color: AgentChrome.fieldBg,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(color: AgentChrome.cardBorder),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(_types[_typeIndex], maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13.sp)),
+            ),
+            Icon(Icons.keyboard_arrow_down, size: 18.sp, color: AppColors.textHint),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _changeList() {
+    if (_loading) return const AppPageLoading();
+    if (_rows.isEmpty) {
+      return Center(
+        child: Text('暂无数据', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
+      );
+    }
+    return ListView.separated(
+      padding: EdgeInsets.only(bottom: 8.h),
+      itemCount: _rows.length,
+      separatorBuilder: (_, _) => SizedBox(height: 8.h),
+      itemBuilder: (_, i) {
+        final r = _rows[i];
+        final when = r['createdAt']?.toString() ?? '';
+        return AgentSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${_changeTypeLabel('${r['changeType'] ?? ''}')} ${displayNumber(r['amount'])}',
+                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+              ),
+              SizedBox(height: 4.h),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '总额后 ${_shown(r['totalAfter'])} · 占用后 ${_shown(r['occupiedAfter'])} · $when',
+                  maxLines: 1,
+                  softWrap: false,
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -364,14 +353,16 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        height: 36.h,
-        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        height: 40.h,
+        padding: EdgeInsets.symmetric(horizontal: 10.w),
         decoration: BoxDecoration(
-          border: Border.all(color: const Color(0xFFAAAAAA)),
+          color: AgentChrome.fieldBg,
+          borderRadius: BorderRadius.circular(8.r),
+          border: Border.all(color: AgentChrome.cardBorder),
         ),
         child: Row(
           children: [
-            Icon(Icons.access_time, size: 16.sp, color: AppColors.textHint),
+            Icon(Icons.calendar_today_outlined, size: 14.sp, color: AppColors.textHint),
             SizedBox(width: 6.w),
             Text(_fmt(d), style: TextStyle(fontSize: 13.sp)),
           ],

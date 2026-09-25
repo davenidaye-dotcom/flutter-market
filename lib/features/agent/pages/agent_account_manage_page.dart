@@ -75,6 +75,39 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     }
   }
 
+  Widget _createField(String label, TextEditingController ctrl, {bool obscure = false}) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 10.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+          SizedBox(height: 4.h),
+          Container(
+            height: 40.h,
+            padding: EdgeInsets.symmetric(horizontal: 10.w),
+            decoration: BoxDecoration(
+              color: AgentChrome.fieldBg,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: AgentChrome.cardBorder),
+            ),
+            alignment: Alignment.centerLeft,
+            child: EmulatorSafeTextField(
+              controller: ctrl,
+              obscureText: obscure,
+              style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                isCollapsed: true,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showCreate() async {
     final userCtrl = TextEditingController();
     final passCtrl = TextEditingController();
@@ -82,7 +115,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     final nameCtrl = TextEditingController();
     var type = 'AGENT_MEMBER';
     const accountTypeLabels = {
-      'AGENT_MEMBER': '会员',
+      'AGENT_MEMBER': '代理会员',
       'AGENT': '代理',
       'AGENT_DELEGATE': '协管',
     };
@@ -90,44 +123,62 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setLocal) => AlertDialog(
-          title: Text('新增账户', style: TextStyle(fontSize: 16.sp)),
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+          titlePadding: EdgeInsets.fromLTRB(18.w, 16.h, 18.w, 0),
+          contentPadding: EdgeInsets.fromLTRB(18.w, 12.h, 18.w, 0),
+          actionsPadding: EdgeInsets.fromLTRB(18.w, 4.h, 18.w, 14.h),
+          title: Text(
+            '新增账户',
+            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+          ),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                EmulatorSafeTextField(
-                  controller: userCtrl,
-                  decoration: const InputDecoration(labelText: '用户名'),
+                _createField('用户名', userCtrl),
+                _createField('密码', passCtrl, obscure: true),
+                _createField('确认密码', confirmCtrl, obscure: true),
+                _createField('显示名称', nameCtrl),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('账户类型', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
                 ),
-                EmulatorSafeTextField(
-                  controller: passCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: '密码'),
-                ),
-                EmulatorSafeTextField(
-                  controller: confirmCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(labelText: '确认密码'),
-                ),
-                EmulatorSafeTextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: '显示名称'),
-                ),
-                DropdownButton<String>(
-                  value: type,
-                  isExpanded: true,
-                  items: [
-                    for (final entry in accountTypeLabels.entries)
-                      DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-                  ],
-                  onChanged: (v) => setLocal(() => type = v ?? type),
+                SizedBox(height: 4.h),
+                Container(
+                  height: 40.h,
+                  padding: EdgeInsets.symmetric(horizontal: 10.w),
+                  decoration: BoxDecoration(
+                    color: AgentChrome.fieldBg,
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(color: AgentChrome.cardBorder),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: type,
+                      isExpanded: true,
+                      icon: Icon(Icons.keyboard_arrow_down, size: 18.sp, color: AppColors.textSecondary),
+                      style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
+                      items: [
+                        for (final entry in accountTypeLabels.entries)
+                          DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                      ],
+                      onChanged: (v) => setLocal(() => type = v ?? type),
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('确定')),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                AgentTealButton(label: '取消', outlined: true, onTap: safeDialogPop(ctx, false)),
+                SizedBox(width: 8.w),
+                AgentTealButton(label: '确定', onTap: safeDialogPop(ctx, true)),
+              ],
+            ),
           ],
         ),
       ),
@@ -162,128 +213,144 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     }
   }
 
+  Widget _accountList() {
+    if (_loading) return const AppPageLoading();
+    if (_error != null) {
+      return Center(
+        child: GestureDetector(
+          onTap: _load,
+          child: Text('加载失败，点击重试', style: TextStyle(fontSize: 14.sp, color: AppColors.danger)),
+        ),
+      );
+    }
+    if (_rows.isEmpty) {
+      return Center(
+        child: Text('暂无数据', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
+      );
+    }
+    return ListView.separated(
+      padding: EdgeInsets.only(bottom: 8.h),
+      itemCount: _rows.length,
+      separatorBuilder: (_, _) => SizedBox(height: 8.h),
+      itemBuilder: (_, i) {
+        final r = _rows[i];
+        final name = '${r['displayName'] ?? r['username'] ?? ''}';
+        final meta =
+            '${r['username'] ?? ''} · ${agentAccountTypeLabel(r)} · ${agentAccountStatusLabel(r['status']?.toString())}';
+        return AgentSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        agentBalanceLabel(r['balance']),
+                        maxLines: 1,
+                        softWrap: false,
+                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 4.h),
+              Text(meta, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AgentPageFrame(
       title: '\u8d26\u6237\u7ba1\u7406',
       child: Column(
         children: [
-          Expanded(
-            child: AgentBorderBox(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 2,
-                        child: Container(
-                          height: 36.h,
-                          padding: EdgeInsets.symmetric(horizontal: 8.w),
-                          decoration: BoxDecoration(border: Border.all(color: const Color(0xFFAAAAAA))),
-                          child: EmulatorSafeTextField(
-                            controller: _searchCtrl,
-                            decoration: InputDecoration(
-                              border: InputBorder.none,
-                              hintText: '\u8d26\u6237\u641c\u7d22',
-                              hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
-                              isDense: true,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 4.w),
-                      AgentTealButton(
-                        label: '\u641c\u7d22',
-                        onTap: () {
-                          _page = 1;
-                          _load();
-                        },
-                      ),
-                      SizedBox(width: 4.w),
-                      AgentTealButton(
-                        label: '\u67e5\u770b\u5168\u90e8',
-                        outlined: true,
-                        onTap: () {
-                          _searchCtrl.clear();
-                          _page = 1;
-                          _load();
-                        },
-                      ),
-                      SizedBox(width: 4.w),
-                      AgentTealButton(label: '\u65b0\u589e', onTap: _showCreate),
-                    ],
+          SizedBox(height: 8.h),
+          AgentSurface(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  height: 40.h,
+                  padding: EdgeInsets.symmetric(horizontal: 10.w),
+                  decoration: BoxDecoration(
+                    color: AgentChrome.fieldBg,
+                    borderRadius: BorderRadius.circular(8.r),
+                    border: Border.all(color: AgentChrome.cardBorder),
                   ),
-                  SizedBox(height: 10.h),
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(border: Border.all(color: const Color(0xFFAAAAAA))),
-                      child: _loading
-                          ? const AppPageLoading()
-                          : _error != null
-                              ? Center(
-                                  child: GestureDetector(
-                                    onTap: _load,
-                                    child: Text(
-                                      '加载失败，点击重试',
-                                      style: TextStyle(fontSize: 14.sp, color: AppColors.danger),
-                                    ),
-                                  ),
-                                )
-                              : _rows.isEmpty
-                                  ? Center(
-                                      child: Text(
-                                        '暂无数据',
-                                        style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                                      ),
-                                    )
-                                  : ListView.separated(
-                                      itemCount: _rows.length,
-                                      separatorBuilder: (_, _) => const Divider(height: 1),
-                                      itemBuilder: (_, i) {
-                                        final r = _rows[i];
-                                        return ListTile(
-                                          dense: true,
-                                          title: Text(
-                                            '${r['displayName'] ?? r['username'] ?? ''}',
-                                            style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600),
-                                          ),
-                                          subtitle: Text(
-                                            '${r['username'] ?? ''} · ${agentAccountTypeLabel(r)} · ${agentAccountStatusLabel(r['status']?.toString())}',
-                                            style: TextStyle(fontSize: 11.sp),
-                                          ),
-                                          trailing: Text(
-                                            agentBalanceLabel(r['balance']),
-                                            style: TextStyle(fontSize: 12.sp),
-                                          ),
-                                        );
-                                      },
-                                    ),
+                  alignment: Alignment.centerLeft,
+                  child: EmulatorSafeTextField(
+                    controller: _searchCtrl,
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '账户搜索',
+                      hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
+                      isDense: true,
                     ),
                   ),
-                  AgentPaginationBar(
-                    compact: true,
-                    page: _page,
-                    totalPages: _totalPages,
-                    total: _total,
-                    onPrev: () {
-                      if (_page > 1) {
-                        setState(() => _page--);
+                ),
+                SizedBox(height: 10.h),
+                Row(
+                  children: [
+                    AgentTealButton(
+                      label: '搜索',
+                      onTap: () {
+                        _page = 1;
                         _load();
-                      }
-                    },
-                    onNext: () {
-                      if (_page < _totalPages) {
-                        setState(() => _page++);
+                      },
+                    ),
+                    SizedBox(width: 8.w),
+                    AgentTealButton(
+                      label: '查看全部',
+                      outlined: true,
+                      onTap: () {
+                        _searchCtrl.clear();
+                        _page = 1;
                         _load();
-                      }
-                    },
-                  ),
-                ],
-              ),
+                      },
+                    ),
+                    SizedBox(width: 8.w),
+                    AgentTealButton(label: '新增', outlined: true, onTap: _showCreate),
+                  ],
+                ),
+              ],
             ),
           ),
-          SizedBox(height: 8.h),
+          SizedBox(height: 10.h),
+          Expanded(child: _accountList()),
+          AgentPaginationBar(
+            page: _page,
+            totalPages: _totalPages,
+            total: _total,
+            onPrev: () {
+              if (_page > 1) {
+                setState(() => _page--);
+                _load();
+              }
+            },
+            onNext: () {
+              if (_page < _totalPages) {
+                setState(() => _page++);
+                _load();
+              }
+            },
+          ),
         ],
       ),
     );

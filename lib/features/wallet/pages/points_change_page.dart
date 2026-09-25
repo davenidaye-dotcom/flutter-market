@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -162,9 +163,8 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                                         final amountNum = amount is num
                                             ? amount.toDouble()
                                             : double.tryParse('$amount') ?? 0;
-                                        final amountText = amountNum >= 0
-                                            ? '+${amountNum.toStringAsFixed(1)}'
-                                            : amountNum.toStringAsFixed(1);
+                                        final shown = displayNumber(amountNum);
+                                        final amountText = amountNum > 0 ? '+$shown' : shown;
                                         final issue =
                                             '${r['issueNo'] ?? r['issue_no'] ?? ''}';
                                         final time =
