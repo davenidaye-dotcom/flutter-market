@@ -28,6 +28,7 @@ dependencies:
   flutter_native_splash: ^2.4.6
   encrypt: ^5.0.3
   audioplayers: ^6.8.1
+  url_launcher: ^6.3.1
 
 dev_dependencies:
   flutter_test:

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -31,6 +32,7 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
     super.initState();
     // 进房拉彩种列表，并预拉每个彩种最近 15 期开奖/聊天，避免第一次点进彩种只有本地封盘。
     Future.microtask(() async {
+      unawaited(BgmPrompt.refreshPlayer());
       final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
       await live.ensureLoaded();
       if (!mounted) return;

@@ -65,4 +65,19 @@ flutter run --flavor dev -d 47199271 --dart-define=APP_ENV=dev
 
 第一次会停在 `Running Gradle task 'assembleDevDebug'`，经常要几分钟到十几分钟，终端不要关，也不要按 `Ctrl+C`。手机保持解锁，弹出安装确认时点允许。装完后 App 会自己打开。
 
+只打出 APK 文件、不经过 `flutter run` 安装时，用下面这条。这是 dev 的 release 包，产物在 `build/app/outputs/flutter-apk/app-dev-release.apk`。
+
+```bash
+export PATH="/tmp/flutter-sdk/bin:$PATH"
+cd /Users/joe/project/stockhome/flutter-market/flutter-market
+flutter build apk --flavor dev --dart-define=APP_ENV=dev --release
+```
+
+测试包把 flavor 换成 `staging`，`APP_ENV` 换成 `test`。正式包 flavor 和 `APP_ENV` 都用 `pro`。手机用数据线连着时，打完可以直接装：
+
+```bash
+export PATH="$HOME/Library/Android/sdk/platform-tools:$PATH"
+adb install -r build/app/outputs/flutter-apk/app-dev-release.apk
+```
+
 Android Studio 首次启动若弹出 `Unable to access Android SDK add-on list`：Clash Verge 开着系统代理时，选手动 HTTP 代理，主机 `127.0.0.1`，端口 `7897`，不要勾登录认证。SDK 已经在上面的目录里时，直接 Cancel 也可以，不影响这条 `flutter run`。

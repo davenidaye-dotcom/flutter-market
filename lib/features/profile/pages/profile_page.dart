@@ -1,18 +1,24 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/env/env_config.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/trial_account_tag.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../../data/repositories/providers.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../../room/pages/room_shell_page.dart';
+import '../app_release.dart';
 import '../widgets/avatar_picker_sheet.dart';
 import 'personal_settings_page.dart';
 
@@ -33,6 +39,38 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   bool get wantKeepAlive => true;
 
   @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadBgm);
+  }
+
+  Future<void> _loadBgm() async {
+    await BgmPrompt.loadLocal();
+    if (!mounted) return;
+    setState(() => _bgMusic = BgmPrompt.enabled);
+    try {
+      final on = await ref.read(memberRepositoryProvider).getBgmEnabled();
+      await BgmPrompt.setEnabled(on);
+      if (!mounted) return;
+      setState(() => _bgMusic = on);
+    } catch (_) {}
+  }
+
+  Future<void> _setBgm(bool value) async {
+    final prev = _bgMusic;
+    setState(() => _bgMusic = value);
+    await BgmPrompt.setEnabled(value);
+    try {
+      await ref.read(memberRepositoryProvider).updateBgm(value);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _bgMusic = prev);
+      await BgmPrompt.setEnabled(prev);
+      AppToast.error(e.toString());
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     super.build(context);
     final user = ref.watch(authSessionProvider.select((s) => s.user));
@@ -40,6 +78,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
       return const Scaffold(body: Center(child: Text('未登录')));
     }
     final roomId = widget.roomId;
+    final trial = roomId != null &&
+        roomId.isNotEmpty &&
+        ref.watch(roomLotteryLiveProvider(roomId).select((s) => s.isTrialAccount));
 
     return AppPageScaffold(
       body: GradientBackground(
@@ -85,10 +126,47 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                   ),
                 ),
                 SizedBox(height: 12.h),
-                Text(user.nickname, style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        user.nickname,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    if (trial) ...[
+                      SizedBox(width: 6.w),
+                      const TrialAccountTag(),
+                    ],
+                  ],
+                ),
                 SizedBox(height: 4.h),
                 Text('(${user.username})', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
-                Text('ID:${user.id}', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text('ID:${user.id}', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint)),
+                    SizedBox(width: 4.w),
+                    InkWell(
+                      onTap: () => _copyId(user.id),
+                      borderRadius: BorderRadius.circular(12.r),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.copy_outlined, size: 13.sp, color: AppColors.primary),
+                            SizedBox(width: 2.w),
+                            Text('复制', style: TextStyle(fontSize: 12.sp, color: AppColors.primary)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 SizedBox(height: 24.h),
                 Material(
                   color: Colors.white.withValues(alpha: 0.85),
@@ -105,7 +183,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                         title: Text('背景音乐', style: TextStyle(fontSize: 15.sp)),
                         trailing: Switch(
                           value: _bgMusic,
-                          onChanged: (v) => setState(() => _bgMusic = v),
+                          onChanged: (v) => unawaited(_setBgm(v)),
                           activeThumbColor: Colors.white,
                           activeTrackColor: AppColors.primaryLight,
                         ),
@@ -128,10 +206,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                             Icon(Icons.chevron_right, color: AppColors.textHint),
                           ],
                         ),
-                        onTap: () => AppToast.info('已是最新版本 ${EnvConfig.appVersion}'),
+                        onTap: () => AppRelease.check(context),
                       ),
                       const Divider(indent: 16, endIndent: 16, height: 1),
-                      _tile('分享App', onTap: () => AppToast.info('分享功能待对接')),
+                      _tile('分享App', onTap: () => AppRelease.share(context)),
                     ],
                   ),
                 ),
@@ -173,6 +251,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
         ),
       ),
     );
+  }
+
+  Future<void> _copyId(String id) async {
+    if (id.isEmpty) {
+      AppToast.info('暂无ID');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: id));
+    AppToast.success('已复制ID');
   }
 
   Widget _tile(String label, {VoidCallback? onTap}) {

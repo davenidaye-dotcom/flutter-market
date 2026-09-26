@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../../config/env/env_config.dart';
 import 'api_exception.dart';
+import 'session_kick.dart';
 import 'session_store.dart';
 import '../security/api_request_signer.dart';
 
@@ -33,8 +34,30 @@ class ApiClient {
           ApiRequestSigner.attach(options);
           handler.next(options);
         },
+        onResponse: (response, handler) {
+          if (_unauthorized(response.data, response.statusCode)) {
+            SessionKick.signal();
+          }
+          handler.next(response);
+        },
+        onError: (error, handler) {
+          if (_unauthorized(error.response?.data, error.response?.statusCode)) {
+            SessionKick.signal();
+          }
+          handler.next(error);
+        },
       ),
     );
+  }
+
+  static bool _unauthorized(dynamic data, int? status) {
+    if (status == 401) return true;
+    if (data is Map) {
+      final code = data['code'];
+      final n = code is int ? code : int.tryParse('$code');
+      if (n == 401) return true;
+    }
+    return false;
   }
 
   static final ApiClient instance = ApiClient._();

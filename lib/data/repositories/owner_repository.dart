@@ -314,6 +314,16 @@ class OwnerRepository {
   }
 
   // --- manage ---
+  Future<bool> getBgmEnabled() async {
+    final data = await _client.get('/owner/profile/bgm');
+    if (data is! Map) return true;
+    return data['enabled'] != false;
+  }
+
+  Future<void> updateBgm(bool enabled) async {
+    await _client.put('/owner/profile/bgm', data: {'enabled': enabled});
+  }
+
   Future<Map<String, dynamic>> getDashboard() async {
     final data = await _client.get('/owner/manage/dashboard');
     return _asMap(data);

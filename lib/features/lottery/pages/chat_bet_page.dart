@@ -119,6 +119,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   final _betBusy = ValueNotifier(false);
   final _walletGuard = SubmitGuard();
   bool _walletDialogOpen = false;
+  bool _rebateDialogOpen = false;
   StreamSubscription<LotteryChatPush>? _chatPushSub;
 
   int _msgLoadGen = 0;
@@ -582,19 +583,31 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     final receiptId = orderIds.isNotEmpty
         ? 'bet-receipt-$_gameId-${orderIds.first}'
         : 'bet-receipt-$_gameId-${DateTime.now().millisecondsSinceEpoch}';
+    final isCancel = command.trim() == '取消';
     final receipt = ChatMessageModel(
       id: receiptId,
       sender: '机器人',
-      content: formatBetReceiptText(
-        mention: mention,
-        issue: issueNo,
-        fallbackContent: command,
-      ),
+      content: isCancel
+          ? _cancelSuccessText(mention: mention, issue: issueNo)
+          : formatBetReceiptText(
+              mention: mention,
+              issue: issueNo,
+              fallbackContent: command,
+            ),
       time: stamp,
       type: ChatMessageType.betReceipt,
       issueNo: issueNo.isNotEmpty ? issueNo : null,
     );
     _publishChatMessage(receipt, dedupeKey: receipt.id);
+  }
+
+  String _cancelSuccessText({required String mention, required String issue}) {
+    final lines = <String>[];
+    final name = mention.trim();
+    if (name.isNotEmpty && name != '机器人') lines.add('@$name');
+    final iss = issue.trim();
+    lines.add(iss.isEmpty ? '取消成功' : '$iss期取消成功');
+    return lines.join('\n');
   }
 
   void _appendBetSlip(String command, {List<String> orderIds = const []}) {
@@ -1136,7 +1149,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     }
     switch (action) {
       case '取消':
-        await _cancelCurrentIssueBets();
+        _betCtrl.value = const TextEditingValue(
+          text: '取消',
+          selection: TextSelection.collapsed(offset: 2),
+        );
         return;
       case '重复':
         await _repeatLastBet();
@@ -1203,10 +1219,24 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       AppToast.info('试玩账号不可自助回水');
       return;
     }
+    if (_rebateDialogOpen) return;
+    _rebateDialogOpen = true;
+    _setPanel(_BottomPanel.none);
     try {
+      final pendingData = await ref.read(walletRepositoryProvider).getRebatePending();
+      if (!mounted) return;
+      final pending = _money(pendingData['pending']);
+      final confirmed = await showRebateClaimDialog(
+        context: context,
+        businessDate: _businessDateText(pendingData['businessDate']),
+        turnover: displayNumber(pendingData['pendingTurnover']),
+        count: displayNumber(pendingData['pendingCount']),
+        amount: displayNumber(pending),
+        canClaim: pending > 0,
+      );
+      if (!confirmed || !mounted || pending <= 0) return;
       final data = await ref.read(walletRepositoryProvider).claimRebate();
-      final raw = data['claimed'];
-      final claimed = raw is num ? raw.toDouble() : double.tryParse('$raw') ?? 0;
+      final claimed = _money(data['claimed']);
       if (!mounted) return;
       if (claimed > 0) {
         AppToast.success('已领取回水 ${displayNumber(claimed)}');
@@ -1217,15 +1247,31 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
     } catch (e) {
+      if (!mounted) return;
       AppToast.error(e.toString());
+    } finally {
+      _rebateDialogOpen = false;
     }
   }
 
-  void _onMenuItem(String label) {
-    // 自助回水就地领取，保持下注菜单展开；其它项关闭菜单后再跳转/弹窗
-    if (label != '自助回水') {
-      _setPanel(_BottomPanel.none);
+  double _money(dynamic raw) {
+    if (raw is num) return raw.toDouble();
+    return double.tryParse('$raw') ?? 0;
+  }
+
+  String _businessDateText(dynamic value) {
+    if (value is List && value.length >= 3) {
+      final month = '${value[1]}'.padLeft(2, '0');
+      final day = '${value[2]}'.padLeft(2, '0');
+      return '${value[0]}-$month-$day';
     }
+    final text = value?.toString().trim() ?? '';
+    if (text.isEmpty) return '-';
+    return text.length >= 10 ? text.substring(0, 10) : text;
+  }
+
+  void _onMenuItem(String label) {
+    _setPanel(_BottomPanel.none);
     final trialBlocked = const {'上分', '下分', '申请记录', '自助回水'};
     if (trialBlocked.contains(label) &&
         ref.read(roomLotteryLiveProvider(widget.roomId)).isTrialAccount) {

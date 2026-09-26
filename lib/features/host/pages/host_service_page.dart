@@ -17,6 +17,7 @@ class _CsSession {
   _CsSession({
     required this.accountId,
     required this.name,
+    required this.avatarText,
     required this.last,
     required this.time,
     required this.unread,
@@ -24,9 +25,30 @@ class _CsSession {
 
   final String accountId;
   final String name;
+  final String avatarText;
   final String last;
   final String time;
   final int unread;
+}
+
+String _csDisplayName(Map<String, dynamic> row, String fallback) {
+  final remark = row['remark']?.toString().trim() ?? '';
+  if (remark.isNotEmpty) return remark;
+  final nick = row['nickname']?.toString().trim() ?? '';
+  if (!row.containsKey('remark')) {
+    final passed = fallback.trim();
+    if (passed.isNotEmpty) return passed;
+  }
+  if (nick.isNotEmpty) return nick;
+  final user = row['username']?.toString().trim() ?? '';
+  if (user.isNotEmpty) return user;
+  return fallback.trim();
+}
+
+String _csAvatarText(Map<String, dynamic> row, String displayName) {
+  final nick = row['nickname']?.toString().trim() ?? '';
+  if (nick.isNotEmpty) return nick;
+  return displayName;
 }
 
 /// Owner CS sessions — GET /owner/cs/sessions
@@ -80,12 +102,12 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
         final row = await ref.read(ownerRepositoryProvider).ensureCsSession(id);
         if (!mounted) return;
         final at = row['lastMessageAt']?.toString() ?? '';
+        final name = _csDisplayName(row, widget.openName ?? id);
         setState(() {
           _open = _CsSession(
             accountId: '${row['accountId'] ?? id}',
-            name: row['nickname']?.toString().trim().isNotEmpty == true
-                ? row['nickname'].toString()
-                : (widget.openName ?? id),
+            name: name,
+            avatarText: _csAvatarText(row, name),
             last: row['lastMessage']?.toString() ?? '',
             time: at.length >= 16 ? at.substring(11, 16) : at,
             unread: int.tryParse('${row['unreadCount'] ?? 0}') ?? 0,
@@ -112,9 +134,11 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
               final m = Map<String, dynamic>.from(e);
               final at = m['lastMessageAt']?.toString() ?? '';
               final time = at.length >= 16 ? at.substring(11, 16) : at;
+              final name = _csDisplayName(m, '');
               return _CsSession(
                 accountId: '${m['accountId'] ?? ''}',
-                name: m['nickname']?.toString() ?? m['username']?.toString() ?? '',
+                name: name,
+                avatarText: _csAvatarText(m, name),
                 last: m['lastMessage']?.toString() ?? '',
                 time: time,
                 unread: int.tryParse('${m['unreadCount'] ?? 0}') ?? 0,
@@ -206,7 +230,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
                                       radius: 22.r,
                                       backgroundColor: const Color(0xFFBDE0FE),
                                       child: Text(
-                                        s.name.isNotEmpty ? s.name.characters.first : '?',
+                                        s.avatarText.isNotEmpty ? s.avatarText.characters.first : '?',
                                         style: const TextStyle(color: AppColors.navBlue),
                                       ),
                                     ),

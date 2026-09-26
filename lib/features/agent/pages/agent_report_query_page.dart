@@ -364,49 +364,27 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
 
   Widget _summaryCard() {
     if (_summary.isEmpty) return const SizedBox.shrink();
-    final grid = <(String, dynamic, bool)>[
-      ('下注', _summary['betAmount'], false),
-      ('有效', _summary['validAmount'], false),
-      ('笔数', _summary['orderCount'], false),
-      ('人数', _summary['peopleCount'], false),
-      ('占成盈亏', _summary['sharePnl'] ?? _summary['shareAmount'], true),
-      ('上交货量', _summary['uplinkVolume'], false),
-    ];
+    final pnl = _summary['pnl'] ??
+        ((num.tryParse('${_summary['winLoss'] ?? 0}') ?? 0) +
+            (num.tryParse('${_summary['rebate'] ?? 0}') ?? 0));
     return _surface(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          for (var i = 0; i < grid.length; i += 3) ...[
-            if (i > 0) SizedBox(height: 12.h),
-            Row(
-              children: [
-                for (var j = 0; j < 3; j++)
-                  Expanded(
-                    child: i + j < grid.length
-                        ? AgentMetric(label: grid[i + j].$1, value: grid[i + j].$2, signed: grid[i + j].$3)
-                        : const SizedBox.shrink(),
-                  ),
-              ],
-            ),
-          ],
-          SizedBox(height: 8.h),
-          Row(
-            children: [
-              Expanded(child: _pair('返水净额', _summary['rebateNet'] ?? _summary['rebate'], signed: true)),
-              SizedBox(width: 8.w),
-              Expanded(child: _pair('综合盈亏', _summary['combinedPnl'] ?? _summary['winLoss'], signed: true)),
-            ],
-          ),
-          SizedBox(height: 6.h),
-          Row(
-            children: [
-              Expanded(child: _pair('上级交收', _summary['uplinkSettlement'], signed: true)),
-              SizedBox(width: 8.w),
-              Expanded(child: _pair('会员输赢', _summary['winLoss'], signed: true)),
-            ],
-          ),
-        ],
-      ),
+      color: const Color(0xFFD6EBFF),
+      child: _fourGrid([
+        ('下注金额', _summary['betAmount'], false),
+        ('输赢', _summary['winLoss'], true),
+        ('退水', _summary['rebate'], true),
+        ('盈亏', pnl, true),
+        ('下级交货', _summary['downVolume'], false),
+        ('应收下线', _summary['receivable'], true),
+        ('占成', _ratioText(_summary['shareRatio'] ?? 0), false),
+        ('实占金额', _summary['shareAmount'], false),
+        ('实占结果', _summary['sharePnl'], true),
+        ('实占退水', _summary['rebateNet'], true),
+        ('赚水', _summary['earnWater'] ?? _summary['rebateGot'], true),
+        ('盈亏结果', _summary['resultPnl'] ?? _summary['combinedPnl'], true),
+        ('上缴货量', _summary['uplinkVolume'], false),
+        ('上级交收', _summary['uplinkSettlement'], true),
+      ]),
     );
   }
 
@@ -475,13 +453,13 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     final canTap = row['drillable'] == true ||
         '${row['level'] ?? ''}'.toUpperCase().contains('MEMBER') ||
         row['accountId'] != null;
-    final pnl = row['combinedPnl'] ?? row['sharePnl'] ?? row['memberWin'];
     return Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(12.r),
         onTap: canTap ? () => _openDrill(row) : null,
         child: _surface(
+          color: Colors.white,
           padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
           child: Column(
             children: [
@@ -519,37 +497,48 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                 ],
               ),
               SizedBox(height: 8.h),
-              Row(
-                children: [
-                  Expanded(child: _pair('下注', row['betAmount'])),
-                  SizedBox(width: 8.w),
-                  Expanded(child: _pair('有效', row['validAmount'])),
-                  SizedBox(width: 8.w),
-                  Expanded(child: _pair('笔数', row['orderCount'])),
-                ],
-              ),
-              SizedBox(height: 6.h),
-              Row(
-                children: [
-                  Expanded(child: _pair('占成盈亏', row['sharePnl'], signed: true)),
-                  SizedBox(width: 8.w),
-                  Expanded(child: _pair('上交货量', row['uplinkVolume'])),
-                ],
-              ),
-              SizedBox(height: 6.h),
-              Row(
-                children: [
-                  Expanded(child: _pair('综合盈亏', pnl, signed: true)),
-                  SizedBox(width: 8.w),
-                  Expanded(child: _pair('返水净额', row['rebateNet'], signed: true)),
-                ],
-              ),
-              SizedBox(height: 6.h),
-              _pair('上级交收', row['uplinkSettlement'], signed: true),
+              _fourGrid([
+                ('下注金额', row['betAmount'], false),
+                ('输赢', row['memberWin'] ?? row['memberWinLoss'], true),
+                ('退水', row['memberRebate'], true),
+                ('盈亏', row['memberResult'], true),
+                ('下级交货', row['downVolume'], false),
+                ('应收下线', row['receivable'], true),
+                ('占成', _ratioText(row['shareRatio']), false),
+                ('实占金额', row['shareAmount'], false),
+                ('实占结果', row['shareResult'] ?? row['sharePnl'], true),
+                ('实占退水', row['shareRebate'], true),
+                ('赚水', row['earnWater'] ?? row['rebateIncome'], true),
+                ('盈亏结果', row['selfPnl'], true),
+                ('上缴货量', row['uplinkVolume'], false),
+                ('上级交收', row['uplinkSettlement'], true),
+              ]),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _fourGrid(List<(String, dynamic, bool)> cells) {
+    return Column(
+      children: [
+        for (var i = 0; i < cells.length; i += 4) ...[
+          if (i > 0) SizedBox(height: 6.h),
+          Row(
+            children: [
+              for (var j = 0; j < 4; j++) ...[
+                if (j > 0) SizedBox(width: 6.w),
+                Expanded(
+                  child: i + j < cells.length
+                      ? _pair(cells[i + j].$1, cells[i + j].$2, signed: cells[i + j].$3)
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ],
     );
   }
 
@@ -593,7 +582,8 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     final n = value is num ? value.toDouble() : double.tryParse('$value'.trim());
     if (n == null) return '—';
     final pct = n.abs() <= 1 ? n * 100 : n;
-    return '${displayNumber(pct)}%';
+    final rounded = (pct * 100).roundToDouble() / 100;
+    return '${displayNumber(rounded)}%';
   }
 
   Widget _ticketCard(Map<String, dynamic> row) {
@@ -646,12 +636,12 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     }
   }
 
-  Widget _surface({required Widget child, EdgeInsetsGeometry? padding}) {
+  Widget _surface({required Widget child, EdgeInsetsGeometry? padding, Color? color}) {
     return Container(
       width: double.infinity,
       padding: padding ?? EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 12.h),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: color ?? Colors.white,
         borderRadius: BorderRadius.circular(12.r),
         border: Border.all(color: const Color(0xFFE3E8EF)),
       ),

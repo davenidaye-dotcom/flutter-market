@@ -195,14 +195,15 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                               brown,
                                             ),
                                           ),
-                                          Expanded(
-                                            child: _metric(
-                                              '回水',
-                                              s == null ? '--' : '${s.paidRebate.toInt()}',
-                                              brown,
-                                              valueColor: AppColors.success,
+                                          if (s?.isTrial != true)
+                                            Expanded(
+                                              child: _metric(
+                                                '回水',
+                                                s == null ? '--' : '${s.paidRebate.toInt()}',
+                                                brown,
+                                                valueColor: AppColors.success,
+                                              ),
                                             ),
-                                          ),
                                           Expanded(
                                             child: _metric(
                                               '盈亏',
@@ -213,18 +214,16 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                           ),
                                         ],
                                       ),
+                                      if (s?.isTrial != true) ...[
                                       SizedBox(height: 20.h),
                                       ValueListenableBuilder<bool>(
                                         valueListenable: _applyBusy,
-                                        builder: (_, busy, __) {
-                                          final trial = s?.isTrial == true;
+                                        builder: (_, busy, _) {
                                           return Row(
                                             children: [
                                               Expanded(
                                                 child: OutlinedButton(
-                                                  onPressed: (busy || trial)
-                                                      ? null
-                                                      : () => _submitApply('UP'),
+                                                  onPressed: busy ? null : () => _submitApply('UP'),
                                                   child: busy
                                                       ? SizedBox(
                                                           width: 18.w,
@@ -237,9 +236,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                               SizedBox(width: 12.w),
                                               Expanded(
                                                 child: OutlinedButton(
-                                                  onPressed: (busy || trial)
-                                                      ? null
-                                                      : () => _submitApply('DOWN'),
+                                                  onPressed: busy ? null : () => _submitApply('DOWN'),
                                                   child: const Text('下分'),
                                                 ),
                                               ),
@@ -247,8 +244,9 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                           );
                                         },
                                       ),
+                                      ],
                                       SizedBox(height: 20.h),
-                                      _MenuGrid(roomId: widget.roomId),
+                                      _MenuGrid(trial: s?.isTrial == true),
                                     ],
                                   ),
                       ),
@@ -283,9 +281,9 @@ class _WalletPageState extends ConsumerState<WalletPage>
 }
 
 class _MenuGrid extends StatelessWidget {
-  const _MenuGrid({required this.roomId});
+  const _MenuGrid({required this.trial});
 
-  final String roomId;
+  final bool trial;
 
   static const _items = [
     ('申请记录', Icons.confirmation_number_outlined),
@@ -294,6 +292,8 @@ class _MenuGrid extends StatelessWidget {
     ('积分账变', Icons.monetization_on_outlined),
     ('代理信息', Icons.business_center),
   ];
+
+  static const _trialHidden = {'申请记录', '福利报表', '代理信息'};
 
   void _open(BuildContext context, String label) {
     final Widget? page = switch (label) {
@@ -310,18 +310,21 @@ class _MenuGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final items = trial
+        ? _items.where((it) => !_trialHidden.contains(it.$1)).toList()
+        : _items;
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
+        crossAxisCount: trial ? 2 : 3,
         mainAxisSpacing: 18.h,
         crossAxisSpacing: 8.w,
-        childAspectRatio: 0.9,
+        childAspectRatio: trial ? 1.6 : 0.9,
       ),
-      itemCount: _items.length,
+      itemCount: items.length,
       itemBuilder: (_, i) {
-        final (label, icon) = _items[i];
+        final (label, icon) = items[i];
         return GestureDetector(
           onTap: () => _open(context, label),
           child: Column(

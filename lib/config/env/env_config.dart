@@ -75,4 +75,7 @@ class EnvConfig {
   static bool get isDebug => environment != AppEnvironment.pro;
 
   static String get appVersion => '100.3.19';
+
+  /// 与 pubspec 的构建号一致，用来和总后台 Version Code 比较。
+  static const int appVersionCode = 1000319;
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/host_bottom_nav.dart';
@@ -35,6 +36,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
   void initState() {
     super.initState();
     Future.microtask(() async {
+      unawaited(BgmPrompt.refreshHost());
       // 与玩家 RoomShell 一致：进壳即拉彩种，否则大厅 ready 永远 false 一直转圈
       final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
       await live.ensureLoaded();

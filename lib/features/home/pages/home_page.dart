@@ -19,6 +19,7 @@ import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
 import '../../../shared/widgets/safe_text_controller.dart';
+import '../../../shared/widgets/trial_account_tag.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
@@ -240,6 +241,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     nickname: user?.nickname ?? '未登录',
                     username: user?.username ?? '',
                     avatarUrl: user?.avatarUrl,
+                    trial: _history.any((r) => r.isTrial),
                     loading: _loading,
                     initialRoomCode: _roomCode,
                     onSettings: () => context.push(RoutePaths.personalSettings),
@@ -292,11 +294,13 @@ class _ProfileCard extends StatefulWidget {
     required this.loading,
     this.avatarUrl,
     this.initialRoomCode = '',
+    this.trial = false,
   });
 
   final String nickname;
   final String username;
   final String? avatarUrl;
+  final bool trial;
   final String initialRoomCode;
   final VoidCallback onSettings;
   final VoidCallback onLogout;
@@ -355,19 +359,33 @@ class _ProfileCardState extends State<_ProfileCard> {
                     radius: 28.r,
                   ),
                   SizedBox(width: 12.w),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        widget.nickname,
-                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
-                      ),
-                      SizedBox(height: 2.h),
-                      Text(
-                        widget.username,
-                        style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
-                      ),
-                    ],
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.nickname,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            if (widget.trial) ...[
+                              SizedBox(width: 6.w),
+                              const TrialAccountTag(),
+                            ],
+                          ],
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          widget.username,
+                          style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

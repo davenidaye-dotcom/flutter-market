@@ -10,7 +10,7 @@ import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// 盘口标准赔率。抽佣比例 = (代理会员赔率 − 飞单赔率) / 盘口上限。
+/// 盘口标准赔率 H。抽佣 = (代理会员赔率 − 飞单赔率) / H。限制调节：下限平台最低，上限会员赔率。
 const _playOddsCeiling = <String, double>{
   'TM': 9.995,
   'LM': 1.998,
@@ -133,7 +133,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
         final name = (m['playName'] ?? m['playCode'] ?? '').toString();
         final odds = _num(m['odds']) ?? 0;
         final ceiling = _num(m['oddsMax']) ?? _playOddsCeiling[code];
-        final floor = _num(m['oddsMin']) ?? (ceiling == null ? null : ceiling * 0.96);
+        final floor = _num(m['oddsMin']);
         final room = _num(m['roomOdds']) ?? roomByCode[code] ?? roomByCode[name];
         final memberOdds = _num(m['memberOdds']);
         rows.add(
@@ -194,13 +194,14 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   }
 
   double? _rangeMax(_OddsRow row) {
-    if (row.roomOdds != null && row.roomOdds! > 0) return row.roomOdds;
+    if (row.memberOdds != null && row.memberOdds! > 0) return row.memberOdds;
     return row.oddsMax;
   }
 
   double? _rangeMin(_OddsRow row) {
     final max = _rangeMax(row);
-    final floor = row.oddsMin;
+    final floor = row.oddsMin ??
+        (row.oddsMax == null ? null : row.oddsMax! * 0.96);
     if (max == null) return floor;
     if (floor == null) return max;
     return floor > max ? max : floor;

@@ -4,7 +4,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/audio/bgm_prompt.dart';
 import '../../../core/network/flyroom_ws_client.dart';
+import '../../../core/network/session_kick.dart';
 import '../../../core/network/session_store.dart';
 import '../../../core/testing/regression_test_flags.dart';
 import '../../../data/models/chat_message_model.dart';
@@ -1239,6 +1241,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final payload = _wsPayload(event);
     final type = (payload['event'] ?? payload['type'] ?? '').toString().toUpperCase();
 
+    if (type == 'SESSION_KICKED') {
+      SessionKick.signal();
+      return;
+    }
+
     // 房间级：彩种开关变更 → 立刻重拉大厅目录
     if (type == 'ROOM_GAMES_CHANGED') {
       unawaited(reloadGamesCatalog());
@@ -1311,6 +1318,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'SEAL_WARN' || type == 'SEALED') {
+      if (type == 'SEALED') {
+        BgmPrompt.playSeal(roomId, gameType, payload['issueNo']?.toString() ?? '');
+      }
       _applySealEvent(type, gameType, payload);
       return;
     }
@@ -1369,6 +1379,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       final ranks = _parseRanks(payload['ranks'] ?? payload['lastRanks']);
       final issue = payload['issueNo']?.toString() ?? '';
       if (ranks.isEmpty) return;
+      BgmPrompt.playDraw(roomId, gameType, issue);
       final result = _engine.onDrawResult(
         gameType,
         issue: issue,

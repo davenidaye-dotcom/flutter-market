@@ -73,13 +73,29 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
     }
   }
 
-  Future<void> _saveRemark() async {
+  String _playerTitle(HostMember member) {
+    final nick = member.nickname.trim();
+    final remark = _remark.text.trim();
+    if (remark.isEmpty) return nick;
+    if (nick.isEmpty) return remark;
+    return '$remark($nick)';
+  }
+
+  String _csOpenName(HostMember member) {
+    final remark = _remark.text.trim();
+    if (remark.isNotEmpty) return remark;
+    return member.nickname;
+  }
+
+  Future<bool> _saveRemark() async {
     _dismissKeyboard();
     try {
       await ref.read(ownerRepositoryProvider).updateMemberRemark(widget.memberId, _remark.text.trim());
       AppToast.success('备注已保存');
+      return true;
     } catch (e) {
       AppToast.error(e.toString());
+      return false;
     }
   }
 
@@ -91,9 +107,11 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
       hint: '房间备注（仅本房间可见）',
       systemKeyboard: true,
     );
-    if (text == null) return;
-    _remark.text = text;
-    await _saveRemark();
+    if (text == null || !mounted) return;
+    final previous = _remark.text;
+    setState(() => _remark.text = text);
+    final ok = await _saveRemark();
+    if (!ok && mounted) setState(() => _remark.text = previous);
   }
 
   Future<void> _copyId() async {
@@ -200,6 +218,14 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
 
   Future<void> _markFake() async {
     final toFake = !(_member?.isTrial ?? false);
+    final ok = await hostConfirm(
+      context,
+      title: toFake ? '标记试玩号' : '切回正式',
+      message: toFake
+          ? '确认将该玩家切为试玩号？对方会被退出登录，需要重新登录。'
+          : '确认将该玩家切回正式？对方会被退出登录，需要重新登录。',
+    );
+    if (!ok || !mounted) return;
     try {
       await ref.read(ownerRepositoryProvider).markMemberFake(widget.memberId, fake: toFake);
       AppToast.success(toFake ? '已切为试玩号' : '已切回正式');
@@ -281,7 +307,7 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                               children: [
                                 Flexible(
                                   child: Text(
-                                    member.nickname,
+                                    _playerTitle(member),
                                     style: TextStyle(fontSize: 17.sp, fontWeight: FontWeight.w700),
                                   ),
                                 ),
@@ -356,7 +382,7 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                       HostServicePage(
                         roomId: widget.roomId,
                         openAccountId: widget.memberId,
-                        openName: member.nickname,
+                        openName: _csOpenName(member),
                       ),
                     );
                   }),

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/env/env_config.dart';
+import '../../profile/app_release.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/models/app_role.dart';
@@ -35,9 +36,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _passwordFocus = FocusNode();
   bool _remember = false;
   bool _loading = false;
+  String _version = EnvConfig.appVersion;
 
   /// 登录入口模式：玩家 / 经营端（房主+代理 portal）
   bool _hostMode = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadVersion);
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await AppRelease.footerVersion();
+    if (!mounted) return;
+    setState(() => _version = version);
+  }
 
   @override
   void dispose() {
@@ -251,9 +265,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               Positioned(
                 right: 16.w,
                 bottom: 12.h,
-                child: Text(
-                  'v${EnvConfig.appVersion}',
-                  style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                child: GestureDetector(
+                  onTap: () => AppRelease.check(context),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
+                    child: Text(
+                      'v$_version',
+                      style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                    ),
+                  ),
                 ),
               ),
             ],

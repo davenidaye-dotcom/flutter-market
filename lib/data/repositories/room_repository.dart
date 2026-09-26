@@ -81,6 +81,7 @@ class RoomRepository {
         name: m['roomName']?.toString() ?? '',
         thumbnailUrl: m['coverUrl']?.toString(),
         numericId: m['roomId']?.toString(),
+        playMode: m['playMode']?.toString() ?? 'REAL',
       );
     }).where((r) => r.id.isNotEmpty).toList();
   }

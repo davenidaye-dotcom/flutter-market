@@ -393,7 +393,10 @@ class _MemberCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final nick = member.nickname.isNotEmpty ? member.nickname : member.username;
+    final remark = member.remark.trim();
+    final nick = remark.isNotEmpty
+        ? remark
+        : (member.nickname.isNotEmpty ? member.nickname : member.username);
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(12.r),

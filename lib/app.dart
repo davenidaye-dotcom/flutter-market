@@ -1,12 +1,19 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'core/audio/bgm_prompt.dart';
 import 'config/env/env_config.dart';
 import 'config/router/app_router.dart';
+import 'config/router/route_paths.dart';
 import 'config/theme/app_theme.dart';
+import 'core/network/session_kick.dart';
+import 'core/network/session_store.dart';
+import 'features/auth/providers/auth_session_provider.dart';
 
 class LetouApp extends ConsumerStatefulWidget {
   const LetouApp({super.key});
@@ -20,9 +27,23 @@ class _LetouAppState extends ConsumerState<LetouApp> {
   void initState() {
     super.initState();
     // 首帧后撤 splash，不依赖 LoginPage 是否挂载
+    unawaited(BgmPrompt.loadLocal());
+    SessionKick.handler = () {
+      unawaited(SessionStore.instance.clear());
+      ref.read(authSessionProvider.notifier).dropLocal();
+      ref.read(routerProvider).go(RoutePaths.login);
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FlutterNativeSplash.remove();
     });
+  }
+
+  @override
+  void dispose() {
+    if (SessionKick.handler != null) {
+      SessionKick.handler = null;
+    }
+    super.dispose();
   }
 
   @override

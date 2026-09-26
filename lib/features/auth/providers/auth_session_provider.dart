@@ -71,6 +71,11 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
     await _ref.read(authRepositoryProvider).logout();
     state = const AuthSession();
   }
+
+  /// 服务端已注销时只清本地会话，不再请求退出接口。
+  void dropLocal() {
+    state = const AuthSession();
+  }
 }
 
 final authSessionProvider =

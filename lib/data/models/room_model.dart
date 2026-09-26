@@ -8,6 +8,7 @@ class RoomModel {
     this.hasEnterPassword = false,
     this.status,
     this.betConfirm = false,
+    this.playMode = 'REAL',
   });
 
   /// Room code used in routes (e.g. 679010)
@@ -26,6 +27,11 @@ class RoomModel {
 
   /// 房主开启「下注确认」后，玩家下注前需二次确认
   final bool betConfirm;
+
+  /// 当前账号在该房的玩法：REAL / TRIAL / ATMOSPHERE
+  final String playMode;
+
+  bool get isTrial => playMode.toUpperCase() == 'TRIAL';
 
   bool get requiresEnterAudit {
     final m = (enterMode ?? '').toUpperCase();
@@ -46,6 +52,7 @@ class RoomModel {
                 '${json['enterPasswordHash']}'.isNotEmpty),
         status: json['status']?.toString(),
         betConfirm: json['betConfirm'] == true || json['betConfirm'] == 1,
+        playMode: json['playMode']?.toString() ?? 'REAL',
       );
 }
 

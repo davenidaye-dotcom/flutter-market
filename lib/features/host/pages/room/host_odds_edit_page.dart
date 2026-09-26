@@ -28,16 +28,23 @@ class HostOddsEditPage extends ConsumerStatefulWidget {
   ConsumerState<HostOddsEditPage> createState() => _HostOddsEditPageState();
 }
 
+class _OddsPlay {
+  const _OddsPlay(this.code, this.storedName);
+
+  final String code;
+  final String storedName;
+}
+
 class _OddsRow {
   _OddsRow({
-    required this.playCode,
+    required this.plays,
     required this.name,
     required this.oddsCtrl,
     required this.maxBetCtrl,
     required this.periodLimitCtrl,
   });
 
-  final String playCode;
+  final List<_OddsPlay> plays;
   final String name;
   final TextEditingController oddsCtrl;
   final TextEditingController maxBetCtrl;
@@ -48,6 +55,22 @@ class _OddsRow {
     maxBetCtrl.dispose();
     periodLimitCtrl.dispose();
   }
+}
+
+class _ParsedOdd {
+  _ParsedOdd({
+    required this.code,
+    required this.storedName,
+    required this.odds,
+    required this.maxBet,
+    required this.period,
+  });
+
+  final String code;
+  final String storedName;
+  final dynamic odds;
+  final dynamic maxBet;
+  final dynamic period;
 }
 
 class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
@@ -91,23 +114,22 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       final items = hostRowsOf(data.containsKey('items') ? data['items'] : data);
       _clearRows();
       num? firstMin;
+      final parsed = <_ParsedOdd>[];
       for (final m in items) {
         final minBet = m['minBet'] is num
             ? m['minBet'] as num
             : num.tryParse('${m['minBet']}') ?? 1;
         firstMin ??= minBet;
-        final maxBet = m['maxBet'] ?? m['minBet'] ?? 20000;
-        final period = m['periodLimit'] ?? 0;
-        final odds = m['odds'] ?? 0;
-        _rows.add(
-          _OddsRow(
-            playCode: (m['playCode'] ?? '').toString(),
-            name: (m['playName'] ?? m['playCode'] ?? '').toString(),
-            oddsCtrl: TextEditingController(text: _numText(odds, keepDecimal: true)),
-            maxBetCtrl: TextEditingController(text: _numText(maxBet)),
-            periodLimitCtrl: TextEditingController(text: _numText(period)),
-          ),
-        );
+        parsed.add(_ParsedOdd(
+          code: (m['playCode'] ?? '').toString(),
+          storedName: (m['playName'] ?? m['playCode'] ?? '').toString(),
+          odds: m['odds'] ?? 0,
+          maxBet: m['maxBet'] ?? m['minBet'] ?? 20000,
+          period: m['periodLimit'] ?? 0,
+        ));
+      }
+      for (final row in _mergeOdds(parsed)) {
+        _rows.add(row);
       }
       final gn = (data['gameName'] ?? '').toString();
       if (gn.isNotEmpty) _gameName = gn;
@@ -123,6 +145,74 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
 
   String _numText(dynamic v, {bool keepDecimal = false}) {
     return hostNumStr(keepDecimal ? v : v);
+  }
+
+  List<_OddsRow> _mergeOdds(List<_ParsedOdd> items) {
+    _ParsedOdd? pick(String code) {
+      for (final it in items) {
+        if (it.code.toUpperCase() == code) return it;
+      }
+      return null;
+    }
+
+    bool used(String code) =>
+        code.toUpperCase() == 'TM' ||
+        code.toUpperCase() == 'POS' ||
+        code.toUpperCase() == 'LM' ||
+        code.toUpperCase() == 'DT';
+
+    final rows = <_OddsRow>[];
+    final tm = pick('TM');
+    final pos = pick('POS');
+    if (tm != null || pos != null) {
+      rows.add(_pairRow('特码', tm ?? pos!, [tm, pos]));
+    }
+    final lm = pick('LM');
+    final dt = pick('DT');
+    if (lm != null || dt != null) {
+      rows.add(_pairRow('两面-龙虎', lm ?? dt!, [lm, dt]));
+    }
+    final rest = items.where((it) => !used(it.code)).toList()
+      ..sort((a, b) => _oddsRank(a.code).compareTo(_oddsRank(b.code)));
+    for (final it in rest) {
+      rows.add(_pairRow(it.storedName, it, [it]));
+    }
+    return rows;
+  }
+
+  _OddsRow _pairRow(String name, _ParsedOdd shown, List<_ParsedOdd?> members) {
+    final plays = <_OddsPlay>[];
+    for (final m in members) {
+      if (m == null) continue;
+      plays.add(_OddsPlay(m.code, m.storedName));
+    }
+    return _OddsRow(
+      plays: plays,
+      name: name,
+      oddsCtrl: TextEditingController(text: _numText(shown.odds, keepDecimal: true)),
+      maxBetCtrl: TextEditingController(text: _numText(shown.maxBet)),
+      periodLimitCtrl: TextEditingController(text: _numText(shown.period)),
+    );
+  }
+
+  int _oddsRank(String code) {
+    const order = [
+      'GYH_DS',
+      'GYH_BIG',
+      'GYH_EVEN',
+      'GYH_XS',
+      'GYH_SMALL',
+      'GYH_ODD',
+      'GYH_3',
+      'GYH_5',
+      'GYH_7',
+      'GYH_9',
+      'GYH_11',
+    ];
+    final i = order.indexOf(code.toUpperCase());
+    if (i >= 0) return i;
+    if (code.toUpperCase().startsWith('GYH')) return 50;
+    return 80;
   }
 
   double get _step => double.tryParse(_stepCtrl.text.trim()) ?? 0.01;
@@ -194,14 +284,16 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
         AppToast.error('${r.name} 请填写有效数字');
         return;
       }
-      items.add({
-        'playCode': r.playCode,
-        'playName': r.name,
-        'odds': odds,
-        'minBet': minLimit,
-        'maxBet': maxBet,
-        'periodLimit': period,
-      });
+      for (final play in r.plays) {
+        items.add({
+          'playCode': play.code,
+          'playName': play.storedName,
+          'odds': odds,
+          'minBet': minLimit,
+          'maxBet': maxBet,
+          'periodLimit': period,
+        });
+      }
     }
     setState(() => _saving = true);
     try {

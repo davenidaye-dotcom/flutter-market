@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/env/env_config.dart';
+import '../../profile/app_release.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/sdk/dingxiang/dingxiang_provider.dart';
 import '../../../core/sdk/dingxiang/dingxiang_service.dart';
@@ -20,6 +21,19 @@ class CaptchaPage extends ConsumerStatefulWidget {
 
 class _CaptchaPageState extends ConsumerState<CaptchaPage> {
   double _sliderValue = 0;
+  String _version = EnvConfig.appVersion;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_loadVersion);
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await AppRelease.footerVersion();
+    if (!mounted) return;
+    setState(() => _version = version);
+  }
 
   void _verify() {
     ref.read(dingxiangServiceProvider);
@@ -52,7 +66,14 @@ class _CaptchaPageState extends ConsumerState<CaptchaPage> {
               Positioned(
                 right: 16.w,
                 bottom: 16.h,
-                child: Text('v${EnvConfig.appVersion}', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                child: GestureDetector(
+                  onTap: () => AppRelease.check(context),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
+                    child: Text('v$_version', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                  ),
+                ),
               ),
             ],
           ),

@@ -17,6 +17,7 @@ class _Member {
     this.disabled = false,
     this.isAgent = false,
     this.status = 'NORMAL',
+    this.remark = '',
   });
 
   final String id;
@@ -34,6 +35,8 @@ class _Member {
   final bool isAgent;
   /// NORMAL / FROZEN / BAN_ENTER / DISABLED
   final String status;
+  /// 房间备注。列表有备注时优先显示备注。
+  final String remark;
 
   String get statusLabel {
     switch (status.toUpperCase()) {
@@ -157,6 +160,7 @@ HostMember hostMemberFromMap(Map<String, dynamic> m) {
     disabled: disabled,
     isAgent: isAgent,
     status: status.isEmpty ? 'NORMAL' : status,
+    remark: (m['remark'] ?? '').toString().trim(),
   );
 }
 
