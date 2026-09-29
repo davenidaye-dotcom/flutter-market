@@ -3,13 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/format/display_number.dart';
-import '../../../shared/format/play_odds_merge.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../../shared/widgets/safe_text_controller.dart';
 import '../widgets/agent_ui.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import 'agent_account_child_page.dart';
 
 /// Agent account list / create
 class AgentAccountManagePage extends ConsumerStatefulWidget {
@@ -242,7 +242,16 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
           color: Colors.transparent,
           child: InkWell(
             borderRadius: BorderRadius.circular(12.r),
-            onTap: () => _openActions(r),
+            onTap: () async {
+              final changed = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(
+                  builder: (_) => AgentAccountChildPage(
+                    row: Map<String, dynamic>.from(r),
+                  ),
+                ),
+              );
+              if (changed == true && mounted) await _load();
+            },
             child: AgentSurface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,232 +290,6 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
         );
       },
     );
-  }
-
-  Future<void> _openActions(Map<String, dynamic> row) async {
-    final id = row['accountId'] is int
-        ? row['accountId'] as int
-        : int.tryParse('${row['accountId'] ?? ''}');
-    if (id == null) return;
-    final type = '${row['accountType'] ?? ''}'.toUpperCase();
-    final isMember = type.contains('MEMBER');
-    final isAgent = type == 'AGENT';
-    final name = '${row['displayName'] ?? row['username'] ?? id}';
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16.r))),
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 8.h),
-              child: Text(name, style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700)),
-            ),
-            if (isAgent)
-              ListTile(
-                title: const Text('占成查询 / 修改'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _editShare(id);
-                },
-              ),
-            if (isMember)
-              ListTile(
-                title: const Text('占成查询'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  _editShare(id, readOnly: true);
-                },
-              ),
-            ListTile(
-              title: const Text('赔率与限额'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _editOdds(id);
-              },
-            ),
-            ListTile(
-              title: const Text('额度上分 / 下分'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _editCredit(id, name);
-              },
-            ),
-            SizedBox(height: 8.h),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _editShare(int accountId, {bool readOnly = false}) async {
-    try {
-      final rows = await ref.read(agentRepositoryProvider).getChildShare(accountId);
-      if (!mounted) return;
-      if (rows.isEmpty) {
-        AppToast.error('没有占成数据');
-        return;
-      }
-      if (readOnly || rows.first['memberNoShare'] == true) {
-        AppToast.success('代理会员不占成');
-        return;
-      }
-      final takeCtrls = <TextEditingController>[];
-      final occupyCtrls = <TextEditingController>[];
-      for (final r in rows) {
-        takeCtrls.add(TextEditingController(text: '${r['takeShare'] ?? 0}'));
-        occupyCtrls.add(TextEditingController(text: '${r['selfShare'] ?? 0}'));
-      }
-      final ok = await showEmulatorSafeDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('占成设置'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var i = 0; i < rows.length; i++) ...[
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('${rows[i]['gameType'] ?? ''}  获配 ${rows[i]['parentCap'] ?? 0}%'),
-                  ),
-                  _createField('拿', takeCtrls[i]),
-                  _createField('占', occupyCtrls[i]),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            AgentTealButton(label: '取消', outlined: true, onTap: safeDialogPop(ctx, false)),
-            AgentTealButton(label: '保存', onTap: safeDialogPop(ctx, true)),
-          ],
-        ),
-      );
-      final payload = <Map<String, dynamic>>[];
-      for (var i = 0; i < rows.length; i++) {
-        final take = num.tryParse(takeCtrls[i].text.trim()) ?? 0;
-        final occupy = num.tryParse(occupyCtrls[i].text.trim()) ?? 0;
-        payload.add({
-          'gameType': rows[i]['gameType'],
-          'takeShare': take,
-          'selfShare': occupy,
-          'childMaxShare': (take - occupy).clamp(0, 100),
-        });
-      }
-      disposeTextControllersAfterFrame([...takeCtrls, ...occupyCtrls]);
-      if (ok != true) return;
-      await ref.read(agentRepositoryProvider).saveChildShare(accountId, payload);
-      AppToast.success('占成已保存');
-    } catch (e) {
-      AppToast.error(e.toString());
-    }
-  }
-
-  Future<void> _editOdds(int accountId) async {
-    try {
-      final raw = await ref.read(agentRepositoryProvider).getChildOdds(accountId, gameType: 'JS_SC');
-      if (!mounted) return;
-      if (raw.isEmpty) {
-        AppToast.error('没有赔率数据');
-        return;
-      }
-      final merged = mergePlayOddsRows(raw);
-      final ctrls = [
-        for (final r in merged) TextEditingController(text: displayNumber(r.shown['odds'])),
-      ];
-      final ok = await showEmulatorSafeDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('赔率与限额'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (var i = 0; i < merged.length; i++)
-                  _createField(
-                    '${merged[i].name}  ${merged[i].shown['rangeText'] ?? ''}',
-                    ctrls[i],
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            AgentTealButton(label: '取消', outlined: true, onTap: safeDialogPop(ctx, false)),
-            AgentTealButton(label: '保存', onTap: safeDialogPop(ctx, true)),
-          ],
-        ),
-      );
-      final payload = <Map<String, dynamic>>[];
-      for (var i = 0; i < merged.length; i++) {
-        final odds = num.tryParse(ctrls[i].text.trim());
-        if (odds == null) continue;
-        for (final code in merged[i].codes) {
-          payload.add({
-            'gameType': merged[i].shown['gameType'] ?? 'JS_SC',
-            'playCode': code,
-            'odds': odds,
-          });
-        }
-      }
-      disposeTextControllersAfterFrame(ctrls);
-      if (ok != true) return;
-      await ref.read(agentRepositoryProvider).saveChildOdds(accountId, payload, gameType: 'JS_SC');
-      AppToast.success('赔率已保存');
-    } catch (e) {
-      AppToast.error(e.toString());
-    }
-  }
-
-  Future<void> _editCredit(int accountId, String name) async {
-    final amtCtrl = TextEditingController();
-    var direction = 'UP';
-    final ok = await showEmulatorSafeDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          title: Text('额度 · $name'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButton<String>(
-                value: direction,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(value: 'UP', child: Text('上分')),
-                  DropdownMenuItem(value: 'DOWN', child: Text('下分')),
-                ],
-                onChanged: (v) => setLocal(() => direction = v ?? direction),
-              ),
-              _createField('金额', amtCtrl),
-            ],
-          ),
-          actions: [
-            AgentTealButton(label: '取消', outlined: true, onTap: safeDialogPop(ctx, false)),
-            AgentTealButton(label: '确定', onTap: safeDialogPop(ctx, true)),
-          ],
-        ),
-      ),
-    );
-    final amount = num.tryParse(amtCtrl.text.trim());
-    disposeTextControllersAfterFrame([amtCtrl]);
-    if (ok != true) return;
-    if (amount == null || amount <= 0) {
-      AppToast.error('请输入金额');
-      return;
-    }
-    try {
-      await ref.read(agentRepositoryProvider).transferCredit(
-            targetAccountId: accountId,
-            direction: direction,
-            amount: amount,
-          );
-      AppToast.success('额度已更新');
-      await _load();
-    } catch (e) {
-      AppToast.error(e.toString());
-    }
   }
 
   @override

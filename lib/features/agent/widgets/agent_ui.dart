@@ -439,6 +439,36 @@ class AgentPageFrame extends ConsumerWidget {
   }
 }
 
+/// 子页标题行：返回 + 标题，顶栏仍用 AgentPageFrame。
+class AgentBackTitle extends StatelessWidget {
+  const AgentBackTitle({super.key, required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(4.w, 4.h, 12.w, 4.h),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.arrow_back_ios_new, size: 16.sp, color: AppColors.textPrimary),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          Expanded(
+            child: Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 15.sp, color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 /// 游戏 Tab：下划线，不再套整条方框。
 class AgentGameTabs extends StatelessWidget {
   const AgentGameTabs({
@@ -543,18 +573,27 @@ class AgentPaginationBar extends StatelessWidget {
 
 /// 青绿操作按钮
 class AgentTealButton extends StatelessWidget {
-  const AgentTealButton({super.key, required this.label, required this.onTap, this.outlined = false});
+  const AgentTealButton({
+    super.key,
+    required this.label,
+    required this.onTap,
+    this.outlined = false,
+    this.block = false,
+  });
 
   final String label;
   final VoidCallback onTap;
   final bool outlined;
+  final bool block;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+        width: block ? double.infinity : null,
+        alignment: block ? Alignment.center : null,
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: block ? 12.h : 8.h),
         decoration: BoxDecoration(
           color: outlined ? Colors.white : AgentChrome.accent,
           borderRadius: BorderRadius.circular(8.r),
