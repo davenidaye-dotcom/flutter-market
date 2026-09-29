@@ -552,25 +552,25 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             : n < 0
                 ? AppColors.danger
                 : AgentChrome.ink;
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
           maxLines: 1,
           softWrap: false,
-          style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 15.sp, color: AppColors.textSecondary),
         ),
-        SizedBox(width: 4.w),
-        Flexible(
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            alignment: Alignment.centerLeft,
-            child: Text(
-              text,
-              maxLines: 1,
-              softWrap: false,
-              style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700, color: color),
-            ),
+        SizedBox(height: 2.h),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Text(
+            text,
+            maxLines: 1,
+            softWrap: false,
+            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: color),
           ),
         ),
       ],

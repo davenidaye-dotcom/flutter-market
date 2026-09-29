@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
@@ -214,6 +215,21 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     }
   }
 
+  String _accountMeta(Map<String, dynamic> row) {
+    final user = '${row['username'] ?? ''}';
+    final type = agentAccountTypeLabel(row);
+    final status = agentAccountStatusLabel(row['status']?.toString());
+    final kind = '${row['accountType'] ?? ''}'.toUpperCase();
+    if (kind == 'AGENT') {
+      return '$user · $type · 占成${displayNumber(row['shareRatio'])}% · $status';
+    }
+    if (kind == 'AGENT_MEMBER') {
+      final bind = '${row['roomBindText'] ?? ''}'.trim();
+      return '$user · $type · ${bind.isEmpty ? '未绑定' : bind} · $status';
+    }
+    return '$user · $type · $status';
+  }
+
   Widget _accountList() {
     if (_loading) return const AppPageLoading();
     if (_error != null) {
@@ -236,8 +252,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
       itemBuilder: (_, i) {
         final r = _rows[i];
         final name = '${r['displayName'] ?? r['username'] ?? ''}';
-        final meta =
-            '${r['username'] ?? ''} · ${agentAccountTypeLabel(r)} · ${agentAccountStatusLabel(r['status']?.toString())}';
+        final meta = _accountMeta(r);
         return Material(
           color: Colors.transparent,
           child: InkWell(
@@ -282,7 +297,12 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                 ],
               ),
               SizedBox(height: 4.h),
-              Text(meta, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+              Text(
+                meta,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+              ),
             ],
           ),
             ),
