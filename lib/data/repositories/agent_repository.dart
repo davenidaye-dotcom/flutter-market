@@ -199,6 +199,35 @@ class AgentRepository {
     });
     return _asMap(data);
   }
+
+  Future<List<Map<String, dynamic>>> getChildShare(int accountId) async {
+    final data = await _client.get('/agent/accounts/$accountId/share');
+    if (data is List) {
+      return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return const [];
+  }
+
+  Future<void> saveChildShare(int accountId, List<Map<String, dynamic>> rows) async {
+    await _client.put('/agent/accounts/$accountId/share', data: {'rows': rows});
+  }
+
+  Future<List<Map<String, dynamic>>> getChildOdds(int accountId, {String? gameType}) async {
+    final data = await _client.get('/agent/accounts/$accountId/odds', query: {
+      if (gameType != null && gameType.isNotEmpty) 'gameType': gameType,
+    });
+    if (data is List) {
+      return data.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+    }
+    return const [];
+  }
+
+  Future<void> saveChildOdds(int accountId, List<Map<String, dynamic>> rows, {String? gameType}) async {
+    await _client.put('/agent/accounts/$accountId/odds', data: {
+      if (gameType != null && gameType.isNotEmpty) 'gameType': gameType,
+      'rows': rows,
+    });
+  }
 }
 
 Map<String, dynamic> _asMap(dynamic data) {

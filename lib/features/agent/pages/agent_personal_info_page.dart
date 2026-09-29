@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
+import '../../../shared/format/play_odds_merge.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
 import '../../../shared/widgets/app_page_loading.dart';
@@ -133,9 +134,14 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
                       children: [
                         _oddsHeader(),
                         Expanded(
-                          child: ListView.builder(
-                            itemCount: _items.length,
-                            itemBuilder: (_, i) => _oddsRow(_items[i]),
+                          child: Builder(
+                            builder: (_) {
+                              final rows = mergePlayOddsRows(_items);
+                              return ListView.builder(
+                                itemCount: rows.length,
+                                itemBuilder: (_, i) => _oddsRow(rows[i]),
+                              );
+                            },
                           ),
                         ),
                       ],
@@ -167,7 +173,8 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
     );
   }
 
-  Widget _oddsRow(Map<String, dynamic> row) {
+  Widget _oddsRow(MergedPlayRow row) {
+    final shown = row.shown;
     return Container(
       padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 8.w),
       decoration: const BoxDecoration(
@@ -178,14 +185,14 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
           Expanded(
             flex: 22,
             child: Text(
-              row['playName']?.toString() ?? '',
+              row.name,
               maxLines: 2,
               style: TextStyle(fontSize: 12.sp, height: 1.3, color: AppColors.textPrimary),
             ),
           ),
-          Expanded(flex: 12, child: _num(_numStr(row['odds']))),
-          Expanded(flex: 14, child: _num(_numStr(row['periodLimit']))),
-          Expanded(flex: 12, child: _num(_numStr(row['minBet']))),
+          Expanded(flex: 12, child: _num(_numStr(shown['odds']))),
+          Expanded(flex: 14, child: _num(_numStr(shown['periodLimit']))),
+          Expanded(flex: 12, child: _num(_numStr(shown['minBet']))),
         ],
       ),
     );

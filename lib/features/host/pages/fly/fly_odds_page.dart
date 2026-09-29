@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/format/display_number.dart';
+import '../../../../shared/format/play_odds_merge.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
@@ -31,7 +32,7 @@ const _playOddsCeiling = <String, double>{
 
 class _OddsRow {
   _OddsRow({
-    required this.playCode,
+    required this.playCodes,
     required this.playName,
     required this.roomOdds,
     required this.memberOdds,
@@ -42,7 +43,7 @@ class _OddsRow {
     required this.controller,
   });
 
-  final String playCode;
+  final List<String> playCodes;
   final String playName;
   final double? roomOdds;
   final double? memberOdds;
@@ -127,25 +128,26 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
       final data = await repo.getFeipanOdds(gameType: widget.gameType);
       final roomByCode = await _roomOddsByCode(repo);
       final items = hostRowsOf(data['items']);
+      final merged = mergePlayOddsRows(items);
       final rows = <_OddsRow>[];
-      for (final m in items) {
-        final code = (m['playCode'] ?? '').toString();
-        final name = (m['playName'] ?? m['playCode'] ?? '').toString();
-        final odds = _num(m['odds']) ?? 0;
-        final ceiling = _num(m['oddsMax']) ?? _playOddsCeiling[code];
-        final floor = _num(m['oddsMin']);
-        final room = _num(m['roomOdds']) ?? roomByCode[code] ?? roomByCode[name];
-        final memberOdds = _num(m['memberOdds']);
+      for (final m in merged) {
+        final shown = m.shown;
+        final code = (shown['playCode'] ?? m.codes.first).toString();
+        final odds = _num(shown['odds']) ?? 0;
+        final ceiling = _num(shown['oddsMax']) ?? _playOddsCeiling[code];
+        final floor = _num(shown['oddsMin']);
+        final room = _num(shown['roomOdds']) ?? roomByCode[code] ?? roomByCode[m.name];
+        final memberOdds = _num(shown['memberOdds']);
         rows.add(
           _OddsRow(
-            playCode: code,
-            playName: name,
+            playCodes: m.codes.where((c) => c.isNotEmpty).toList(),
+            playName: m.name,
             roomOdds: room,
             memberOdds: memberOdds,
             odds: odds,
             oddsMax: ceiling,
             oddsMin: floor,
-            periodLimit: _num(m['periodLimit']),
+            periodLimit: _num(shown['periodLimit']),
             controller: TextEditingController(text: displayNumber(odds)),
           ),
         );
@@ -257,10 +259,12 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
         return;
       }
       row.odds = double.parse(odds.toStringAsFixed(3));
-      items.add({
-        'playCode': row.playCode,
-        'odds': row.odds,
-      });
+      for (final code in row.playCodes) {
+        items.add({
+          'playCode': code,
+          'odds': row.odds,
+        });
+      }
     }
     setState(() => _saving = true);
     try {
