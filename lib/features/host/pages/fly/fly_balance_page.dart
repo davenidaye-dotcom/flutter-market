@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/display_number.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
@@ -193,7 +194,7 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  '${_feipanChangeTypeLabel(type)}  $amount',
+                                  '${_feipanChangeTypeLabel(type)}  ${displayNumber(amount)}',
                                   style: TextStyle(
                                     fontSize: 14.sp,
                                     fontWeight: FontWeight.w600,
@@ -201,7 +202,7 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  '总额后:${r['totalAfter'] ?? '—'}  占用后:${r['occupiedAfter'] ?? '—'}',
+                                  '总额后:${displayNumber(r['totalAfter'])}  占用后:${displayNumber(r['occupiedAfter'])}',
                                   style: TextStyle(
                                     fontSize: 12.sp,
                                     color: AppColors.textSecondary,
