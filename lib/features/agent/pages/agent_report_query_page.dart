@@ -167,7 +167,6 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _summary = summary;
         _rows = rows;
         _loading = false;
-        _panelOpen = false;
       });
     } catch (e) {
       if (!mounted) return;
