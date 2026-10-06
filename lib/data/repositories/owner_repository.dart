@@ -540,7 +540,7 @@ class OwnerRepository {
     await _client.post('/owner/feipan/unbind');
   }
 
-  /// 飞单总开关 / 彩种开关 / 飞单比例 / 起飞金额。
+  /// 飞单总开关 / 彩种开关 / 飞单比例 / 起飞金额（起飞金额仅保存，飞单不读取）。
   Future<void> updateFeipanFlightSwitch({
     bool? flightEnabled,
     String? gameType,

@@ -274,13 +274,13 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
       context,
       title: '起飞金额',
       initial: shown.isEmpty ? '1' : shown,
-      hint: '必须大于 1，订单金额小于该值则不飞单',
+      hint: '已不限制飞单金额，保存后不再生效',
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
     );
     if (text == null || !mounted) return;
     final v = num.tryParse(text.trim());
-    if (v == null || v <= 1) {
-      AppToast.error('起飞金额必须大于 1');
+    if (v == null || v < 0) {
+      AppToast.error('起飞金额不能为负');
       return;
     }
     await _saveGameConfig(gameType, minAmount: v);
