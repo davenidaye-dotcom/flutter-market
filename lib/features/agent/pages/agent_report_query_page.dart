@@ -23,6 +23,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   int _gameIndex = 0;
   int _sourceIndex = 0;
   bool _loading = false;
+  bool _panelOpen = true;
   String? _error;
   late DateTime _start;
   late DateTime _end;
@@ -166,6 +167,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _summary = summary;
         _rows = rows;
         _loading = false;
+        _panelOpen = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -234,9 +236,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                       _crumbBar(),
                       SizedBox(height: 8.h),
                     ],
-                    _filterCard(),
-                    SizedBox(height: 10.h),
-                    if (!inTickets) _summaryCard() else _ticketSummaryBar(),
+                    _queryPanel(inTickets),
                     SizedBox(height: 10.h),
                     Expanded(child: _resultList(inTickets)),
                   ],
@@ -248,53 +248,96 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     );
   }
 
-  Widget _filterCard() {
+  Widget _queryPanel(bool inTickets) {
+    final quickLabel = (_quick >= 0 && _quick < _quickItems.length) ? _quickItems[_quick].label : '';
     return _surface(
       child: Column(
         children: [
-          Wrap(
-            spacing: 8.w,
-            runSpacing: 8.h,
-            children: [
-              for (var i = 0; i < _quickItems.length; i++)
-                AgentReportQuickBtn(
-                  label: _quickItems[i].label,
-                  active: _quick == i,
-                  onTap: () => _onQuick(i),
+          GestureDetector(
+            onTap: () => setState(() => _panelOpen = !_panelOpen),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _panelOpen
+                        ? '查询条件'
+                        : [
+                            if (quickLabel.isNotEmpty) quickLabel,
+                            '${_fmt(_start)} ~ ${_fmt(_end)}',
+                          ].join('  '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF222222),
+                    ),
+                  ),
                 ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Row(children: [
-            Expanded(child: _dateField(_start, () => _pickDate(isStart: true))),
-            SizedBox(width: 8.w),
-            Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
-          ]),
-          SizedBox(height: 12.h),
-          Row(children: [
-            Expanded(child: _dropField(_gameLabel, _pickGame)),
-            SizedBox(width: 8.w),
-            Expanded(child: _dropField(_sourceLabels[_sourceIndex], _pickSource)),
-            SizedBox(width: 8.w),
-            GestureDetector(
-              onTap: _load,
-              child: Container(
-                height: 40.h,
-                padding: EdgeInsets.symmetric(horizontal: 16.w),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF4E9BA3),
-                  borderRadius: BorderRadius.circular(10.r),
+                Text(
+                  _panelOpen ? '收起' : '展开',
+                  style: TextStyle(fontSize: 13.sp, color: AppColors.navBlue, fontWeight: FontWeight.w600),
                 ),
-                child: Text(
-                  '查询',
-                  style: TextStyle(fontSize: 14.sp, color: Colors.white, fontWeight: FontWeight.w600),
-                ),
-              ),
+              ],
             ),
-          ]),
+          ),
+          if (_panelOpen) ...[
+            SizedBox(height: 12.h),
+            _filterFields(),
+            SizedBox(height: 10.h),
+            if (!inTickets) _summaryCard() else _ticketSummaryBar(),
+          ],
         ],
       ),
+    );
+  }
+
+  Widget _filterFields() {
+    return Column(
+      children: [
+        Wrap(
+          spacing: 8.w,
+          runSpacing: 8.h,
+          children: [
+            for (var i = 0; i < _quickItems.length; i++)
+              AgentReportQuickBtn(
+                label: _quickItems[i].label,
+                active: _quick == i,
+                onTap: () => _onQuick(i),
+              ),
+          ],
+        ),
+        SizedBox(height: 12.h),
+        Row(children: [
+          Expanded(child: _dateField(_start, () => _pickDate(isStart: true))),
+          SizedBox(width: 8.w),
+          Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
+        ]),
+        SizedBox(height: 12.h),
+        Row(children: [
+          Expanded(child: _dropField(_gameLabel, _pickGame)),
+          SizedBox(width: 8.w),
+          Expanded(child: _dropField(_sourceLabels[_sourceIndex], _pickSource)),
+          SizedBox(width: 8.w),
+          GestureDetector(
+            onTap: _load,
+            child: Container(
+              height: 40.h,
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: const Color(0xFF4E9BA3),
+                borderRadius: BorderRadius.circular(10.r),
+              ),
+              child: Text(
+                '查询',
+                style: TextStyle(fontSize: 14.sp, color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ]),
+      ],
     );
   }
 
@@ -480,7 +523,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                   SizedBox(width: 8.w),
                   Text(level, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
                   SizedBox(width: 8.w),
-                  Text('占成 ${_ratioText(row['shareRatio'])}', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                  Text('占成 ${_ratioText(row['ownShareRatio'] ?? row['shareRatio'])}', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
                   SizedBox(width: 8.w),
                   Flexible(
                     child: FittedBox(
