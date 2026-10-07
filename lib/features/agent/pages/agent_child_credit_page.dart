@@ -15,11 +15,14 @@ class AgentChildCreditPage extends ConsumerStatefulWidget {
     required this.accountId,
     required this.title,
     this.available,
+    this.initialDirection = 'UP',
   });
 
   final int accountId;
   final String title;
   final dynamic available;
+  /// UP=上分 DOWN=下分
+  final String initialDirection;
 
   @override
   ConsumerState<AgentChildCreditPage> createState() => _AgentChildCreditPageState();
@@ -27,8 +30,15 @@ class AgentChildCreditPage extends ConsumerStatefulWidget {
 
 class _AgentChildCreditPageState extends ConsumerState<AgentChildCreditPage> {
   final _amtCtrl = TextEditingController();
-  String _direction = 'UP';
+  late String _direction;
   bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.initialDirection.toUpperCase();
+    _direction = d == 'DOWN' ? 'DOWN' : 'UP';
+  }
 
   @override
   void dispose() {

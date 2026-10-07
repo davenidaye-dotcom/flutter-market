@@ -204,13 +204,15 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.accountId == null
+    final isChild = widget.accountId != null;
+    final title = !isChild
         ? '额度变动'
         : '积分明细${widget.titleName == null || widget.titleName!.isEmpty ? '' : ' · ${widget.titleName}'}';
     return AgentPageFrame(
-      title: title,
+      title: isChild ? '' : title,
       child: Column(
         children: [
+          if (isChild) AgentBackTitle(title: title),
           SizedBox(height: 8.h),
           AgentSurface(
             child: Column(

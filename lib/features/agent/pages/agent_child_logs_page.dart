@@ -69,10 +69,11 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
   Widget build(BuildContext context) {
     final title = '日志 · ${agentRowName(widget.row)}';
     return AgentPageFrame(
-      title: title,
+      title: '',
       onRefresh: _load,
       child: Column(
         children: [
+          AgentBackTitle(title: title),
           TabBar(
             controller: _tabs,
             labelColor: AppColors.navBlue,

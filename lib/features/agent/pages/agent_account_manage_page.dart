@@ -16,7 +16,7 @@ import 'agent_child_settings_page.dart';
 import 'agent_child_share_page.dart';
 import 'agent_quota_change_page.dart';
 
-/// 账户管理：直属列表、卡片下钻、底栏功能选择
+/// 账户管理：直属列表、卡片内功能按钮、下钻查看下级
 class AgentAccountManagePage extends ConsumerStatefulWidget {
   const AgentAccountManagePage({super.key, required this.roomId});
 
@@ -258,126 +258,95 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     }
   }
 
-  Future<void> _openSheet(Map<String, dynamic> row) async {
+  static const _btnGreen = Color(0xFF4CAF50);
+  static const _btnCoral = Color(0xFFE57373);
+  static const _btnTeal = Color(0xFF4E9BA3);
+  static const _typeGreen = Color(0xFF81C784);
+  static const _statusBlue = Color(0xFF64B5F6);
+
+  Future<void> _openCredit(Map<String, dynamic> row, {required String direction}) async {
     final id = agentRowAccountId(row);
-    final name = agentRowName(row);
-    final username = '${row['username'] ?? ''}';
-    final isAgent = agentRowIsAgent(row);
-    final isDelegate = agentRowIsDelegate(row);
-    final showShare = isAgent;
-    final showOdds = !isDelegate;
-
-    final actions = <({String label, Future<void> Function() run})>[
-      (
-        label: '上下分',
-        run: () async {
-          if (id == null) return;
-          final changed = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(
-              builder: (_) => AgentChildCreditPage(
-                accountId: id,
-                title: name,
-                available: row['balance'] ?? row['available'],
-              ),
-            ),
-          );
-          if (changed == true && mounted) await _load();
-        },
-      ),
-      (
-        label: '账号设置',
-        run: () async {
-          final changed = await Navigator.of(context).push<bool>(
-            MaterialPageRoute(builder: (_) => AgentChildSettingsPage(row: row)),
-          );
-          if (changed == true && mounted) await _load();
-        },
-      ),
-      if (showShare)
-        (
-          label: '占成',
-          run: () async {
-            if (id == null) return;
-            final changed = await Navigator.of(context).push<bool>(
-              MaterialPageRoute(
-                builder: (_) => AgentChildSharePage(accountId: id, title: name),
-              ),
-            );
-            if (changed == true && mounted) await _load();
-          },
-        ),
-      if (showOdds)
-        (
-          label: '赔率返水',
-          run: () async {
-            if (id == null) return;
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => AgentChildOddsPage(accountId: id, title: name),
-              ),
-            );
-          },
-        ),
-      (
-        label: '积分明细',
-        run: () async {
-          if (id == null) return;
-          await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => AgentQuotaChangePage(
-                roomId: widget.roomId,
-                accountId: id,
-                titleName: name,
-              ),
-            ),
-          );
-        },
-      ),
-      (
-        label: '日志',
-        run: () async {
-          await Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => AgentChildLogsPage(row: row)),
-          );
-        },
-      ),
-    ];
-
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
-      ),
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                username.isEmpty ? name : '$username（$name）',
-                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-              ),
-              SizedBox(height: 2.h),
-              Text('请选择操作', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
-              SizedBox(height: 8.h),
-              for (final a in actions)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(a.label, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600)),
-                  trailing: Icon(Icons.chevron_right, color: AppColors.textHint, size: 20.sp),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await a.run();
-                  },
-                ),
-            ],
-          ),
+    if (id == null) return;
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AgentChildCreditPage(
+          accountId: id,
+          title: agentRowName(row),
+          available: row['balance'] ?? row['available'],
+          initialDirection: direction,
         ),
       ),
     );
+    if (changed == true && mounted) await _load();
+  }
+
+  Future<void> _openSettings(Map<String, dynamic> row) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => AgentChildSettingsPage(row: row)),
+    );
+    if (changed == true && mounted) await _load();
+  }
+
+  Future<void> _openQuota(Map<String, dynamic> row) async {
+    final id = agentRowAccountId(row);
+    if (id == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentQuotaChangePage(
+          roomId: widget.roomId,
+          accountId: id,
+          titleName: agentRowName(row),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openShare(Map<String, dynamic> row) async {
+    final id = agentRowAccountId(row);
+    if (id == null || !agentRowIsAgent(row)) {
+      AppToast.error('仅代理可设置占成');
+      return;
+    }
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AgentChildSharePage(accountId: id, title: agentRowName(row)),
+      ),
+    );
+    if (changed == true && mounted) await _load();
+  }
+
+  Future<void> _openOdds(Map<String, dynamic> row) async {
+    final id = agentRowAccountId(row);
+    if (id == null || agentRowIsDelegate(row)) {
+      AppToast.error('当前类型不可设置赔率');
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AgentChildOddsPage(accountId: id, title: agentRowName(row)),
+      ),
+    );
+  }
+
+  Future<void> _openLogs(Map<String, dynamic> row) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => AgentChildLogsPage(row: row)),
+    );
+  }
+
+  void _viewChildren(Map<String, dynamic> row) {
+    if (!agentRowIsAgent(row)) {
+      AppToast.error('仅代理可查看下级');
+      return;
+    }
+    _drillInto(row, childType: 'ALL');
+  }
+
+  String _shortTypeLabel(Map<String, dynamic> row) {
+    if (agentRowIsMember(row)) return '会员';
+    if (agentRowIsDelegate(row)) return '协管';
+    if (agentRowIsAgent(row)) return '代理';
+    return agentAccountTypeLabel(row);
   }
 
   Widget _focusBar() {
@@ -426,151 +395,134 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     );
   }
 
-  Widget _metricTile(String label, String value, {bool accent = false, VoidCallback? onTap}) {
-    final child = Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
-      decoration: BoxDecoration(
-        color: AgentChrome.fieldBg,
-        borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(color: AgentChrome.cardBorder),
-      ),
+  Widget _accountCard(Map<String, dynamic> r) {
+    final username = '${r['username'] ?? ''}';
+    final name = agentRowName(r);
+    final status = agentAccountStatusLabel(r['status']?.toString());
+    final isAgent = agentRowIsAgent(r);
+    final id = agentRowAccountId(r);
+    final nick = '${r['displayName'] ?? ''}'.trim();
+    final showNick = nick.isNotEmpty && nick != username;
+    final canShare = isAgent;
+    final canOdds = !agentRowIsDelegate(r);
+    final canChildren = isAgent;
+
+    return AgentSurface(
+      padding: EdgeInsets.fromLTRB(10.w, 10.h, 10.w, 10.h),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(label, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                decoration: BoxDecoration(
+                  color: _typeGreen.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(4.r),
+                ),
+                child: Text(
+                  _shortTypeLabel(r),
+                  style: TextStyle(fontSize: 12.sp, color: const Color(0xFF2E7D32), fontWeight: FontWeight.w600),
+                ),
+              ),
+              const Spacer(),
+              Flexible(
+                child: Text(
+                  username.isEmpty ? name : username,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+                ),
+              ),
+              SizedBox(width: 6.w),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+                decoration: BoxDecoration(
+                  color: _statusBlue.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(4.r),
+                ),
+                child: Text(status, style: TextStyle(fontSize: 11.sp, color: const Color(0xFF1565C0))),
+              ),
+            ],
+          ),
+          SizedBox(height: 6.h),
+          Text(
+            showNick ? 'ID: ${id ?? '—'} ($nick)' : 'ID: ${id ?? '—'}',
+            style: TextStyle(fontSize: 13.sp, color: AgentChrome.ink),
+          ),
           SizedBox(height: 4.h),
           Row(
             children: [
               Expanded(
                 child: Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w700,
-                    color: accent ? AgentChrome.pnlUp : AgentChrome.ink,
-                  ),
+                  '额度: ${agentBalanceLabel(r['balance'])}',
+                  style: TextStyle(fontSize: 13.sp, color: AgentChrome.ink),
                 ),
               ),
-              if (onTap != null) Icon(Icons.chevron_right, size: 16.sp, color: AppColors.textHint),
+              Expanded(
+                child: Text(
+                  '下级额度: ${isAgent ? agentBalanceLabel(r['subordinateBalance']) : '0'}',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 13.sp, color: AgentChrome.ink),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          _actionGrid([
+            _ActionBtn('上分', _btnGreen, () => _openCredit(r, direction: 'UP')),
+            _ActionBtn('积分明细', _btnCoral, () => _openQuota(r)),
+            _ActionBtn('编辑', _btnGreen, () => _openSettings(r)),
+            _ActionBtn('下分', _btnCoral, () => _openCredit(r, direction: 'DOWN')),
+            _ActionBtn('日志', _btnTeal, () => _openLogs(r)),
+            _ActionBtn('设置占成', _btnTeal, canShare ? () => _openShare(r) : null),
+            _ActionBtn('设置赔率', _btnTeal, canOdds ? () => _openOdds(r) : null),
+            _ActionBtn('查看下级', _btnTeal, canChildren ? () => _viewChildren(r) : null),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _actionGrid(List<_ActionBtn> buttons) {
+    return Column(
+      children: [
+        for (var row = 0; row < 2; row++) ...[
+          if (row > 0) SizedBox(height: 6.h),
+          Row(
+            children: [
+              for (var col = 0; col < 4; col++) ...[
+                if (col > 0) SizedBox(width: 6.w),
+                Expanded(child: _actionButton(buttons[row * 4 + col])),
+              ],
             ],
           ),
         ],
-      ),
-    );
-    if (onTap == null) return child;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8.r), child: child),
+      ],
     );
   }
 
-  Widget _accountCard(Map<String, dynamic> r) {
-    final name = agentRowName(r);
-    final username = '${r['username'] ?? ''}';
-    final typeLabel = agentAccountTypeLabel(r);
-    final status = agentAccountStatusLabel(r['status']?.toString());
-    final isAgent = agentRowIsAgent(r);
-    final parent = '${r['parentUsername'] ?? ''}';
-    final id = agentRowAccountId(r);
-    final nick = '${r['displayName'] ?? ''}'.trim();
-    final showNick = nick.isNotEmpty && nick != username && nick != name;
-
-    return AgentSurface(
-      padding: EdgeInsets.all(12.w),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () => _openSheet(r),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 40.w,
-                  height: 40.w,
-                  alignment: Alignment.center,
-                  decoration: const BoxDecoration(
-                    color: AppColors.navBlue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text('设置', style: TextStyle(fontSize: 11.sp, color: Colors.white, fontWeight: FontWeight.w600)),
-                ),
-                SizedBox(width: 10.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: 6.w,
-                        runSpacing: 4.h,
-                        crossAxisAlignment: WrapCrossAlignment.center,
-                        children: [
-                          Text(
-                            username.isEmpty ? name : username,
-                            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-                          ),
-                          if (showNick)
-                            Text('[$nick]', style: TextStyle(fontSize: 12.sp, color: const Color(0xFFE67E22))),
-                          _chip(typeLabel, isAgent ? AppColors.navBlue : AgentChrome.pnlUp),
-                          _chip(status, AgentChrome.pnlUp),
-                        ],
-                      ),
-                      SizedBox(height: 4.h),
-                      Text(
-                        'ID ${id ?? '—'} · 上级 ${parent.isEmpty ? '—' : parent}',
-                        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+  Widget _actionButton(_ActionBtn btn) {
+    final enabled = btn.onTap != null;
+    return Material(
+      color: enabled ? btn.color : btn.color.withValues(alpha: 0.35),
+      borderRadius: BorderRadius.circular(6.r),
+      child: InkWell(
+        onTap: btn.onTap,
+        borderRadius: BorderRadius.circular(6.r),
+        child: SizedBox(
+          height: 32.h,
+          child: Center(
+            child: Text(
+              btn.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11.sp, color: Colors.white, fontWeight: FontWeight.w600),
             ),
           ),
-          SizedBox(height: 10.h),
-          if (isAgent)
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              mainAxisSpacing: 8.h,
-              crossAxisSpacing: 8.w,
-              childAspectRatio: 2.4,
-              children: [
-                _metricTile('余额', agentBalanceLabel(r['balance']), accent: true),
-                _metricTile('下级余额', agentBalanceLabel(r['subordinateBalance'])),
-                _metricTile(
-                  '直属会员',
-                  '${r['childMemberCount'] ?? 0}',
-                  onTap: () => _drillInto(r, childType: 'MEMBER'),
-                ),
-                _metricTile(
-                  '下级代理',
-                  '${r['childAgentCount'] ?? 0}',
-                  onTap: () => _drillInto(r, childType: 'AGENT'),
-                ),
-              ],
-            )
-          else
-            InkWell(
-              onTap: () => _openSheet(r),
-              child: _metricTile('余额', agentBalanceLabel(r['balance']), accent: true),
-            ),
-        ],
+        ),
       ),
-    );
-  }
-
-  Widget _chip(String text, Color color) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4.r),
-      ),
-      child: Text(text, style: TextStyle(fontSize: 11.sp, color: color, fontWeight: FontWeight.w600)),
     );
   }
 
@@ -606,53 +558,50 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
           SizedBox(height: 8.h),
           _focusBar(),
           AgentSurface(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            child: Row(
               children: [
-                Container(
-                  height: 40.h,
-                  padding: EdgeInsets.symmetric(horizontal: 10.w),
-                  decoration: BoxDecoration(
-                    color: AgentChrome.fieldBg,
-                    borderRadius: BorderRadius.circular(8.r),
-                    border: Border.all(color: AgentChrome.cardBorder),
-                  ),
-                  alignment: Alignment.centerLeft,
-                  child: EmulatorSafeTextField(
-                    controller: _searchCtrl,
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      hintText: '账户搜索',
-                      hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
-                      isDense: true,
+                Expanded(
+                  child: Container(
+                    height: 36.h,
+                    padding: EdgeInsets.symmetric(horizontal: 10.w),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4.r),
+                      border: Border.all(color: AgentChrome.cardBorder),
+                    ),
+                    alignment: Alignment.centerLeft,
+                    child: EmulatorSafeTextField(
+                      controller: _searchCtrl,
+                      decoration: InputDecoration(
+                        border: InputBorder.none,
+                        hintText: '账户搜索',
+                        hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
+                        isDense: true,
+                      ),
                     ),
                   ),
                 ),
-                SizedBox(height: 10.h),
-                Row(
-                  children: [
-                    AgentTealButton(
-                      label: '搜索',
-                      onTap: () {
-                        _page = 1;
-                        _load();
-                      },
-                    ),
-                    SizedBox(width: 8.w),
-                    AgentTealButton(
-                      label: '查看全部',
-                      outlined: true,
-                      onTap: () {
-                        _searchCtrl.clear();
-                        _childType = 'ALL';
-                        _page = 1;
-                        _load();
-                      },
-                    ),
-                    SizedBox(width: 8.w),
-                    AgentTealButton(label: '新增', outlined: true, onTap: _showCreate),
-                  ],
+                SizedBox(width: 6.w),
+                AgentTealButton(
+                  label: '搜索',
+                  onTap: () {
+                    _page = 1;
+                    _load();
+                  },
                 ),
+                SizedBox(width: 6.w),
+                AgentTealButton(
+                  label: '查看全部',
+                  outlined: true,
+                  onTap: () {
+                    _searchCtrl.clear();
+                    _childType = 'ALL';
+                    _page = 1;
+                    _load();
+                  },
+                ),
+                SizedBox(width: 6.w),
+                AgentTealButton(label: '新增', onTap: _showCreate),
               ],
             ),
           ),
@@ -679,4 +628,11 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
       ),
     );
   }
+}
+
+class _ActionBtn {
+  const _ActionBtn(this.label, this.color, this.onTap);
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
 }

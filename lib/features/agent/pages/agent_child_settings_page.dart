@@ -93,8 +93,13 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
     final name = agentRowName(widget.row);
     final username = '${widget.row['username'] ?? ''}';
     return AgentPageFrame(
-      title: '账号设置',
-      child: ListView(
+      title: '',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AgentBackTitle(title: '编辑 · $name'),
+          Expanded(
+            child: ListView(
         padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 24.h),
         children: [
           AgentSurface(
@@ -148,6 +153,9 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
                 ),
               ],
             ),
+          ),
+        ],
+      ),
           ),
         ],
       ),
