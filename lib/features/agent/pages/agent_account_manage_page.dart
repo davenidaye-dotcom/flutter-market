@@ -2,17 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
-import '../../../shared/format/display_number.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
-import '../../../shared/widgets/safe_text_controller.dart';
 import '../widgets/agent_ui.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import 'agent_account_child_page.dart';
+import 'agent_child_credit_page.dart';
+import 'agent_child_logs_page.dart';
+import 'agent_child_odds_page.dart';
+import 'agent_child_settings_page.dart';
+import 'agent_child_share_page.dart';
+import 'agent_quota_change_page.dart';
 
-/// Agent account list / create
+/// 账户管理：直属列表、卡片下钻、底栏功能选择
 class AgentAccountManagePage extends ConsumerStatefulWidget {
   const AgentAccountManagePage({super.key, required this.roomId});
 
@@ -30,6 +34,17 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
   bool _loading = false;
   String? _error;
   List<Map<String, dynamic>> _rows = [];
+
+  /// 下钻栈：每层 {agentId, accountId, username, displayName, agentLevel}
+  final List<Map<String, dynamic>> _drill = [];
+  String _childType = 'ALL';
+
+  int? get _parentAgentId {
+    if (_drill.isEmpty) return null;
+    final id = _drill.last['agentId'];
+    if (id is int) return id;
+    return int.tryParse('$id');
+  }
 
   @override
   void initState() {
@@ -53,6 +68,8 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
             keyword: _searchCtrl.text.trim(),
             pageNum: _page,
             pageSize: 20,
+            parentAgentId: _parentAgentId,
+            childType: _childType,
           );
       final raw = data['rows'];
       final list = raw is List
@@ -75,6 +92,38 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
       });
       AppToast.error(e.toString());
     }
+  }
+
+  void _drillInto(Map<String, dynamic> row, {required String childType}) {
+    final agentId = row['agentId'];
+    final id = agentId is int ? agentId : int.tryParse('$agentId');
+    if (id == null) {
+      AppToast.error('无法下钻：缺少代理节点');
+      return;
+    }
+    setState(() {
+      _drill.add({
+        'agentId': id,
+        'accountId': agentRowAccountId(row),
+        'username': '${row['username'] ?? ''}',
+        'displayName': '${row['displayName'] ?? row['username'] ?? ''}',
+        'agentLevel': row['agentLevel'],
+      });
+      _childType = childType;
+      _page = 1;
+      _searchCtrl.clear();
+    });
+    _load();
+  }
+
+  void _popDrill() {
+    if (_drill.isEmpty) return;
+    setState(() {
+      _drill.removeLast();
+      _childType = 'ALL';
+      _page = 1;
+    });
+    _load();
   }
 
   Widget _createField(String label, TextEditingController ctrl, {bool obscure = false}) {
@@ -148,7 +197,6 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                 ),
                 SizedBox(height: 4.h),
                 Container(
-                  height: 40.h,
                   padding: EdgeInsets.symmetric(horizontal: 10.w),
                   decoration: BoxDecoration(
                     color: AgentChrome.fieldBg,
@@ -159,13 +207,14 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                     child: DropdownButton<String>(
                       value: type,
                       isExpanded: true,
-                      icon: Icon(Icons.keyboard_arrow_down, size: 18.sp, color: AppColors.textSecondary),
-                      style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
                       items: [
-                        for (final entry in accountTypeLabels.entries)
-                          DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+                        for (final e in accountTypeLabels.entries)
+                          DropdownMenuItem(value: e.key, child: Text(e.value)),
                       ],
-                      onChanged: (v) => setLocal(() => type = v ?? type),
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setLocal(() => type = v);
+                      },
                     ),
                   ),
                 ),
@@ -173,14 +222,8 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
             ),
           ),
           actions: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                AgentTealButton(label: '取消', outlined: true, onTap: safeDialogPop(ctx, false)),
-                SizedBox(width: 8.w),
-                AgentTealButton(label: '确定', onTap: safeDialogPop(ctx, true)),
-              ],
-            ),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
           ],
         ),
       ),
@@ -189,14 +232,13 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     final password = passCtrl.text;
     final confirmPassword = confirmCtrl.text;
     final displayName = nameCtrl.text.trim();
-    disposeTextControllersAfterFrame([userCtrl, passCtrl, confirmCtrl, nameCtrl]);
+    userCtrl.dispose();
+    passCtrl.dispose();
+    confirmCtrl.dispose();
+    nameCtrl.dispose();
     if (ok != true) return;
     if (username.isEmpty || password.isEmpty) {
-      AppToast.error('用户名和密码不能为空');
-      return;
-    }
-    if (password != confirmPassword) {
-      AppToast.error('新密码与确认密码不一致');
+      AppToast.error('请填写用户名和密码');
       return;
     }
     try {
@@ -206,6 +248,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
             confirmPassword: confirmPassword,
             type: type,
             displayName: displayName.isEmpty ? null : displayName,
+            parentAgentId: _parentAgentId,
           );
       AppToast.success('创建成功');
       _page = 1;
@@ -215,19 +258,320 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     }
   }
 
-  String _accountMeta(Map<String, dynamic> row) {
-    final user = '${row['username'] ?? ''}';
-    final type = agentAccountTypeLabel(row);
-    final status = agentAccountStatusLabel(row['status']?.toString());
-    final kind = '${row['accountType'] ?? ''}'.toUpperCase();
-    if (kind == 'AGENT') {
-      return '$user · $type · 占成${displayNumber(row['shareRatio'])}% · $status';
-    }
-    if (kind == 'AGENT_MEMBER') {
-      final bind = '${row['roomBindText'] ?? ''}'.trim();
-      return '$user · $type · ${bind.isEmpty ? '未绑定' : bind} · $status';
-    }
-    return '$user · $type · $status';
+  Future<void> _openSheet(Map<String, dynamic> row) async {
+    final id = agentRowAccountId(row);
+    final name = agentRowName(row);
+    final username = '${row['username'] ?? ''}';
+    final isAgent = agentRowIsAgent(row);
+    final isDelegate = agentRowIsDelegate(row);
+    final showShare = isAgent;
+    final showOdds = !isDelegate;
+
+    final actions = <({String label, Future<void> Function() run})>[
+      (
+        label: '上下分',
+        run: () async {
+          if (id == null) return;
+          final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(
+              builder: (_) => AgentChildCreditPage(
+                accountId: id,
+                title: name,
+                available: row['balance'] ?? row['available'],
+              ),
+            ),
+          );
+          if (changed == true && mounted) await _load();
+        },
+      ),
+      (
+        label: '账号设置',
+        run: () async {
+          final changed = await Navigator.of(context).push<bool>(
+            MaterialPageRoute(builder: (_) => AgentChildSettingsPage(row: row)),
+          );
+          if (changed == true && mounted) await _load();
+        },
+      ),
+      if (showShare)
+        (
+          label: '占成',
+          run: () async {
+            if (id == null) return;
+            final changed = await Navigator.of(context).push<bool>(
+              MaterialPageRoute(
+                builder: (_) => AgentChildSharePage(accountId: id, title: name),
+              ),
+            );
+            if (changed == true && mounted) await _load();
+          },
+        ),
+      if (showOdds)
+        (
+          label: '赔率返水',
+          run: () async {
+            if (id == null) return;
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AgentChildOddsPage(accountId: id, title: name),
+              ),
+            );
+          },
+        ),
+      (
+        label: '积分明细',
+        run: () async {
+          if (id == null) return;
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => AgentQuotaChangePage(
+                roomId: widget.roomId,
+                accountId: id,
+                titleName: name,
+              ),
+            ),
+          );
+        },
+      ),
+      (
+        label: '日志',
+        run: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => AgentChildLogsPage(row: row)),
+          );
+        },
+      ),
+    ];
+
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.r)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                username.isEmpty ? name : '$username（$name）',
+                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+              ),
+              SizedBox(height: 2.h),
+              Text('请选择操作', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+              SizedBox(height: 8.h),
+              for (final a in actions)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(a.label, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600)),
+                  trailing: Icon(Icons.chevron_right, color: AppColors.textHint, size: 20.sp),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await a.run();
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _focusBar() {
+    if (_drill.isEmpty) return const SizedBox.shrink();
+    final cur = _drill.last;
+    final name = '${cur['displayName'] ?? cur['username'] ?? ''}';
+    final user = '${cur['username'] ?? ''}';
+    final level = cur['agentLevel'];
+    final levelText = level is num ? '${level.toInt()}级代理' : '代理';
+    final id = cur['accountId'];
+    return Padding(
+      padding: EdgeInsets.only(bottom: 10.h),
+      child: AgentSurface(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('上级信息', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                  SizedBox(height: 2.h),
+                  Text(
+                    user.isEmpty ? name : '$user（$name）',
+                    style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+                  ),
+                  Text(
+                    '$levelText · ID ${id ?? '—'}',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: _popDrill,
+              icon: Icon(Icons.chevron_left, size: 18.sp),
+              label: Text('返回上级', style: TextStyle(fontSize: 12.sp)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.navBlue,
+                side: BorderSide(color: AgentChrome.cardBorder),
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _metricTile(String label, String value, {bool accent = false, VoidCallback? onTap}) {
+    final child = Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: AgentChrome.fieldBg,
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: AgentChrome.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+          SizedBox(height: 4.h),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w700,
+                    color: accent ? AgentChrome.pnlUp : AgentChrome.ink,
+                  ),
+                ),
+              ),
+              if (onTap != null) Icon(Icons.chevron_right, size: 16.sp, color: AppColors.textHint),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (onTap == null) return child;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(onTap: onTap, borderRadius: BorderRadius.circular(8.r), child: child),
+    );
+  }
+
+  Widget _accountCard(Map<String, dynamic> r) {
+    final name = agentRowName(r);
+    final username = '${r['username'] ?? ''}';
+    final typeLabel = agentAccountTypeLabel(r);
+    final status = agentAccountStatusLabel(r['status']?.toString());
+    final isAgent = agentRowIsAgent(r);
+    final parent = '${r['parentUsername'] ?? ''}';
+    final id = agentRowAccountId(r);
+    final nick = '${r['displayName'] ?? ''}'.trim();
+    final showNick = nick.isNotEmpty && nick != username && nick != name;
+
+    return AgentSurface(
+      padding: EdgeInsets.all(12.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => _openSheet(r),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 40.w,
+                  height: 40.w,
+                  alignment: Alignment.center,
+                  decoration: const BoxDecoration(
+                    color: AppColors.navBlue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text('设置', style: TextStyle(fontSize: 11.sp, color: Colors.white, fontWeight: FontWeight.w600)),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 6.w,
+                        runSpacing: 4.h,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            username.isEmpty ? name : username,
+                            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+                          ),
+                          if (showNick)
+                            Text('[$nick]', style: TextStyle(fontSize: 12.sp, color: const Color(0xFFE67E22))),
+                          _chip(typeLabel, isAgent ? AppColors.navBlue : AgentChrome.pnlUp),
+                          _chip(status, AgentChrome.pnlUp),
+                        ],
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        'ID ${id ?? '—'} · 上级 ${parent.isEmpty ? '—' : parent}',
+                        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 10.h),
+          if (isAgent)
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 8.h,
+              crossAxisSpacing: 8.w,
+              childAspectRatio: 2.4,
+              children: [
+                _metricTile('余额', agentBalanceLabel(r['balance']), accent: true),
+                _metricTile('下级余额', agentBalanceLabel(r['subordinateBalance'])),
+                _metricTile(
+                  '直属会员',
+                  '${r['childMemberCount'] ?? 0}',
+                  onTap: () => _drillInto(r, childType: 'MEMBER'),
+                ),
+                _metricTile(
+                  '下级代理',
+                  '${r['childAgentCount'] ?? 0}',
+                  onTap: () => _drillInto(r, childType: 'AGENT'),
+                ),
+              ],
+            )
+          else
+            InkWell(
+              onTap: () => _openSheet(r),
+              child: _metricTile('余额', agentBalanceLabel(r['balance']), accent: true),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String text, Color color) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 2.h),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4.r),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 11.sp, color: color, fontWeight: FontWeight.w600)),
+    );
   }
 
   Widget _accountList() {
@@ -249,76 +593,18 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
       padding: EdgeInsets.only(bottom: 8.h),
       itemCount: _rows.length,
       separatorBuilder: (_, _) => SizedBox(height: 8.h),
-      itemBuilder: (_, i) {
-        final r = _rows[i];
-        final name = '${r['displayName'] ?? r['username'] ?? ''}';
-        final meta = _accountMeta(r);
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(12.r),
-            onTap: () async {
-              final changed = await Navigator.of(context).push<bool>(
-                MaterialPageRoute(
-                  builder: (_) => AgentAccountChildPage(
-                    row: Map<String, dynamic>.from(r),
-                  ),
-                ),
-              );
-              if (changed == true && mounted) await _load();
-            },
-            child: AgentSurface(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        agentBalanceLabel(r['balance']),
-                        maxLines: 1,
-                        softWrap: false,
-                        style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 4.h),
-              Text(
-                meta,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-            ),
-          ),
-        );
-      },
+      itemBuilder: (_, i) => _accountCard(_rows[i]),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return AgentPageFrame(
-      title: '\u8d26\u6237\u7ba1\u7406',
+      title: '账户管理',
       child: Column(
         children: [
           SizedBox(height: 8.h),
+          _focusBar(),
           AgentSurface(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -358,6 +644,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                       outlined: true,
                       onTap: () {
                         _searchCtrl.clear();
+                        _childType = 'ALL';
                         _page = 1;
                         _load();
                       },

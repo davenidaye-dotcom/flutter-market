@@ -400,6 +400,19 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
           ),
         ),
+        SizedBox(width: 8.w),
+        TextButton(
+          onPressed: _popDrill,
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+            minimumSize: Size.zero,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            foregroundColor: AppColors.navBlue,
+            side: BorderSide(color: AgentChrome.cardBorder),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
+          ),
+          child: Text('返回上级', style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600)),
+        ),
       ],
     );
   }

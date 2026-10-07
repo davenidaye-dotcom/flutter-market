@@ -91,11 +91,18 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
 
   @override
   Widget build(BuildContext context) {
-    final id = _displayId.isNotEmpty ? _displayId : '\u2014';
+    final header = ref.watch(agentHeaderProvider).valueOrNull ?? {};
+    final headerId = '${header['displayId'] ?? ''}'.trim();
+    final id = headerId.isNotEmpty
+        ? headerId
+        : (_displayId.isNotEmpty ? _displayId : '\u2014');
 
     return AgentPageFrame(
       title: '\u4e2a\u4eba\u4fe1\u606f',
-      onRefresh: () => _load(showSuccess: true),
+      onRefresh: () {
+        ref.invalidate(agentHeaderProvider);
+        _load(showSuccess: true);
+      },
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -104,7 +111,12 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
             child: Row(
               children: [
                 OutlinedButton(
-                  onPressed: _loading ? null : () => _load(showSuccess: true),
+                  onPressed: _loading
+                      ? null
+                      : () {
+                          ref.invalidate(agentHeaderProvider);
+                          _load(showSuccess: true);
+                        },
                   style: OutlinedButton.styleFrom(
                     backgroundColor: Colors.white,
                     padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),

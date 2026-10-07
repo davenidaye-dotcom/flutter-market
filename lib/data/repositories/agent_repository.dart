@@ -27,13 +27,33 @@ class AgentRepository {
     String? keyword,
     int pageNum = 1,
     int pageSize = 20,
+    int? parentAgentId,
+    String? childType,
   }) async {
     final data = await _client.get('/agent/accounts', query: {
       if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
       'pageNum': pageNum,
       'pageSize': pageSize,
+      if (parentAgentId != null) 'parentAgentId': parentAgentId,
+      if (childType != null && childType.isNotEmpty) 'childType': childType,
     });
     return _asMap(data);
+  }
+
+  Future<void> updateChildAccount({
+    required int accountId,
+    String? displayName,
+    String? status,
+    String? password,
+    String? confirmPassword,
+  }) async {
+    await _client.put('/agent/accounts/$accountId', data: {
+      if (displayName != null) 'displayName': displayName,
+      if (status != null && status.isNotEmpty) 'status': status,
+      if (password != null && password.isNotEmpty) 'password': password,
+      if (confirmPassword != null && confirmPassword.isNotEmpty)
+        'confirmPassword': confirmPassword,
+    });
   }
 
   Future<Map<String, dynamic>> createAccount({
@@ -150,6 +170,7 @@ class AgentRepository {
     String? changeType,
     int pageNum = 1,
     int pageSize = 20,
+    int? accountId,
   }) async {
     final data = await _client.get('/agent/credits/changes', query: {
       if (startDate != null) 'startDate': startDate,
@@ -157,6 +178,35 @@ class AgentRepository {
       if (changeType != null) 'changeType': changeType,
       'pageNum': pageNum,
       'pageSize': pageSize,
+      if (accountId != null) 'accountId': accountId,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getLoginLogs({
+    int pageNum = 1,
+    int pageSize = 20,
+    int? accountId,
+  }) async {
+    final data = await _client.get('/agent/logs/login', query: {
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+      if (accountId != null) 'accountId': accountId,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getOpLogs({
+    String? scope,
+    int pageNum = 1,
+    int pageSize = 20,
+    int? accountId,
+  }) async {
+    final data = await _client.get('/agent/logs/ops', query: {
+      if (scope != null && scope.isNotEmpty) 'scope': scope,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+      if (accountId != null) 'accountId': accountId,
     });
     return _asMap(data);
   }

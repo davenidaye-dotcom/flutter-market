@@ -10,9 +10,17 @@ import '../widgets/agent_ui.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 
 class AgentQuotaChangePage extends ConsumerStatefulWidget {
-  const AgentQuotaChangePage({super.key, required this.roomId});
+  const AgentQuotaChangePage({
+    super.key,
+    required this.roomId,
+    this.accountId,
+    this.titleName,
+  });
 
   final String roomId;
+  /// 查看下级额度明细时传入
+  final int? accountId;
+  final String? titleName;
 
   @override
   ConsumerState<AgentQuotaChangePage> createState() =>
@@ -56,6 +64,12 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
   String _changeTypeLabel(Map<String, dynamic> r) {
     final named = '${r['typeName'] ?? ''}'.trim();
     if (named.isNotEmpty) return named;
+    final ref = '${r['refType'] ?? ''}'.toUpperCase();
+    if (ref == 'REBATE_GOT') return '赚水';
+    if (ref == 'REBATE_PAY') return '付水';
+    final remark = '${r['remark'] ?? ''}';
+    if (remark.startsWith('回水') || remark.contains('回水:')) return '回水';
+    if (remark.startsWith('返水') || remark.contains('返水:')) return '返水';
     switch ('${r['changeType'] ?? ''}'.toUpperCase()) {
       case 'UP':
         return '上级存取款';
@@ -156,6 +170,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
             changeType: _typeKeys[_typeIndex],
             pageNum: _page,
             pageSize: 20,
+            accountId: widget.accountId,
           );
       if (!mounted) return;
       final raw = data['rows'];
@@ -189,8 +204,11 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.accountId == null
+        ? '额度变动'
+        : '积分明细${widget.titleName == null || widget.titleName!.isEmpty ? '' : ' · ${widget.titleName}'}';
     return AgentPageFrame(
-      title: '额度变动',
+      title: title,
       child: Column(
         children: [
           SizedBox(height: 8.h),
