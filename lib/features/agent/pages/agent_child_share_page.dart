@@ -7,7 +7,8 @@ import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
 
-/// 下级占成：彩种 Tab + 拿/占步进，下级上限只读。
+/// 占成设置：表格样式 — 游戏 / 占成权限 / 下级权限 / 本级占成
+/// 下级权限 + 本级占成 = 占成权限（parentCap）；保存为 take=parentCap、self=本级、childMax=下级。
 class AgentChildSharePage extends ConsumerStatefulWidget {
   const AgentChildSharePage({
     super.key,
@@ -25,10 +26,9 @@ class AgentChildSharePage extends ConsumerStatefulWidget {
 class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
   bool _loading = true;
   bool _saving = false;
-  int _gameIndex = 0;
   List<Map<String, dynamic>> _rows = [];
-  final Map<String, int> _take = {};
-  final Map<String, int> _occupy = {};
+  /// gameType → 本级占成（selfShare）
+  final Map<String, int> _own = {};
 
   static const _names = {'JS_SC': '极速赛车', 'AZXY10': '澳洲幸运10'};
 
@@ -46,6 +46,8 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     return int.tryParse('$v') ?? 0;
   }
 
+  String _gameName(String gt) => _names[gt] ?? gt;
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -56,16 +58,19 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
         Navigator.of(context).pop();
         return;
       }
-      _take.clear();
-      _occupy.clear();
-      for (final r in rows) {
+      final live = rows.where((r) => agentLiveGameTypes.contains(_gt(r))).toList();
+      final use = live.isEmpty ? rows : live;
+      _own.clear();
+      for (final r in use) {
         final gt = _gt(r);
-        _take[gt] = _num(r['takeShare']);
-        _occupy[gt] = _num(r['selfShare']);
+        final cap = _num(r['parentCap']);
+        var occupy = _num(r['selfShare']);
+        if (occupy > cap) occupy = cap;
+        if (occupy < 0) occupy = 0;
+        _own[gt] = occupy;
       }
       setState(() {
-        _rows = rows;
-        _gameIndex = 0;
+        _rows = use;
         _loading = false;
       });
     } catch (e) {
@@ -75,26 +80,36 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     }
   }
 
-  Map<String, dynamic>? get _current =>
-      _rows.isEmpty ? null : _rows[_gameIndex.clamp(0, _rows.length - 1)];
+  int _capOf(Map<String, dynamic> r) => _num(r['parentCap']);
 
-  void _bump(String field, int delta) {
-    final row = _current;
-    if (row == null) return;
-    final gt = _gt(row);
-    final cap = _num(row['parentCap']);
-    var take = _take[gt] ?? 0;
-    var occupy = _occupy[gt] ?? 0;
-    if (field == 'take') {
-      take = (take + delta).clamp(0, cap);
-      if (occupy > take) occupy = take;
-    } else {
-      occupy = (occupy + delta).clamp(0, take);
+  int _ownOf(Map<String, dynamic> r) => _own[_gt(r)] ?? 0;
+
+  int _childOf(Map<String, dynamic> r) {
+    final cap = _capOf(r);
+    return (cap - _ownOf(r)).clamp(0, cap);
+  }
+
+  void _setOwn(Map<String, dynamic> r, int value) {
+    final gt = _gt(r);
+    final cap = _capOf(r);
+    setState(() => _own[gt] = value.clamp(0, cap));
+  }
+
+  void _setChild(Map<String, dynamic> r, int value) {
+    final gt = _gt(r);
+    final cap = _capOf(r);
+    final child = value.clamp(0, cap);
+    setState(() => _own[gt] = (cap - child).clamp(0, cap));
+  }
+
+  List<int> _options(int max) {
+    if (max <= 0) return const [0];
+    final out = <int>[];
+    for (var i = 0; i <= max; i += 5) {
+      out.add(i);
     }
-    setState(() {
-      _take[gt] = take;
-      _occupy[gt] = occupy;
-    });
+    if (out.last != max) out.add(max);
+    return out;
   }
 
   Future<void> _save() async {
@@ -104,17 +119,19 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
       final payload = <Map<String, dynamic>>[];
       for (final r in _rows) {
         final gt = _gt(r);
-        final take = _take[gt] ?? 0;
-        final occupy = _occupy[gt] ?? 0;
+        final cap = _capOf(r);
+        final occupy = _own[gt] ?? 0;
+        final childMax = (cap - occupy).clamp(0, 100);
         payload.add({
           'gameType': gt,
-          'takeShare': take,
+          'takeShare': cap,
           'selfShare': occupy,
-          'childMaxShare': (take - occupy).clamp(0, 100),
+          'childMaxShare': childMax,
         });
       }
       await ref.read(agentRepositoryProvider).saveChildShare(widget.accountId, payload);
       AppToast.success('占成已保存');
+      await _load();
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
@@ -122,65 +139,89 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     }
   }
 
+  Future<int?> _pickValue(String title, int current, int max) async {
+    final opts = _options(max);
+    return showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 8.h),
+              child: Text(title, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700)),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: opts.length,
+                itemBuilder: (_, i) {
+                  final v = opts[i];
+                  final selected = v == current;
+                  return ListTile(
+                    title: Text('$v', textAlign: TextAlign.center),
+                    selected: selected,
+                    trailing: selected ? Icon(Icons.check, color: AppColors.navBlue, size: 18.sp) : null,
+                    onTap: () => Navigator.pop(ctx, v),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final names = [for (final r in _rows) _names[_gt(r)] ?? _gt(r)];
-    final row = _current;
-    final gt = row == null ? '' : _gt(row);
-    final cap = row == null ? 0 : _num(row['parentCap']);
-    final take = _take[gt] ?? 0;
-    final occupy = _occupy[gt] ?? 0;
-    final childCap = (take - occupy).clamp(0, 100);
-
     return AgentPageFrame(
       title: '',
+      onRefresh: _loading ? null : _load,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AgentBackTitle(title: '占成 · ${widget.title}'),
-          if (names.isNotEmpty)
-            AgentGameTabs(
-              games: names,
-              current: _gameIndex,
-              onChanged: (i) => setState(() => _gameIndex = i),
+          AgentBackTitle(title: '账户管理 / ${widget.title} 占成设置'),
+          Padding(
+            padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 8.h),
+            child: Row(
+              children: [
+                OutlinedButton(
+                  onPressed: _loading ? null : _load,
+                  style: OutlinedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                    side: const BorderSide(color: AgentChrome.cardBorder),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6.r)),
+                  ),
+                  child: Text('刷新', style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary)),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: Text(
+                    '开盘之后设置占成，将于下期生效',
+                    style: TextStyle(fontSize: 12.sp, color: Colors.red),
+                  ),
+                ),
+              ],
             ),
+          ),
           Expanded(
             child: _loading
                 ? const AppPageLoading()
                 : ListView(
-                    padding: EdgeInsets.only(top: 8.h, bottom: 16.h),
+                    padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 16.h),
                     children: [
-                      AgentSurface(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '获配 $cap%',
-                              style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
-                            ),
-                            SizedBox(height: 14.h),
-                            _stepRow('拿', take, () => _bump('take', -5), () => _bump('take', 5)),
-                            SizedBox(height: 12.h),
-                            _stepRow('占', occupy, () => _bump('occupy', -5), () => _bump('occupy', 5)),
-                            SizedBox(height: 14.h),
-                            Row(
-                              children: [
-                                Text('下级上限', style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary)),
-                                const Spacer(),
-                                Text(
-                                  '$childCap%',
-                                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 4.h),
-                            Text(
-                              '下级上限 = 拿 − 占',
-                              style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                            ),
-                          ],
-                        ),
+                      Text(
+                        '占成设置',
+                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
                       ),
+                      SizedBox(height: 8.h),
+                      _table(),
                     ],
                   ),
           ),
@@ -197,39 +238,121 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     );
   }
 
-  Widget _stepRow(String label, int value, VoidCallback minus, VoidCallback plus) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 40.w,
-          child: Text(label, style: TextStyle(fontSize: 15.sp, color: AgentChrome.ink)),
-        ),
-        const Spacer(),
-        _roundBtn(Icons.remove, minus),
-        SizedBox(
-          width: 72.w,
-          child: Text(
-            '$value%',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-          ),
-        ),
-        _roundBtn(Icons.add, plus),
-      ],
+  Widget _table() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: AgentChrome.cardBorder),
+        borderRadius: BorderRadius.circular(4.r),
+      ),
+      child: Column(
+        children: [
+          _headerRow(),
+          for (var i = 0; i < _rows.length; i++) ...[
+            Divider(height: 1, thickness: 1, color: AgentChrome.cardBorder),
+            _dataRow(_rows[i]),
+          ],
+        ],
+      ),
     );
   }
 
-  Widget _roundBtn(IconData icon, VoidCallback onTap) {
+  Widget _headerRow() {
+    return Container(
+      color: const Color(0xFFF5F7FA),
+      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 6.w),
+      child: Row(
+        children: [
+          _cell('游戏', flex: 3, header: true, align: TextAlign.left),
+          _cell('占成权限', flex: 2, header: true),
+          _cell('下级权限', flex: 2, header: true),
+          _cell('本级占成', flex: 2, header: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _dataRow(Map<String, dynamic> r) {
+    final gt = _gt(r);
+    final cap = _capOf(r);
+    final own = _ownOf(r);
+    final child = _childOf(r);
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 8.h, horizontal: 6.w),
+      child: Row(
+        children: [
+          _cell(_gameName(gt), flex: 3, align: TextAlign.left),
+          _cell('$cap', flex: 2),
+          Expanded(
+            flex: 2,
+            child: _dropdownBox(
+              '$child',
+              onTap: () async {
+                final v = await _pickValue('下级权限', child, cap);
+                if (v != null) _setChild(r, v);
+              },
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Padding(
+              padding: EdgeInsets.only(left: 4.w),
+              child: _dropdownBox(
+                '$own',
+                onTap: () async {
+                  final v = await _pickValue('本级占成', own, cap);
+                  if (v != null) _setOwn(r, v);
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cell(String text, {int flex = 1, bool header = false, TextAlign align = TextAlign.center}) {
+    return Expanded(
+      flex: flex,
+      child: Text(
+        text,
+        textAlign: align,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: header ? 12.sp : 13.sp,
+          fontWeight: header ? FontWeight.w600 : FontWeight.w500,
+          color: AgentChrome.ink,
+        ),
+      ),
+    );
+  }
+
+  Widget _dropdownBox(String text, {required VoidCallback onTap}) {
     return Material(
-      color: AgentChrome.accent.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(8.r),
+      color: const Color(0xFFF0F2F5),
+      borderRadius: BorderRadius.circular(4.r),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8.r),
-        child: SizedBox(
-          width: 36.w,
-          height: 36.w,
-          child: Icon(icon, size: 18.sp, color: AgentChrome.accent),
+        borderRadius: BorderRadius.circular(4.r),
+        child: Container(
+          height: 32.h,
+          padding: EdgeInsets.symmetric(horizontal: 6.w),
+          alignment: Alignment.center,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Flexible(
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13.sp, color: AgentChrome.ink),
+                ),
+              ),
+              Icon(Icons.arrow_drop_down, size: 18.sp, color: AppColors.textSecondary),
+            ],
+          ),
         ),
       ),
     );

@@ -8,7 +8,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
 import 'agent_account_child_page.dart';
 
-/// 下级账号设置：显示名 / 状态 / 重置密码
+/// 下级账号设置：昵称 / 状态 / 重置密码
 class AgentChildSettingsPage extends ConsumerStatefulWidget {
   const AgentChildSettingsPage({super.key, required this.row});
 
@@ -120,9 +120,9 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('显示名称', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+                Text('昵称', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
                 SizedBox(height: 6.h),
-                _field(_nameCtrl),
+                _nicknameField(),
                 SizedBox(height: 14.h),
                 Text('状态', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
                 SizedBox(height: 6.h),
@@ -141,9 +141,9 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
                 SizedBox(height: 14.h),
                 Text('重置密码（留空不改）', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
                 SizedBox(height: 6.h),
-                _field(_passCtrl, obscure: true),
+                _passwordField(_passCtrl),
                 SizedBox(height: 8.h),
-                _field(_confirmCtrl, obscure: true, hint: '确认密码'),
+                _passwordField(_confirmCtrl, hint: '确认密码'),
                 SizedBox(height: 16.h),
                 AgentTealButton(
                   label: _saving ? '保存中…' : '保存',
@@ -162,7 +162,36 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
     );
   }
 
-  Widget _field(TextEditingController ctrl, {bool obscure = false, String? hint}) {
+  /// 昵称：系统键盘 + 联想，支持中文输入（不走 EmulatorSafe 默认关联想）。
+  Widget _nicknameField() {
+    return Container(
+      height: 40.h,
+      padding: EdgeInsets.symmetric(horizontal: 10.w),
+      decoration: BoxDecoration(
+        color: AgentChrome.fieldBg,
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: AgentChrome.cardBorder),
+      ),
+      alignment: Alignment.centerLeft,
+      child: TextField(
+        controller: _nameCtrl,
+        keyboardType: TextInputType.text,
+        textInputAction: TextInputAction.next,
+        enableSuggestions: true,
+        autocorrect: true,
+        style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          isCollapsed: true,
+          hintText: '可输入中文',
+          hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
+          contentPadding: EdgeInsets.zero,
+        ),
+      ),
+    );
+  }
+
+  Widget _passwordField(TextEditingController ctrl, {String? hint}) {
     return Container(
       height: 40.h,
       padding: EdgeInsets.symmetric(horizontal: 10.w),
@@ -174,7 +203,7 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
       alignment: Alignment.centerLeft,
       child: EmulatorSafeTextField(
         controller: ctrl,
-        obscureText: obscure,
+        obscureText: true,
         style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
         decoration: InputDecoration(
           border: InputBorder.none,
