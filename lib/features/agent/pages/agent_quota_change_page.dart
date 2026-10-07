@@ -76,11 +76,41 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
 
   String _fmt(DateTime d) => DateRangeFilter.format(d);
 
+  num? _asNum(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v;
+    return num.tryParse('$v'.trim().replaceAll(',', ''));
+  }
+
   String _shown(dynamic v) {
     if (v == null) return '—';
     final s = '$v'.trim();
     if (s.isEmpty) return '—';
     return displayNumber(v);
+  }
+
+  String _signedAmount(dynamic v) {
+    final n = _asNum(v);
+    if (n == null) return '—';
+    final shown = displayNumber(n);
+    if (n > 0) return '+$shown';
+    return shown;
+  }
+
+  Color _amountColor(dynamic v) {
+    final n = _asNum(v);
+    if (n == null || n == 0) return AgentChrome.ink;
+    return n > 0 ? AgentChrome.pnlUp : AppColors.danger;
+  }
+
+  /// 原额度 = 现额度 − 账变；优先用接口字段。
+  dynamic _beforeOf(Map<String, dynamic> r) {
+    final before = r['totalBefore'] ?? r['balanceBefore'];
+    if (before != null) return before;
+    final after = _asNum(r['totalAfter'] ?? r['balanceAfter']);
+    final amount = _asNum(r['amount']);
+    if (after == null || amount == null) return null;
+    return after - amount;
   }
 
   List<DateRangeQuickItem> _dayQuickItems() {
@@ -323,29 +353,76 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
       itemBuilder: (_, i) {
         final r = _rows[i];
         final when = r['createdAt']?.toString() ?? '';
+        final remark = '${r['remark'] ?? ''}'.trim();
+        final after = r['totalAfter'] ?? r['balanceAfter'];
+        final before = _beforeOf(r);
+        final amount = r['amount'];
         return AgentSurface(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${_changeTypeLabel('${r['changeType'] ?? ''}')} ${displayNumber(r['amount'])}',
-                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _changeTypeLabel('${r['changeType'] ?? ''}'),
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AgentChrome.ink,
+                      ),
+                    ),
+                  ),
+                  if (when.isNotEmpty)
+                    Text(
+                      when,
+                      style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                    ),
+                ],
               ),
-              SizedBox(height: 4.h),
-              FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  '总额后 ${_shown(r['totalAfter'])} · 占用后 ${_shown(r['occupiedAfter'])} · $when',
-                  maxLines: 1,
-                  softWrap: false,
+              SizedBox(height: 10.h),
+              Row(
+                children: [
+                  Expanded(child: _triple('原额度', _shown(before))),
+                  Expanded(
+                    child: _triple(
+                      '账变',
+                      _signedAmount(amount),
+                      valueColor: _amountColor(amount),
+                    ),
+                  ),
+                  Expanded(child: _triple('现额度', _shown(after))),
+                ],
+              ),
+              if (remark.isNotEmpty) ...[
+                SizedBox(height: 8.h),
+                Text(
+                  '备注 $remark',
                   style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                 ),
-              ),
+              ],
             ],
           ),
         );
       },
+    );
+  }
+
+  Widget _triple(String label, String value, {Color? valueColor}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+        SizedBox(height: 2.h),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14.sp,
+            fontWeight: FontWeight.w600,
+            color: valueColor ?? AgentChrome.ink,
+          ),
+        ),
+      ],
     );
   }
 
