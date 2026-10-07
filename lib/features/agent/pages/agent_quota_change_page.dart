@@ -53,24 +53,26 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
     'ADJUST',
   ];
 
-  String _changeTypeLabel(String? raw) {
-    switch (raw?.toUpperCase()) {
+  String _changeTypeLabel(Map<String, dynamic> r) {
+    final named = '${r['typeName'] ?? ''}'.trim();
+    if (named.isNotEmpty) return named;
+    switch ('${r['changeType'] ?? ''}'.toUpperCase()) {
       case 'UP':
-        return '上分';
+        return '上级存取款';
       case 'DOWN':
-        return '下分';
+        return '下级存取款';
       case 'FLIGHT_OCCUPY':
-        return '飞单占用';
+        return '下注';
       case 'FLIGHT_RELEASE':
-        return '占用释放';
+        return '额度恢复';
       case 'FLIGHT_SETTLE_WIN':
-        return '结算赢';
       case 'FLIGHT_SETTLE_LOSS':
-        return '结算输';
+        return '结算';
       case 'ADJUST':
         return '调整';
       default:
-        return raw?.isNotEmpty == true ? raw! : '—';
+        final raw = '${r['changeType'] ?? ''}';
+        return raw.isNotEmpty ? raw : '—';
     }
   }
 
@@ -353,7 +355,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
       itemBuilder: (_, i) {
         final r = _rows[i];
         final when = r['createdAt']?.toString() ?? '';
-        final remark = '${r['remark'] ?? ''}'.trim();
+        final remark = '${r['displayRemark'] ?? r['remark'] ?? ''}'.trim();
         final after = r['totalAfter'] ?? r['balanceAfter'];
         final before = _beforeOf(r);
         final amount = r['amount'];
@@ -365,7 +367,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
                 children: [
                   Expanded(
                     child: Text(
-                      _changeTypeLabel('${r['changeType'] ?? ''}'),
+                      _changeTypeLabel(r),
                       style: TextStyle(
                         fontSize: 15.sp,
                         fontWeight: FontWeight.w700,
