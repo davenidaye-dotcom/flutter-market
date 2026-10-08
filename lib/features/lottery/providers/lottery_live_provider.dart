@@ -261,6 +261,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           points: _toInt(dash['balance']),
           turnover: _toInt(dash['turnover']),
           winLoss: _toInt(dash['todayProfitLoss']),
+          rebate: _toInt(dash['rebate']),
         );
       } catch (_) {}
       return;
@@ -921,6 +922,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         points = _toInt(dash['balance']);
         turnover = _toInt(dash['turnover']);
         winLoss = _toInt(dash['todayProfitLoss']);
+        rebate = _toInt(dash['rebate']);
       } catch (_) {}
       try {
         final room = await _ref.read(ownerRepositoryProvider).getRoom();
