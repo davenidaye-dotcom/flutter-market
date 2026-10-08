@@ -207,11 +207,6 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     return raw;
   }
 
-  String _intAmountText(num n) {
-    if (n == n.roundToDouble()) return '${n.round()}';
-    return n.toString();
-  }
-
   void _toggle(String key) {
     if (!widget.canBet || _submitting.value) return;
     final now = DateTime.now();
@@ -257,28 +252,35 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     final text = command.trim();
     final live = ref.read(roomLotteryLiveProvider(widget.roomId));
     final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
+    var submitCommand = text;
+    var items = _itemsFromStored(text);
     if (needConfirm) {
       final game = ref
           .read(roomLotteryLiveProvider(widget.roomId).notifier)
           .displayGameFor(widget.gameId);
-      final ok = await showBetConfirmDialog(
+      final issue = game?.currentIssue;
+      final confirmed = await showBetConfirmDialog(
         context: context,
-        command: text,
-        issueNo: game?.currentIssue,
-        amountText: _amountOfStored(text),
+        issueNo: issue,
+        loadLines: () => _loadConfirmLines(
+          command: text,
+          items: items,
+          issueNo: issue,
+        ),
       );
-      if (!ok || !mounted) return;
+      if (confirmed == null || !mounted) return;
+      submitCommand = confirmed.command;
+      items = confirmed.items;
     }
-    final items = _itemsFromStored(text);
     _submitLocked = true;
     _submitting.value = true;
-    final localId = widget.onBetStart?.call(text);
+    final localId = widget.onBetStart?.call(submitCommand);
     try {
       final done = await widget.betGuard.run((requestId) async {
         return ref.read(lotteryRepositoryProvider).submitBet(
               roomId: widget.roomId,
               gameId: widget.gameId,
-              command: text,
+              command: submitCommand,
               items: items,
               requestId: requestId,
             );
@@ -291,7 +293,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
       if (!mounted) return;
-      widget.onBetSuccess?.call(text, done.orderIds, done.content);
+      widget.onBetSuccess?.call(submitCommand, done.orderIds, done.content);
       AppToast.success('重投成功');
     } catch (e) {
       if (localId != null) widget.onBetFailed?.call(localId);
@@ -317,21 +319,6 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       items.add({'playCode': code, 'amount': amount});
     }
     return items.isEmpty ? null : items;
-  }
-
-  String? _amountOfStored(String command) {
-    var sum = 0.0;
-    var any = false;
-    for (final token in command.split(RegExp(r'\s+'))) {
-      final parts = token.split('/');
-      if (parts.isEmpty) continue;
-      final n = double.tryParse(parts.last);
-      if (n == null) continue;
-      sum += n;
-      any = true;
-    }
-    if (!any) return null;
-    return displayNumber(sum);
   }
 
   void _reset() {
@@ -411,39 +398,46 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     final command = selected.map((e) => '$e/$unitToken').join(' ');
     final live = ref.read(roomLotteryLiveProvider(widget.roomId));
     final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
+    final machineItems = <Map<String, dynamic>>[];
+    for (final key in selected) {
+      final code = uiKeyToPlayCode(key);
+      if (code == null) {
+        AppToast.error('玩法无法识别: $key');
+        return;
+      }
+      machineItems.add({'playCode': code, 'amount': unit});
+    }
+    var submitCommand = command;
+    var submitItems = machineItems;
     if (needConfirm) {
       final game = ref
           .read(roomLotteryLiveProvider(widget.roomId).notifier)
           .displayGameFor(widget.gameId);
-      final ok = await showBetConfirmDialog(
+      final issue = game?.currentIssue;
+      final confirmed = await showBetConfirmDialog(
         context: context,
-        command: command,
-        issueNo: game?.currentIssue,
-        amountText: _intAmountText(selected.length * unit),
+        issueNo: issue,
+        loadLines: () => _loadConfirmLines(
+          command: command,
+          items: machineItems,
+          issueNo: issue,
+        ),
       );
-      if (!ok || !mounted) return;
+      if (confirmed == null || !mounted) return;
+      submitCommand = confirmed.command;
+      submitItems = confirmed.items;
     }
     _submitLocked = true;
     _submitting.value = true;
-    final localId = widget.onBetStart?.call(command);
+    final localId = widget.onBetStart?.call(submitCommand);
     try {
-      final machineItems = <Map<String, dynamic>>[];
-      for (final key in selected) {
-        final code = uiKeyToPlayCode(key);
-        if (code == null) {
-          if (localId != null) widget.onBetFailed?.call(localId);
-          AppToast.error('玩法无法识别: $key');
-          return;
-        }
-        machineItems.add({'playCode': code, 'amount': unit});
-      }
       final done = await widget.betGuard.run((requestId) async {
         return ref.read(lotteryRepositoryProvider).submitBet(
               roomId: widget.roomId,
               gameId: widget.gameId,
               // 带可读 command，后端才能广播给同房其他人
-              command: command,
-              items: machineItems,
+              command: submitCommand,
+              items: submitItems,
               requestId: requestId,
             );
       });
@@ -455,8 +449,8 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
       if (!mounted) return;
-      widget.onBetSuccess?.call(command, done.orderIds, done.content);
-      _rememberBet(command);
+      widget.onBetSuccess?.call(submitCommand, done.orderIds, done.content);
+      _rememberBet(submitCommand);
       AppToast.success('下注成功');
       _reset();
     } catch (e) {
@@ -466,6 +460,30 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       _submitLocked = false;
       if (mounted) _submitting.value = false;
     }
+  }
+
+  Future<List<BetConfirmLine>> _loadConfirmLines({
+    required String command,
+    List<Map<String, dynamic>>? items,
+    String? issueNo,
+  }) async {
+    final rows = await ref.read(lotteryRepositoryProvider).previewBet(
+          gameId: widget.gameId,
+          command: command,
+          issueNo: issueNo,
+          items: items,
+        );
+    return rows
+        .map(
+          (e) => BetConfirmLine(
+            playCode: '${e['playCode'] ?? ''}'.trim(),
+            label: '${e['label'] ?? e['playName'] ?? e['playCode'] ?? ''}'.trim(),
+            oddsText: displayNumber(e['odds']),
+            amount: num.tryParse('${e['amount']}') ?? 0,
+          ),
+        )
+        .where((e) => e.playCode.isNotEmpty)
+        .toList();
   }
 
   @override

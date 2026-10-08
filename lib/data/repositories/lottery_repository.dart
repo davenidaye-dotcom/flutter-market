@@ -281,6 +281,29 @@ class LotteryRepository {
     return parts.last;
   }
 
+  /// 下注确认预览：解析指令/items，带回赔率与展示名，不落库。
+  Future<List<Map<String, dynamic>>> previewBet({
+    required String gameId,
+    String? command,
+    String? issueNo,
+    List<Map<String, dynamic>>? items,
+  }) async {
+    final body = <String, dynamic>{
+      'gameType': gameId,
+      if (issueNo != null && issueNo.isNotEmpty) 'issueNo': issueNo,
+      if (command != null && command.trim().isNotEmpty) 'command': command.trim(),
+      if (items != null && items.isNotEmpty) 'items': items,
+    };
+    final data = await _client.post('/member/bets/preview', data: body);
+    if (data is! Map) return const [];
+    final lines = data['lines'];
+    if (lines is! List) return const [];
+    return lines
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList(growable: false);
+  }
+
   Future<BetSubmitResult> submitBet({
     required String roomId,
     required String gameId,

@@ -1338,29 +1338,50 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
     final live = ref.read(roomLotteryLiveProvider(widget.roomId));
     final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
+    var submitCommand = command;
+    List<Map<String, dynamic>>? submitItems;
     if (needConfirm) {
       final game = ref
           .read(roomLotteryLiveProvider(widget.roomId).notifier)
           .displayGameFor(_gameId);
       final issue = game?.currentIssue ?? '';
-      final ok = await showBetConfirmDialog(
+      final confirmed = await showBetConfirmDialog(
         context: context,
-        command: command,
         issueNo: issue,
-        amountText: _guessBetAmountText(command),
+        loadLines: () async {
+          final rows = await ref.read(lotteryRepositoryProvider).previewBet(
+                gameId: _gameId,
+                command: command,
+                issueNo: issue,
+              );
+          return rows
+              .map(
+                (e) => BetConfirmLine(
+                  playCode: '${e['playCode'] ?? ''}'.trim(),
+                  label: '${e['label'] ?? e['playName'] ?? e['playCode'] ?? ''}'.trim(),
+                  oddsText: displayNumber(e['odds']),
+                  amount: num.tryParse('${e['amount']}') ?? 0,
+                ),
+              )
+              .where((e) => e.playCode.isNotEmpty)
+              .toList();
+        },
       );
-      if (!ok || !mounted) return;
+      if (confirmed == null || !mounted) return;
+      submitCommand = confirmed.command;
+      submitItems = confirmed.items;
     }
 
     _submitLocked = true;
     _betBusy.value = true;
-    final localId = _publishOptimisticBet(command);
+    final localId = _publishOptimisticBet(submitCommand);
     try {
       final done = await _betGuard.run((requestId) async {
         return ref.read(lotteryRepositoryProvider).submitBet(
               roomId: widget.roomId,
               gameId: _gameId,
-              command: command,
+              command: submitCommand,
+              items: submitItems,
               requestId: requestId,
             );
       });
@@ -1737,7 +1758,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     padding: EdgeInsets.fromLTRB(
                                       12.w,
                                       12.h,
-                                      56.w,
+                                      12.w,
                                       bottomPad,
                                     ),
                                     itemCount: messages.length,
