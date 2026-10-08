@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 
 /// 注单悬浮面板 — 叠在聊天区上方
+/// 金额列只显示总金额；点击弹出详情看投注内容。
 class BetSlipPanel extends StatelessWidget {
   const BetSlipPanel({
     super.key,
@@ -17,6 +19,7 @@ class BetSlipPanel extends StatelessWidget {
 
   static const _headerColor = Color(0xFF555555);
   static const _emptyColor = Color(0xFF7A7A7A);
+  static const _linkColor = Color(0xFF1E88E5);
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +51,7 @@ class BetSlipPanel extends StatelessWidget {
                 children: [
                   _h('序列', flex: 2),
                   _h('期号', flex: 3),
-                  _h('金额', flex: 2),
+                  _h('金额', flex: 3),
                   _h('操作', flex: 2),
                 ],
               ),
@@ -77,7 +80,25 @@ class BetSlipPanel extends StatelessWidget {
                               children: [
                                 _c('${i + 1}', flex: 2),
                                 _c(_issueTail(row.issue), flex: 3),
-                                _c(row.amount, flex: 2),
+                                Expanded(
+                                  flex: 3,
+                                  child: Center(
+                                    child: GestureDetector(
+                                      onTap: () => _showDetail(context, row),
+                                      behavior: HitTestBehavior.opaque,
+                                      child: Text(
+                                        row.amount,
+                                        style: TextStyle(
+                                          fontSize: 13.sp,
+                                          fontWeight: FontWeight.w600,
+                                          color: _linkColor,
+                                          decoration: TextDecoration.underline,
+                                          decorationColor: _linkColor,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
                                 Expanded(
                                   flex: 2,
                                   child: Center(
@@ -91,7 +112,7 @@ class BetSlipPanel extends StatelessWidget {
                                         style: TextStyle(
                                           fontSize: 12.sp,
                                           color: row.canCancel
-                                              ? const Color(0xFF1E88E5)
+                                              ? _linkColor
                                               : _emptyColor,
                                         ),
                                       ),
@@ -111,13 +132,78 @@ class BetSlipPanel extends StatelessWidget {
     );
   }
 
+  Future<void> _showDetail(BuildContext context, BetSlipRow row) async {
+    final detail = row.detail.trim().isNotEmpty ? row.detail.trim() : row.amount;
+    await showEmulatorSafeDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('注单详情'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _detailRow('期号', _issueTail(row.issue)),
+            SizedBox(height: 8.h),
+            _detailRow('总金额', row.amount),
+            SizedBox(height: 8.h),
+            Text(
+              '投注内容',
+              style: TextStyle(fontSize: 13.sp, color: Colors.black54),
+            ),
+            SizedBox(height: 4.h),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: 220.h),
+              child: SingleChildScrollView(
+                child: Text(
+                  detail,
+                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: safeDialogPop(ctx),
+            child: const Text('知道了'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 56.w,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 13.sp, color: Colors.black54),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _h(String text, {required int flex}) {
     return Expanded(
       flex: flex,
       child: Text(
         text,
         textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 13.sp, color: _headerColor, fontWeight: FontWeight.w500),
+        style: TextStyle(
+          fontSize: 13.sp,
+          color: _headerColor,
+          fontWeight: FontWeight.w500,
+        ),
       ),
     );
   }
@@ -143,14 +229,53 @@ class BetSlipRow {
   const BetSlipRow({
     required this.issue,
     required this.amount,
+    this.detail = '',
     this.orderId,
     this.action = '取消',
     this.canCancel = true,
   });
 
   final String issue;
+  /// 总金额（列表展示，可点击）
   final String amount;
+  /// 投注明细（详情弹窗）
+  final String detail;
   final String? orderId;
   final String action;
   final bool canCancel;
+}
+
+/// 从核对文案 / 指令里解析总金额数字字符串。
+String? betSlipTotalFromText(String text) {
+  final t = text.trim();
+  if (t.isEmpty) return null;
+  final labeled = RegExp(r'总金额\s*[:：]?\s*([0-9]+(?:\.[0-9]+)?)').firstMatch(t);
+  if (labeled != null) return labeled.group(1);
+
+  final slashAmounts = RegExp(r'/([0-9]+(?:\.[0-9]+)?)')
+      .allMatches(t)
+      .map((m) => num.tryParse(m.group(1)!))
+      .whereType<num>()
+      .toList();
+  if (slashAmounts.isNotEmpty) {
+    final sum = slashAmounts.fold<num>(0, (a, b) => a + b);
+    if (sum == sum.roundToDouble()) return '${sum.toInt()}';
+    return '$sum';
+  }
+
+  // 大100 / 单50
+  final shorthand = RegExp(r'[大小单双龙虎]([1-9]\d*(?:\.\d+)?)');
+  final shortAmounts = shorthand
+      .allMatches(t)
+      .map((m) => num.tryParse(m.group(1)!))
+      .whereType<num>()
+      .toList();
+  if (shortAmounts.isNotEmpty) {
+    final sum = shortAmounts.fold<num>(0, (a, b) => a + b);
+    if (sum == sum.roundToDouble()) return '${sum.toInt()}';
+    return '$sum';
+  }
+
+  if (num.tryParse(t) != null) return t;
+  return null;
 }

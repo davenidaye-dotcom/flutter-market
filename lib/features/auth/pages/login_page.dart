@@ -86,16 +86,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           );
       if (!mounted) return;
       final user = ref.read(authSessionProvider).user;
-      final dest = user?.isAgentSide == true
-          ? RoutePaths.agentPersonalInfo(user?.roomId ?? '1001')
-          : user?.isHostSide == true
-              ? RoutePaths.hostLottery(user?.roomId ?? '1001')
-              : RoutePaths.home;
       FocusManager.instance.primaryFocus?.unfocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
       // 等键盘收起再跳转，避免 IME viewport 风暴把进房页打卡死
       await Future<void>.delayed(const Duration(milliseconds: 80));
       if (!mounted) return;
+      // 仅房主首次登录强制改密
+      if (user?.isHostSide == true && user?.forceChangePassword == true) {
+        context.go('${RoutePaths.changePassword}?force=1');
+        return;
+      }
+      final dest = user?.isAgentSide == true
+          ? RoutePaths.agentPersonalInfo(user?.roomId ?? '1001')
+          : user?.isHostSide == true
+              ? RoutePaths.hostLottery(user?.roomId ?? '1001')
+              : RoutePaths.home;
       context.go(dest);
     } catch (e) {
       final msg = e is ApiException ? e.message : e.toString();

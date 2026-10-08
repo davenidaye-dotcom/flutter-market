@@ -82,6 +82,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       final roomId = session.user?.roomId ?? '1001';
 
       if (session.isHostSide) {
+        final forcePwd = session.user?.forceChangePassword == true;
+        final onForcePwd = loc == RoutePaths.changePassword ||
+            state.uri.path == RoutePaths.changePassword;
+        if (forcePwd && !onForcePwd && loc != RoutePaths.login) {
+          return '${RoutePaths.changePassword}?force=1';
+        }
         if (loc == RoutePaths.home) return RoutePaths.hostLottery(roomId);
         // 仅拦截玩家彩种大厅入口；聊天/报表等 /room 子页放行（房主只读进房）
         if (loc == RoutePaths.roomLottery(roomId)) return RoutePaths.hostLottery(roomId);
@@ -105,7 +111,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: RoutePaths.captcha, builder: (_, _) => const CaptchaPage()),
       GoRoute(path: RoutePaths.home, builder: (_, _) => const HomePage()),
       GoRoute(path: RoutePaths.personalSettings, builder: (_, _) => const PersonalSettingsPage()),
-      GoRoute(path: RoutePaths.changePassword, builder: (_, _) => const ChangePasswordPage()),
+      GoRoute(
+        path: RoutePaths.changePassword,
+        builder: (_, state) => ChangePasswordPage(
+          force: state.uri.queryParameters['force'] == '1',
+        ),
+      ),
 
       // StatefulShellBranch 默认路由不能带 path 参数，故把 :roomId 放在父级。
       // 注意：聊天/记录等全屏页必须挂在「同级顶层」，不能和 Shell 同挂在 /room/:roomId 下，

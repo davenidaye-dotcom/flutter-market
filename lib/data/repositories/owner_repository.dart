@@ -532,8 +532,27 @@ class OwnerRepository {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> precheckFeipanBind(String username) async {
+    final data = await _client.post('/owner/feipan/bind/precheck', data: {
+      'username': username.trim(),
+    });
+    return _asMap(data);
+  }
+
   Future<void> bindFeipan(Map<String, dynamic> body) async {
     await _client.post('/owner/feipan/bind', data: body);
+  }
+
+  Future<void> changeFeipanAgentPassword({
+    required String oldPassword,
+    required String newPassword,
+    required String confirmPassword,
+  }) async {
+    await _client.post('/owner/feipan/agent-password', data: {
+      'oldPassword': oldPassword,
+      'newPassword': newPassword,
+      'confirmPassword': confirmPassword,
+    });
   }
 
   Future<void> unbindFeipan() async {
@@ -598,11 +617,15 @@ class OwnerRepository {
 
   Future<Map<String, dynamic>> getFeipanPointsChanges({
     String changeType = 'ALL',
+    String? startDate,
+    String? endDate,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/feipan/points/changes', query: {
       'changeType': changeType,
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
       'pageNum': pageNum,
       'pageSize': pageSize,
     });

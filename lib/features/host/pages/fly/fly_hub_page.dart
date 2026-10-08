@@ -482,7 +482,19 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
                 icon: Icons.lock_outline,
                 color: const Color(0xFF8B7CFF),
                 label: '修改密码',
-                onTap: () => pushHostPage(context, const ChangePasswordPage()),
+                onTap: () {
+                  if (!_bound) {
+                    _needBind();
+                    return;
+                  }
+                  pushHostPage(
+                    context,
+                    ChangePasswordPage(
+                      agentMode: true,
+                      agentUsername: _status['username']?.toString(),
+                    ),
+                  );
+                },
               ),
             ),
             SizedBox(width: 10.w),

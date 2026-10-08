@@ -240,6 +240,7 @@ class LotteryRepository {
                     ),
                   )
                 : content));
+    final accountIdRaw = '${m['accountId'] ?? ''}'.trim();
     return ChatMessageModel(
       id: id,
       sender: isUserChat
@@ -267,6 +268,7 @@ class LotteryRepository {
           : (parsed.issueNo ?? _issueFromMessageId(id.isNotEmpty ? id : m['id']?.toString())),
       drawRanks: parsed.ranks.isEmpty ? null : parsed.ranks,
       avatarUrl: (m['avatarUrl'] ?? m['avatar'])?.toString(),
+      accountId: accountIdRaw.isEmpty ? null : accountIdRaw,
       seq: int.tryParse('${m['seq']}') ?? 0,
       pair: int.tryParse('${m['pair']}') ?? 0,
     );

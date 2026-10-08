@@ -8,6 +8,7 @@ class UserModel {
     this.avatarUrl,
     this.role = AppRole.player,
     this.roomId,
+    this.forceChangePassword = false,
   });
 
   final String id;
@@ -18,6 +19,9 @@ class UserModel {
 
   /// 房主/协管绑定的房间；玩家可为空（首页再选房）
   final String? roomId;
+
+  /// 仅房主首次登录强制改密
+  final bool forceChangePassword;
 
   bool get isHostSide => role.isHostSide;
   bool get isAgentSide => role.isAgentSide;
@@ -30,6 +34,7 @@ class UserModel {
         avatarUrl: json['avatarUrl'] as String?,
         role: AppRoleX.fromApi(json['role'] as String? ?? json['accountType'] as String?),
         roomId: json['roomId']?.toString() ?? json['roomCode']?.toString(),
+        forceChangePassword: json['forceChangePassword'] == true,
       );
 
   /// Map login/register envelope `data` from member/portal auth.
@@ -60,6 +65,7 @@ class UserModel {
       role: AppRoleX.fromApi(data['accountType']?.toString()),
       // Routes use roomCode; numeric roomId lives in SessionStore
       roomId: room?['roomCode']?.toString() ?? room?['roomId']?.toString(),
+      forceChangePassword: data['forceChangePassword'] == true,
     );
   }
 
@@ -70,6 +76,7 @@ class UserModel {
     String? avatarUrl,
     AppRole? role,
     String? roomId,
+    bool? forceChangePassword,
   }) =>
       UserModel(
         id: id ?? this.id,
@@ -78,6 +85,7 @@ class UserModel {
         avatarUrl: avatarUrl ?? this.avatarUrl,
         role: role ?? this.role,
         roomId: roomId ?? this.roomId,
+        forceChangePassword: forceChangePassword ?? this.forceChangePassword,
       );
 
   static const mock = UserModel(

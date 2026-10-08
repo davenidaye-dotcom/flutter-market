@@ -22,6 +22,18 @@ class BetKeypadPanel extends StatefulWidget {
   /// 试玩号禁用：上分 / 下分
   final Set<String> disabledActions;
 
+  /// 大/小/单/双/龙/虎/冠亚和、/ 禁止连续插入（与 [onInsert] 侧校验一致）
+  static const noRepeatTokens = {
+    '大',
+    '小',
+    '单',
+    '双',
+    '龙',
+    '虎',
+    '冠亚和',
+    '/',
+  };
+
   static const _grid = [
     ['大', '1', '2', '3', '⌫'],
     ['小', '4', '5', '6', '龙'],
@@ -58,11 +70,8 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
       widget.onBackspace();
       return;
     }
-    if (key == '空格') {
-      widget.onInsert(' ');
-      return;
-    }
-    widget.onInsert(key);
+    // 「空格」键实际插入 /
+    widget.onInsert(key == '空格' ? '/' : key);
   }
 
   void _onAction(String action) {

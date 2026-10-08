@@ -229,7 +229,14 @@ String hostOpActionLabel(String? action) {
     'MEMBER_STATUS' || 'MEMBER_REBATE' || 'MEMBER_REMARK' || 'MEMBER_DELETE' ||
     'MEMBER_ROBOT' =>
       '用户管理',
-    'FEIPAN_BIND' || 'FEIPAN_UNBIND' || 'FEIPAN_SWITCH' || 'FEIPAN_ODDS' => '飞单',
+    'FEIPAN_BIND' ||
+    'FEIPAN_UNBIND' ||
+    'FEIPAN_SWITCH' ||
+    'FEIPAN_RATIO' ||
+    'FEIPAN_ODDS' ||
+    'FEIPAN_AGENT_PWD' ||
+    'FEIPAN_REPORT' =>
+      '飞单',
     'ODDS' => '赔率与限额',
     'REBATE' => '回水',
     'GAME_SETTINGS' => '彩种',

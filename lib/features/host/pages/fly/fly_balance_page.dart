@@ -5,6 +5,7 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/format/display_number.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../wallet/widgets/date_range_filter.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
@@ -30,6 +31,7 @@ String _feipanChangeTypeLabel(String? raw) {
 }
 
 /// Feipan points — GET /owner/feipan/points/changes
+/// 含绑定代理会员 UP/DOWN + 本房飞单占用/释放/结算
 class FlyBalancePage extends ConsumerStatefulWidget {
   const FlyBalancePage({super.key, required this.roomId});
   final String roomId;
@@ -38,7 +40,8 @@ class FlyBalancePage extends ConsumerStatefulWidget {
   ConsumerState<FlyBalancePage> createState() => _FlyBalancePageState();
 }
 
-class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
+class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
+    with DateRangePageMixin {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
   bool _unbound = false;
@@ -71,6 +74,9 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
     Future.microtask(_load);
   }
 
+  @override
+  void onQuery() => _load();
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -89,9 +95,11 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
         return;
       }
       final data = await repo.getFeipanPointsChanges(
-            changeType: _typeKeys[_typeIndex],
-            pageSize: 50,
-          );
+        changeType: _typeKeys[_typeIndex],
+        startDate: DateRangeFilter.format(start),
+        endDate: DateRangeFilter.format(end),
+        pageSize: 50,
+      );
       if (!mounted) return;
       setState(() {
         _rows = hostRowsOf(data);
@@ -104,69 +112,63 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
     }
   }
 
+  Widget _typeChips() {
+    return SizedBox(
+      height: 36.h,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        itemCount: _types.length,
+        separatorBuilder: (_, _) => SizedBox(width: 6.w),
+        itemBuilder: (_, i) {
+          final active = i == _typeIndex;
+          return GestureDetector(
+            onTap: () {
+              if (_typeIndex == i) return;
+              setState(() => _typeIndex = i);
+              _load();
+            },
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: active ? AppColors.navBlue : const Color(0xFFD6EBFA),
+                borderRadius: BorderRadius.circular(14.r),
+              ),
+              child: Text(
+                _types[i],
+                style: TextStyle(
+                  fontSize: 12.sp,
+                  color: active ? Colors.white : AppColors.navBlue,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
       title: '额度变更',
       body: Column(
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: GestureDetector(
-                    onTap: () async {
-                      final i = await showModalBottomSheet<int>(
-                        context: context,
-                        backgroundColor: Colors.white,
-                        builder: (ctx) {
-                          final maxH = MediaQuery.sizeOf(ctx).height * 0.55;
-                          return SafeArea(
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(maxHeight: maxH),
-                              child: ListView.builder(
-                                shrinkWrap: true,
-                                itemCount: _types.length,
-                                itemBuilder: (_, j) => ListTile(
-                                  title: Text(_types[j]),
-                                  selected: j == _typeIndex,
-                                  onTap: () => Navigator.pop(ctx, j),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                      if (i != null) {
-                        setState(() => _typeIndex = i);
-                        await _load();
-                      }
-                    },
-                    child: Container(
-                      height: 36.h,
-                      padding: EdgeInsets.symmetric(horizontal: 10.w),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: const Color(0xFFAAAAAA)),
-                        borderRadius: BorderRadius.circular(6.r),
-                        color: Colors.white,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(_types[_typeIndex], style: TextStyle(fontSize: 13.sp)),
-                          ),
-                          Icon(Icons.arrow_drop_down, size: 20.sp),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                TextButton(onPressed: _load, child: const Text('刷新')),
-              ],
-            ),
+          SizedBox(height: 8.h),
+          _typeChips(),
+          SizedBox(height: 8.h),
+          DateRangeFilter(
+            quickIndex: quickIndex,
+            start: start,
+            end: end,
+            quickItems: quickItems,
+            onQuickTap: onQuickTap,
+            onPickStart: () => pickDate(isStart: true),
+            onPickEnd: () => pickDate(isStart: false),
+            onQuery: onQuery,
           ),
+          SizedBox(height: 8.h),
           Expanded(
             child: _loading
                 ? const AppPageLoading()
@@ -178,53 +180,62 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage> {
                         ),
                       )
                     : _rows.isEmpty
-                    ? Center(
-                        child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)),
-                      )
-                    : ListView.separated(
-                        padding: EdgeInsets.all(16.w),
-                        itemCount: _rows.length,
-                        separatorBuilder: (_, _) => SizedBox(height: 8.h),
-                        itemBuilder: (_, i) {
-                          final r = _rows[i];
-                          final type = '${r['changeType'] ?? ''}';
-                          final amount = r['amount'] ?? '';
-                          return HostWhiteCard(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${_feipanChangeTypeLabel(type)}  ${displayNumber(amount)}',
-                                  style: TextStyle(
-                                    fontSize: 14.sp,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                SizedBox(height: 4.h),
-                                Text(
-                                  '总额后:${displayNumber(r['totalAfter'])}  占用后:${displayNumber(r['occupiedAfter'])}',
-                                  style: TextStyle(
-                                    fontSize: 12.sp,
-                                    color: AppColors.textSecondary,
-                                  ),
-                                ),
-                                if ('${r['remark'] ?? ''}'.isNotEmpty) ...[
-                                  SizedBox(height: 2.h),
-                                  Text(
-                                    '${r['remark']}',
-                                    style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                                  ),
-                                ],
-                                SizedBox(height: 2.h),
-                                Text(
-                                  '${r['createdAt'] ?? ''}',
-                                  style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                                ),
-                              ],
+                        ? Center(
+                            child: Text(
+                              '暂无数据',
+                              style: TextStyle(color: AppColors.textHint),
                             ),
-                          );
-                        },
-                      ),
+                          )
+                        : ListView.separated(
+                            padding: EdgeInsets.all(16.w),
+                            itemCount: _rows.length,
+                            separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                            itemBuilder: (_, i) {
+                              final r = _rows[i];
+                              final type = '${r['changeType'] ?? ''}';
+                              final amount = r['amount'] ?? '';
+                              return HostWhiteCard(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${_feipanChangeTypeLabel(type)}  ${displayNumber(amount)}',
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4.h),
+                                    Text(
+                                      '总额后:${displayNumber(r['totalAfter'])}  占用后:${displayNumber(r['occupiedAfter'])}',
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                    if ('${r['remark'] ?? ''}'.isNotEmpty) ...[
+                                      SizedBox(height: 2.h),
+                                      Text(
+                                        '${r['remark']}',
+                                        style: TextStyle(
+                                          fontSize: 12.sp,
+                                          color: AppColors.textHint,
+                                        ),
+                                      ),
+                                    ],
+                                    SizedBox(height: 2.h),
+                                    Text(
+                                      '${r['createdAt'] ?? ''}',
+                                      style: TextStyle(
+                                        fontSize: 12.sp,
+                                        color: AppColors.textHint,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
           ),
         ],
       ),

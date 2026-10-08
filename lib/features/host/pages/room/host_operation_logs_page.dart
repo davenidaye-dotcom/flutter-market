@@ -41,9 +41,9 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
     _Filter('审核', action: 'APPLICATION*'),
     _Filter(
       '代理',
-      action: 'MEMBER_AGENT,MEMBER_DOWNLINE,FEIPAN_BIND,FEIPAN_UNBIND,FEIPAN_SWITCH',
+      action: 'MEMBER_AGENT,MEMBER_DOWNLINE',
     ),
-    _Filter('赔率与限额', action: 'ODDS,FEIPAN_ODDS'),
+    _Filter('赔率与限额', action: 'ODDS'),
     _Filter('回水', action: 'REBATE,MEMBER_REBATE'),
     _Filter('彩种', action: 'GAME_SETTINGS'),
     _Filter('公告', action: 'ANNOUNCEMENT'),

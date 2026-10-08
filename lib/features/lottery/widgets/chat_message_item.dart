@@ -84,7 +84,7 @@ class ChatMessageItem extends StatelessWidget {
         ),
       );
     }
-    // 用户下注：左侧默认头像（自己和他人同一套，对齐竞品）
+    // 用户下注：自己右对齐，他人左对齐
     return _UserBetBubble(message: message);
   }
 
@@ -171,47 +171,60 @@ class _UserBetBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = message.sender.trim().isEmpty ? '会员' : message.sender.trim();
+    final mine = message.isSelf;
+    final meta = message.time.trim().isEmpty
+        ? name
+        : (mine ? '${message.time}  $name' : '$name  ${message.time}');
+    final avatar = UserAvatar(
+      codeOrUrl: message.avatarUrl,
+      radius: 18.r,
+      backgroundColor: mine ? AppColors.navBlue : const Color(0xFFBDBDBD),
+    );
+    final bubble = Container(
+      constraints: BoxConstraints(maxWidth: 0.72.sw),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: mine ? AppColors.navBlue : const Color(0xFFF2F2F2),
+        borderRadius: BorderRadius.circular(8.r),
+      ),
+      child: Text(
+        message.content,
+        style: TextStyle(
+          fontSize: 14.sp,
+          height: 1.35,
+          color: mine ? Colors.white : Colors.black,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+    final body = Column(
+      crossAxisAlignment:
+          mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          meta,
+          style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+        ),
+        SizedBox(height: 4.h),
+        bubble,
+      ],
+    );
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          UserAvatar(
-            codeOrUrl: message.avatarUrl,
-            radius: 18.r,
-            backgroundColor: const Color(0xFFBDBDBD),
-          ),
-          SizedBox(width: 8.w),
-          Flexible(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  message.time.trim().isEmpty ? name : '$name  ${message.time}',
-                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                ),
-                SizedBox(height: 4.h),
-                Container(
-                  constraints: BoxConstraints(maxWidth: 0.72.sw),
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF2F2F2),
-                    borderRadius: BorderRadius.circular(8.r),
-                  ),
-                  child: Text(
-                    message.content,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      height: 1.35,
-                      color: Colors.black,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+        children: mine
+            ? [
+                const Spacer(),
+                Flexible(child: body),
+                SizedBox(width: 8.w),
+                avatar,
+              ]
+            : [
+                avatar,
+                SizedBox(width: 8.w),
+                Flexible(child: body),
               ],
-            ),
-          ),
-        ],
       ),
     );
   }

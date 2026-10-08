@@ -497,6 +497,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         issueNo: issue.isNotEmpty ? issue : null,
         isSelf: true,
         avatarUrl: user?.avatarUrl,
+        accountId: user?.id,
       ),
       dedupeKey: id,
     );
@@ -552,6 +553,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       issueNo: issue.isNotEmpty ? issue : null,
       isSelf: true,
       avatarUrl: user?.avatarUrl,
+      accountId: user?.id,
     );
     _publishChatMessage(message, dedupeKey: id);
     _appendLocalReceipt(
@@ -617,18 +619,24 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
             ?.currentIssue ??
         '-';
     final canCancel = _canCancelBetsNow();
+    final detail = command.trim();
+    final amount = betSlipTotalFromText(detail) ??
+        _guessBetAmountText(detail) ??
+        '—';
     final rows = <BetSlipRow>[];
     if (orderIds.isEmpty) {
       rows.add(BetSlipRow(
         issue: issue,
-        amount: command,
+        amount: amount,
+        detail: detail,
         canCancel: canCancel,
       ));
     } else {
       for (final id in orderIds) {
         rows.add(BetSlipRow(
           issue: issue,
-          amount: command,
+          amount: amount,
+          detail: detail,
           orderId: id,
           canCancel: canCancel,
         ));
@@ -793,14 +801,18 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         final content = '${row['content'] ?? ''}'.trim();
         final playName =
             '${row['playName'] ?? row['play_name'] ?? row['playCode'] ?? ''}';
-        final amount = row['amount'];
+        final amountRaw = row['amount'] ?? row['totalAmount'];
         final label = content.isNotEmpty
             ? content
-            : (playName.isNotEmpty ? '$playName/$amount' : '$amount');
+            : (playName.isNotEmpty ? '$playName/$amountRaw' : '$amountRaw');
+        final total = amountRaw != null && '${amountRaw}'.trim().isNotEmpty
+            ? '${amountRaw}'.trim()
+            : (betSlipTotalFromText(label) ?? '—');
         slips.add(
           BetSlipRow(
             issue: issue,
-            amount: label,
+            amount: total,
+            detail: label,
             orderId: orderId.isNotEmpty ? orderId : null,
             canCancel: canCancel,
           ),
@@ -1117,6 +1129,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
   void _insertText(String text) {
     final value = _betCtrl.text;
+    if (BetKeypadPanel.noRepeatTokens.contains(text) && value.endsWith(text)) {
+      return;
+    }
     final next = '$value$text';
     _betCtrl.value = TextEditingValue(
       text: next,
@@ -1451,12 +1466,13 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     try {
       final items = await ref.read(lotteryRepositoryProvider).getLongDragon(
             gameId: _gameId,
-            limit: LongDragonPanel.maxRows,
+            limit: 100,
           );
       if (!mounted || gen != _longDragonLoadGen) return;
-      _longDragonRowsNotifier.value = _mapLongDragonItems(items)
-          .take(LongDragonPanel.maxRows)
-          .toList();
+      final mapped = _mapLongDragonItems(items)
+        ..sort((a, b) => b.streak.compareTo(a.streak));
+      _longDragonRowsNotifier.value =
+          mapped.where((e) => e.streak >= 2).take(LongDragonPanel.maxRows).toList();
       _longDragonLoadedGameId = _gameId;
     } catch (_) {
       if (!mounted || gen != _longDragonLoadGen) return;
@@ -1670,7 +1686,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
               if (open) _markOverlayOpened();
               if (_panel != _BottomPanel.none) _setPanel(_BottomPanel.none);
               _fabSelectedNotifier.value = null;
-              if (open) unawaited(_loadLongDragon());
+              if (open) unawaited(_loadLongDragon(force: true));
             },
           ),
           // 紧贴顶栏下方：不浮在聊天上，避免缝里透出消息

@@ -671,6 +671,27 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     } catch (_) {}
   }
 
+  /// 自己的注单文字标 isSelf（靠右）；优先 accountId，其次昵称兜底。
+  ChatMessageModel _tagSelfBetMessage(
+    ChatMessageModel m, {
+    String accountId = '',
+  }) {
+    if (m.type != ChatMessageType.text || m.isSelf) return m;
+    final user = _ref.read(authSessionProvider).user;
+    final myId = (user?.id ?? '').trim();
+    final aid = accountId.trim().isNotEmpty
+        ? accountId.trim()
+        : (m.accountId ?? '').trim();
+    if (myId.isNotEmpty && aid.isNotEmpty && aid == myId) {
+      return m.copyWith(isSelf: true, accountId: aid);
+    }
+    final nick = (user?.nickname ?? '').trim();
+    if (aid.isEmpty && nick.isNotEmpty && m.sender.trim() == nick) {
+      return m.copyWith(isSelf: true);
+    }
+    return m;
+  }
+
   void _ingestServerChatMessages(
     String gameId,
     List<ChatMessageModel> msgs,
@@ -687,7 +708,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
         return rank(a).compareTo(rank(b));
       });
-    for (final m in ordered) {
+    for (final raw in ordered) {
+      final m = _tagSelfBetMessage(raw);
       final issue = extractIssue(m);
       final String key;
       if (m.type == ChatMessageType.resultCard &&
@@ -1338,23 +1360,27 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       if (content.isEmpty) return;
       final sender = (payload['senderName'] ?? '会员').toString();
       final orderId = payload['orderId']?.toString() ?? '';
+      final accountId = '${payload['accountId'] ?? ''}'.trim();
       final key = orderId.isNotEmpty
           ? 'bet-chat-$gameType-$orderId'
           : 'chat-$gameType-${DateTime.now().millisecondsSinceEpoch}';
       _pushChatOnce(
         key,
         gameType,
-        ChatMessageModel(
-          id: key,
-          sender: sender,
-          content: content,
-          time: _nowTime(),
-          type: ChatMessageType.text,
-          isAdmin: false,
-          issueNo: issue.isNotEmpty ? issue : null,
-          avatarUrl: (payload['avatarUrl'] ?? payload['avatar'])?.toString(),
-          seq: _seqOf(payload),
-          pair: _pairOf(payload),
+        _tagSelfBetMessage(
+          ChatMessageModel(
+            id: key,
+            sender: sender,
+            content: content,
+            time: _nowTime(),
+            type: ChatMessageType.text,
+            isAdmin: false,
+            issueNo: issue.isNotEmpty ? issue : null,
+            avatarUrl: (payload['avatarUrl'] ?? payload['avatar'])?.toString(),
+            accountId: accountId.isEmpty ? null : accountId,
+            seq: _seqOf(payload),
+            pair: _pairOf(payload),
+          ),
         ),
       );
       return;
