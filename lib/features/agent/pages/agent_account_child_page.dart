@@ -23,6 +23,18 @@ bool agentRowIsDelegate(Map<String, dynamic> row) => agentRowType(row) == 'AGENT
 String agentRowName(Map<String, dynamic> row) =>
     '${row['displayName'] ?? row['username'] ?? row['accountId'] ?? ''}';
 
+/// 赔率页信息卡：【几级代理】username (昵称)
+String agentOddsSubjectTitle(Map<String, dynamic> row) {
+  final type = agentAccountTypeLabel(row);
+  final user = '${row['username'] ?? ''}'.trim();
+  final nick = '${row['displayName'] ?? ''}'.trim();
+  final showNick = nick.isNotEmpty && nick != user;
+  final core = user.isEmpty
+      ? (nick.isEmpty ? agentRowName(row) : nick)
+      : (showNick ? '$user ($nick)' : user);
+  return '【$type】$core';
+}
+
 /// 下级详情：占成 / 赔率与限额 / 额度
 class AgentAccountChildPage extends StatelessWidget {
   const AgentAccountChildPage({
@@ -121,7 +133,7 @@ class AgentAccountChildPage extends StatelessWidget {
                                     MaterialPageRoute(
                                       builder: (_) => AgentChildOddsPage(
                                         accountId: id,
-                                        title: name,
+                                        title: agentOddsSubjectTitle(row),
                                       ),
                                     ),
                                   ),

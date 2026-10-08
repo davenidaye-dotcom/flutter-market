@@ -323,7 +323,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     }
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => AgentChildOddsPage(accountId: id, title: agentRowName(row)),
+        builder: (_) => AgentChildOddsPage(accountId: id, title: agentOddsSubjectTitle(row)),
       ),
     );
   }
@@ -342,12 +342,8 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     _drillInto(row, childType: 'ALL');
   }
 
-  String _shortTypeLabel(Map<String, dynamic> row) {
-    if (agentRowIsMember(row)) return '会员';
-    if (agentRowIsDelegate(row)) return '协管';
-    if (agentRowIsAgent(row)) return '代理';
-    return agentAccountTypeLabel(row);
-  }
+  /// 徽章：几级代理 / 代理会员 / 协管
+  String _typeBadgeLabel(Map<String, dynamic> row) => agentAccountTypeLabel(row);
 
   Widget _focusBar() {
     if (_drill.isEmpty) return const SizedBox.shrink();
@@ -421,7 +417,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                   borderRadius: BorderRadius.circular(4.r),
                 ),
                 child: Text(
-                  _shortTypeLabel(r),
+                  _typeBadgeLabel(r),
                   style: TextStyle(fontSize: 12.sp, color: const Color(0xFF2E7D32), fontWeight: FontWeight.w600),
                 ),
               ),
@@ -447,9 +443,21 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
             ],
           ),
           SizedBox(height: 6.h),
-          Text(
-            showNick ? 'ID: ${id ?? '—'} ($nick)' : 'ID: ${id ?? '—'}',
-            style: TextStyle(fontSize: 13.sp, color: AgentChrome.ink),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'ID: ${id ?? '—'}',
+                  style: TextStyle(fontSize: 13.sp, color: AgentChrome.ink),
+                ),
+              ),
+              if (showNick)
+                Text(
+                  nick,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(fontSize: 13.sp, color: AgentChrome.ink),
+                ),
+            ],
           ),
           SizedBox(height: 4.h),
           Row(

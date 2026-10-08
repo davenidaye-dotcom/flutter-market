@@ -86,6 +86,15 @@ class RoomRepository {
     }).where((r) => r.id.isNotEmpty).toList();
   }
 
+  /// 从历史列表隐藏（软删）。[roomId] 为数字房间 ID。
+  Future<void> hideHistoryRoom(String roomId) async {
+    final id = roomId.trim();
+    if (id.isEmpty) {
+      throw const ApiException(message: '房间不能为空');
+    }
+    await _client.delete('/member/rooms/history/$id');
+  }
+
   Future<List<AnnouncementModel>> getAnnouncements(String roomId) async {
     final _ = roomId;
     try {

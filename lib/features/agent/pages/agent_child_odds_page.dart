@@ -28,6 +28,8 @@ class _OddsRow {
     required this.periodLimitCtrl,
     required this.minBetCtrl,
     required this.gameType,
+    this.parentOdds,
+    this.hPlay,
   });
 
   final List<_OddsPlay> plays;
@@ -38,6 +40,20 @@ class _OddsRow {
   final TextEditingController maxBetCtrl;
   final TextEditingController periodLimitCtrl;
   final TextEditingController minBetCtrl;
+  final num? parentOdds;
+  final num? hPlay;
+
+  String rebateLabel() {
+    final odds = num.tryParse(oddsCtrl.text.trim());
+    final p = parentOdds;
+    final h = hPlay;
+    if (odds == null || p == null || h == null || h == 0) {
+      return '抽用返点0%';
+    }
+    var r = (p - odds) / h * 100;
+    if (r < 0) r = 0;
+    return '抽用返点${displayNumber(r)}%';
+  }
 
   void dispose() {
     oddsCtrl.dispose();
@@ -47,7 +63,7 @@ class _OddsRow {
   }
 }
 
-/// 下级赔率：交互对齐房间「赔率设置」，彩种 Tab / 统一调节 / 每玩法卡片。
+/// 下级赔率返水 — 对齐参考：统一修改 + 彩种胶囊 Tab + 玩法卡（赔率/返点说明/单期限额）
 class AgentChildOddsPage extends ConsumerStatefulWidget {
   const AgentChildOddsPage({
     super.key,
@@ -64,7 +80,7 @@ class AgentChildOddsPage extends ConsumerStatefulWidget {
 
 class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   final List<_OddsRow> _rows = [];
-  final _stepCtrl = TextEditingController(text: '0.01');
+  final _stepCtrl = TextEditingController(text: '0.100');
   bool _loading = true;
   bool _saving = false;
   int _gameIndex = 0;
@@ -72,6 +88,10 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
     (type: 'JS_SC', name: '极速赛车'),
     (type: 'AZXY10', name: '澳洲幸运10'),
   ];
+
+  static const _pageBg = Color(0xFFE8EEF5);
+  static const _tabIdle = Color(0xFF8A94A6);
+  static const _tabActive = Color(0xFF5C6B7A);
 
   String get _gameType =>
       _games.isEmpty ? 'JS_SC' : _games[_gameIndex.clamp(0, _games.length - 1)].type;
@@ -94,6 +114,12 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
       r.dispose();
     }
     _rows.clear();
+  }
+
+  num? _asNum(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v;
+    return num.tryParse('$v'.trim());
   }
 
   Future<void> _loadOdds() async {
@@ -121,6 +147,8 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             maxBetCtrl: TextEditingController(text: displayNumber(shown['maxBet'] ?? shown['minBet'])),
             periodLimitCtrl: TextEditingController(text: displayNumber(shown['periodLimit'])),
             minBetCtrl: TextEditingController(text: displayNumber(shown['minBet'])),
+            parentOdds: _asNum(shown['parentOdds']),
+            hPlay: _asNum(shown['hPlay']),
           ),
         );
       }
@@ -132,7 +160,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
     }
   }
 
-  double get _step => double.tryParse(_stepCtrl.text.trim()) ?? 0.01;
+  double get _step => double.tryParse(_stepCtrl.text.trim()) ?? 0.1;
 
   void _adjustAll(double sign) {
     final delta = _step * sign;
@@ -186,7 +214,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             payload,
             gameType: _gameType,
           );
-      AppToast.success('赔率设置已保存');
+      AppToast.success('赔率返水已保存');
       await _loadOdds();
     } catch (e) {
       AppToast.error(e.toString());
@@ -199,65 +227,71 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   Widget build(BuildContext context) {
     return AgentPageFrame(
       title: '',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: ColoredBox(
+        color: _pageBg,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _topBar(),
+            Expanded(
+              child: _loading
+                  ? const AppPageLoading()
+                  : ListView(
+                      padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 20.h),
+                      children: [
+                        _infoCard(),
+                        SizedBox(height: 10.h),
+                        _unifyCard(),
+                        SizedBox(height: 12.h),
+                        _gamePills(),
+                        SizedBox(height: 12.h),
+                        if (_rows.isEmpty)
+                          Padding(
+                            padding: EdgeInsets.symmetric(vertical: 40.h),
+                            child: Center(
+                              child: Text('暂无数据', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
+                            ),
+                          )
+                        else
+                          for (final r in _rows) ...[
+                            _playCard(r),
+                            SizedBox(height: 10.h),
+                          ],
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _topBar() {
+    return Container(
+      color: Colors.white,
+      padding: EdgeInsets.fromLTRB(4.w, 4.h, 12.w, 4.h),
+      child: Row(
         children: [
-          AgentBackTitle(title: '修改${_games[_gameIndex.clamp(0, _games.length - 1)].name}倍率'),
-          AgentGameTabs(
-            games: [for (final g in _games) g.name],
-            current: _gameIndex,
-            onChanged: _saving ? (_) {} : _onGameChanged,
+          IconButton(
+            icon: Icon(Icons.arrow_back_ios_new, size: 16.sp, color: AppColors.navBlue),
+            onPressed: () => Navigator.of(context).maybePop(),
           ),
           Expanded(
-            child: _loading
-                ? const AppPageLoading()
-                : ListView(
-                    padding: EdgeInsets.fromLTRB(0, 8.h, 0, 16.h),
-                    children: [
-                      AgentSurface(
-                        child: _labeledRow(
-                          '统一调节赔率',
-                          child: _stepperField(
-                            controller: _stepCtrl,
-                            onMinus: () => _adjustAll(-1),
-                            onPlus: () => _adjustAll(1),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 10.h),
-                      Padding(
-                        padding: EdgeInsets.symmetric(horizontal: 12.w),
-                        child: Text(
-                          '${_games[_gameIndex.clamp(0, _games.length - 1)].name}赔率',
-                          style: TextStyle(
-                            fontSize: 15.sp,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 10.h),
-                      if (_rows.isEmpty)
-                        Padding(
-                          padding: EdgeInsets.symmetric(vertical: 40.h),
-                          child: Center(
-                            child: Text('暂无数据', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
-                          ),
-                        )
-                      else
-                        for (var i = 0; i < _rows.length; i++) ...[
-                          _playCard(i, _rows[i]),
-                          SizedBox(height: 10.h),
-                        ],
-                    ],
-                  ),
+            child: Text(
+              '赔率返水',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17.sp,
+                fontWeight: FontWeight.w700,
+                color: AppColors.navBlue,
+              ),
+            ),
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 16.h),
-            child: AgentTealButton(
-              label: _saving ? '...' : '保存',
-              block: true,
-              onTap: _loading || _saving ? () {} : _save,
+          TextButton(
+            onPressed: _loading || _saving ? null : _save,
+            child: Text(
+              _saving ? '...' : '保存',
+              style: TextStyle(fontSize: 15.sp, color: AgentChrome.ink, fontWeight: FontWeight.w600),
             ),
           ),
         ],
@@ -265,139 +299,187 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
     );
   }
 
-  Widget _playCard(int index, _OddsRow row) {
-    final no = (index + 1).toString().padLeft(2, '0');
-    return AgentSurface(
+  Widget _infoCard() {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Text(
+        '${widget.title} 赔率返水',
+        style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
+      ),
+    );
+  }
+
+  Widget _unifyCard() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 14.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                decoration: BoxDecoration(
-                  color: AgentChrome.accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4.r),
-                ),
-                child: Text(
-                  no,
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: AgentChrome.accent,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(row.name, style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600)),
-                    if (row.rangeText.trim().isNotEmpty)
-                      Text(
-                        row.rangeText,
-                        style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
-                      ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _fieldCol('赔率', row.oddsCtrl, decimal: true)),
-              SizedBox(width: 8.w),
-              Expanded(child: _fieldCol('单注限额', row.maxBetCtrl)),
-              SizedBox(width: 8.w),
-              Expanded(child: _fieldCol('单期总限额', row.periodLimitCtrl)),
-            ],
-          ),
+          Text('统一修改', style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink)),
           SizedBox(height: 10.h),
-          _fieldCol('单注最低', row.minBetCtrl),
+          Row(
+            children: [
+              _stepBtn('−', () => _adjustAll(-1)),
+              SizedBox(width: 10.w),
+              Expanded(
+                child: _inputBox(
+                  controller: _stepCtrl,
+                  textAlign: TextAlign.center,
+                  decimal: true,
+                ),
+              ),
+              SizedBox(width: 10.w),
+              _stepBtn('+', () => _adjustAll(1)),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _fieldCol(String label, TextEditingController ctrl, {bool decimal = false}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
-        SizedBox(height: 6.h),
-        _boxField(
-          controller: ctrl,
-          keyboardType: decimal
-              ? const TextInputType.numberWithOptions(decimal: true)
-              : TextInputType.number,
-        ),
-      ],
-    );
-  }
-
-  Widget _labeledRow(String label, {required Widget child}) {
-    return Row(
-      children: [
-        SizedBox(
-          width: 100.w,
-          child: Text(label, style: TextStyle(fontSize: 14.sp)),
-        ),
-        Expanded(child: child),
-      ],
-    );
-  }
-
-  Widget _stepperField({
-    required TextEditingController controller,
-    required VoidCallback onMinus,
-    required VoidCallback onPlus,
-  }) {
-    return Row(
-      children: [
-        _roundBtn(Icons.remove, onMinus),
-        SizedBox(width: 8.w),
-        Expanded(
-          child: _boxField(
-            controller: controller,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            textAlign: TextAlign.center,
-          ),
-        ),
-        SizedBox(width: 8.w),
-        _roundBtn(Icons.add, onPlus),
-      ],
-    );
-  }
-
-  Widget _roundBtn(IconData icon, VoidCallback onTap) {
+  Widget _stepBtn(String label, VoidCallback onTap) {
     return Material(
-      color: AgentChrome.accent.withValues(alpha: 0.12),
-      borderRadius: BorderRadius.circular(8.r),
+      color: const Color(0xFFF0F3F7),
+      borderRadius: BorderRadius.circular(10.r),
       child: InkWell(
         onTap: _saving ? null : onTap,
-        borderRadius: BorderRadius.circular(8.r),
+        borderRadius: BorderRadius.circular(10.r),
         child: SizedBox(
-          width: 36.w,
-          height: 36.w,
-          child: Icon(icon, size: 18.sp, color: AgentChrome.accent),
+          width: 44.w,
+          height: 44.w,
+          child: Center(
+            child: Text(label, style: TextStyle(fontSize: 22.sp, color: AgentChrome.ink, fontWeight: FontWeight.w500)),
+          ),
         ),
       ),
     );
   }
 
-  Widget _boxField({
+  Widget _gamePills() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < _games.length; i++) ...[
+            if (i > 0) SizedBox(width: 8.w),
+            Material(
+              color: _gameIndex == i ? _tabActive : Colors.white,
+              borderRadius: BorderRadius.circular(20.r),
+              child: InkWell(
+                onTap: _saving ? null : () => _onGameChanged(i),
+                borderRadius: BorderRadius.circular(20.r),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                  child: Text(
+                    _games[i].name,
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                      color: _gameIndex == i ? Colors.white : _tabIdle,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _playCard(_OddsRow row) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(14.w, 12.h, 14.w, 14.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(row.name, style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink)),
+          SizedBox(height: 10.h),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('赔率返水', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                    SizedBox(height: 6.h),
+                    _inputBox(
+                      controller: row.oddsCtrl,
+                      decimal: true,
+                      onChanged: (_) => setState(() {}),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                flex: 3,
+                child: Padding(
+                  padding: EdgeInsets.only(top: 18.h),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        row.rebateLabel(),
+                        style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+                      ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        row.rangeText.trim().isEmpty ? '' : '限制调节${row.rangeText.trim()}',
+                        style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('单期限额', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                    SizedBox(height: 6.h),
+                    _inputBox(controller: row.periodLimitCtrl),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _inputBox({
     required TextEditingController controller,
-    TextInputType? keyboardType,
+    bool decimal = false,
     TextAlign textAlign = TextAlign.start,
+    ValueChanged<String>? onChanged,
   }) {
     return EmulatorSafeTextField(
       controller: controller,
       enabled: !_saving,
-      keyboardType: keyboardType,
+      keyboardType: decimal
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.number,
       textAlign: textAlign,
+      onChanged: onChanged,
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
       ],
@@ -405,18 +487,18 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
         isDense: true,
         contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
         filled: true,
-        fillColor: AgentChrome.fieldBg,
+        fillColor: Colors.white,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.r),
-          borderSide: const BorderSide(color: AgentChrome.cardBorder),
+          borderSide: const BorderSide(color: Color(0xFFD8DEE6)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.r),
-          borderSide: const BorderSide(color: AgentChrome.cardBorder),
+          borderSide: const BorderSide(color: Color(0xFFD8DEE6)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.r),
-          borderSide: const BorderSide(color: AgentChrome.accent, width: 1.2),
+          borderSide: const BorderSide(color: AppColors.navBlue, width: 1.2),
         ),
       ),
     );

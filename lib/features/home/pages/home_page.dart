@@ -65,6 +65,51 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  Future<void> _confirmHideHistory(RoomModel room) async {
+    final roomId = (room.numericId ?? '').trim();
+    if (roomId.isEmpty) {
+      AppToast.error('无法删除该历史房间');
+      return;
+    }
+    final ok = await showEmulatorSafeDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: Text(
+          '是否删除该房间',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+        ),
+        actionsAlignment: MainAxisAlignment.end,
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(roomRepositoryProvider).hideHistoryRoom(roomId);
+      if (!mounted) return;
+      setState(() {
+        _history = _history
+            .where((r) => (r.numericId ?? '') != roomId)
+            .toList();
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      AppToast.error(e.message);
+    } catch (e) {
+      if (!mounted) return;
+      AppToast.error(_errMsg(e));
+    }
+  }
+
   String _errMsg(Object e) {
     if (e is ApiException) return e.message;
     final s = e.toString();
@@ -271,6 +316,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     _HistoryGrid(
                       rooms: _history,
                       onTap: (r) => _enterRoom(r.roomCode),
+                      onLongPress: _confirmHideHistory,
                     ),
                   SizedBox(height: 40.h),
                 ],
@@ -516,10 +562,15 @@ class _ActionBtn extends StatelessWidget {
 }
 
 class _HistoryGrid extends StatelessWidget {
-  const _HistoryGrid({required this.rooms, required this.onTap});
+  const _HistoryGrid({
+    required this.rooms,
+    required this.onTap,
+    required this.onLongPress,
+  });
 
   final List<RoomModel> rooms;
   final ValueChanged<RoomModel> onTap;
+  final ValueChanged<RoomModel> onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -532,6 +583,7 @@ class _HistoryGrid extends StatelessWidget {
       children: rooms.map((r) {
         return GestureDetector(
           onTap: () => onTap(r),
+          onLongPress: () => onLongPress(r),
           child: SizedBox(
             width: 80.w,
             child: Column(
