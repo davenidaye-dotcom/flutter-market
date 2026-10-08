@@ -12,6 +12,7 @@ import '../../../core/testing/regression_test_flags.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../host/providers/host_apply_notice_provider.dart';
 import '../engine/lottery_period_engine.dart';
@@ -1242,6 +1243,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final type = (payload['event'] ?? payload['type'] ?? '').toString().toUpperCase();
 
     if (type == 'SESSION_KICKED') {
+      final reason = payload['reason']?.toString();
+      final message = payload['message']?.toString() ?? '';
+      if (reason == 'MAINT' || message.contains('维护')) {
+        AppToast.info('系统维护中');
+      }
       SessionKick.signal();
       return;
     }

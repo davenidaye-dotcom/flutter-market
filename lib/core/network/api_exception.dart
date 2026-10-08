@@ -7,26 +7,30 @@ class ApiException implements Exception {
   final int? code;
 
   factory ApiException.fromDio(DioException error) {
+    final status = error.response?.statusCode;
+    if (status == 502 || status == 503 || status == 504) {
+      return ApiException(message: '系统维护中', code: status);
+    }
     final data = error.response?.data;
     if (data is Map) {
       final msg = data['msg'] ?? data['message'];
       if (msg is String && msg.isNotEmpty) {
         return ApiException(
           message: msg,
-          code: data['code'] is int ? data['code'] as int : error.response?.statusCode,
+          code: data['code'] is int ? data['code'] as int : status,
         );
       }
     }
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.receiveTimeout) {
-      return const ApiException(message: '\u7f51\u7edc\u8d85\u65f6\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5');
+      return const ApiException(message: '系统维护中');
     }
     if (error.type == DioExceptionType.connectionError) {
-      return const ApiException(message: '\u7f51\u7edc\u8fde\u63a5\u5931\u8d25');
+      return const ApiException(message: '系统维护中');
     }
     return ApiException(
-      message: error.message ?? '\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25',
-      code: error.response?.statusCode,
+      message: error.message ?? '网络请求失败',
+      code: status,
     );
   }
 

@@ -7,6 +7,7 @@ import '../../../config/env/env_config.dart';
 import '../../profile/app_release.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../data/models/app_role.dart';
 import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/auth_card.dart';
@@ -97,7 +98,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (!mounted) return;
       context.go(dest);
     } catch (e) {
-      AppToast.error(e.toString());
+      final msg = e is ApiException ? e.message : e.toString();
+      AppToast.error(msg.isEmpty ? '系统维护中' : msg);
     } finally {
       if (mounted) setState(() => _loading = false);
     }

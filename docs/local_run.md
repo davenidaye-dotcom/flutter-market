@@ -6,10 +6,10 @@
 cd /Users/joe/project/stockhome/flutter-market/flutter-market
 ```
 
-每次新开终端先把 Flutter 加进 PATH。这台机器的 Flutter 在 `/tmp/flutter-sdk`（3.47.5），不在系统 PATH 里。`/tmp` 重启后可能被清掉，命令找不到 `flutter` 时先确认这个目录还在。
+每次新开终端先把 Flutter 加进 PATH。Flutter 3.47.5 装在 `/Users/joe/flutter`，不在系统 PATH 里。以前放在 `/tmp/flutter-sdk`，那个目录会被系统清掉，不要再用。
 
 ```bash
-export PATH="/tmp/flutter-sdk/bin:$PATH"
+export PATH="/Users/joe/flutter/bin:$PATH"
 ```
 
 默认环境是 `dev`。不写 `--dart-define` 也是 dev。接口默认连 `http://207.148.105.182/api/v1`，WebSocket 是 `ws://207.148.105.182/ws/v1`。
@@ -31,7 +31,7 @@ Xcode 27.0 已装在 `/Applications/Xcode.app`，开发者目录已指向它。�
 iOS 只有 `Runner` 这一个 scheme，不要加 `--flavor`。
 
 ```bash
-export PATH="/tmp/flutter-sdk/bin:$PATH"
+export PATH="/Users/joe/flutter/bin:$PATH"
 cd /Users/joe/project/stockhome/flutter-market/flutter-market
 xcrun simctl boot "iPhone 18 Pro"
 open -a Simulator
@@ -57,7 +57,7 @@ Flutter 已配置使用这个目录（`flutter config --android-sdk`）。第一
 打包并安装到当前这台手机（`23116PN5BC`，id `47199271`）。换手机时先看 `flutter devices`，再把 `-d` 后面的 id 换成新的。
 
 ```bash
-export PATH="/tmp/flutter-sdk/bin:$PATH"
+export PATH="/Users/joe/flutter/bin:$PATH"
 cd /Users/joe/project/stockhome/flutter-market/flutter-market
 flutter devices
 flutter run --flavor dev -d 47199271 --dart-define=APP_ENV=dev
@@ -68,7 +68,7 @@ flutter run --flavor dev -d 47199271 --dart-define=APP_ENV=dev
 只打出 APK 文件、不经过 `flutter run` 安装时，用下面这条。这是 dev 的 release 包，产物在 `build/app/outputs/flutter-apk/app-dev-release.apk`。
 
 ```bash
-export PATH="/tmp/flutter-sdk/bin:$PATH"
+export PATH="/Users/joe/flutter/bin:$PATH"
 cd /Users/joe/project/stockhome/flutter-market/flutter-market
 flutter build apk --flavor dev --dart-define=APP_ENV=dev --release
 ```
