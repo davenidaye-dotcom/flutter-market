@@ -229,12 +229,13 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         roomId: widget.roomId,
         gameId: widget.gameId,
         accountId: accountId,
+        channel: BetRepeatChannel.market,
         command: command,
       ),
     );
   }
 
-  /// 按上一笔成功注单再下。开了下注确认则先展示指令。
+  /// 按盘面通道上一笔成功注单再下；始终先出明细确认，避免误触连发。
   Future<void> _repeatLast() async {
     if (!widget.canBet) return;
     if (_submitLocked || widget.betGuard.isBusy || _submitting.value) return;
@@ -243,6 +244,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       roomId: widget.roomId,
       gameId: widget.gameId,
       accountId: accountId,
+      channel: BetRepeatChannel.market,
     );
     if (!mounted) return;
     if (command == null || command.trim().isEmpty) {
@@ -250,28 +252,24 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       return;
     }
     final text = command.trim();
-    final live = ref.read(roomLotteryLiveProvider(widget.roomId));
-    final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
     var submitCommand = text;
     var items = _itemsFromStored(text);
-    if (needConfirm) {
-      final game = ref
-          .read(roomLotteryLiveProvider(widget.roomId).notifier)
-          .displayGameFor(widget.gameId);
-      final issue = game?.currentIssue;
-      final confirmed = await showBetConfirmDialog(
-        context: context,
+    final game = ref
+        .read(roomLotteryLiveProvider(widget.roomId).notifier)
+        .displayGameFor(widget.gameId);
+    final issue = game?.currentIssue;
+    final confirmed = await showBetConfirmDialog(
+      context: context,
+      issueNo: issue,
+      loadLines: () => _loadConfirmLines(
+        command: text,
+        items: items,
         issueNo: issue,
-        loadLines: () => _loadConfirmLines(
-          command: text,
-          items: items,
-          issueNo: issue,
-        ),
-      );
-      if (confirmed == null || !mounted) return;
-      submitCommand = confirmed.command;
-      items = confirmed.items;
-    }
+      ),
+    );
+    if (confirmed == null || !mounted) return;
+    submitCommand = confirmed.command;
+    items = confirmed.items;
     _submitLocked = true;
     _submitting.value = true;
     final localId = widget.onBetStart?.call(submitCommand);

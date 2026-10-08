@@ -260,7 +260,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         state = state.copyWith(
           points: _toInt(dash['balance']),
           turnover: _toInt(dash['turnover']),
-          winLoss: _toInt(dash['todayProfitLoss']),
+          winLoss: _toInt(dash['playerWinLoss']),
           rebate: _toInt(dash['rebate']),
         );
       } catch (_) {}
@@ -921,7 +921,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         final dash = await _ref.read(ownerRepositoryProvider).getDashboard();
         points = _toInt(dash['balance']);
         turnover = _toInt(dash['turnover']);
-        winLoss = _toInt(dash['todayProfitLoss']);
+        winLoss = _toInt(dash['playerWinLoss']);
         rebate = _toInt(dash['rebate']);
       } catch (_) {}
       try {

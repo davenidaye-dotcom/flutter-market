@@ -1,28 +1,41 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../data/models/chat_message_model.dart';
-import '../../../data/models/user_model.dart';
 
-/// 聊天「重复」：回填上一笔成功下注指令，排除系统/开奖/封盘文案。
+/// 重复通道：聊天键盘 vs 盘面，禁止互相覆盖。
+enum BetRepeatChannel {
+  chat,
+  market;
+
+  String get keyPart => name;
+}
+
+/// 「重复」：按房间+彩种+账号+通道存上一笔成功指令。
 class BetRepeatStore {
   BetRepeatStore._();
 
-  static const _prefPrefix = 'flyroom_bet_repeat_';
+  static const _prefPrefix = 'flyroom_bet_repeat_v2_';
   static final Map<String, String> _memory = {};
 
-  static String _key(String roomId, String gameId, String accountId) =>
-      '$roomId|$gameId|$accountId';
+  static String _key(
+    String roomId,
+    String gameId,
+    String accountId,
+    BetRepeatChannel channel,
+  ) =>
+      '$roomId|$gameId|$accountId|${channel.keyPart}';
 
   static Future<void> save({
     required String roomId,
     required String gameId,
     required String accountId,
+    required BetRepeatChannel channel,
     required String command,
   }) async {
     final text = command.trim();
     if (text.isEmpty || !isRepeatableBetContent(text)) return;
     if (accountId.isEmpty) return;
-    final key = _key(roomId, gameId, accountId);
+    final key = _key(roomId, gameId, accountId, channel);
     _memory[key] = text;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('$_prefPrefix$key', text);
@@ -32,9 +45,10 @@ class BetRepeatStore {
     required String roomId,
     required String gameId,
     required String accountId,
+    required BetRepeatChannel channel,
   }) async {
     if (accountId.isEmpty) return null;
-    final key = _key(roomId, gameId, accountId);
+    final key = _key(roomId, gameId, accountId, channel);
     final cached = _memory[key];
     if (cached != null && cached.isNotEmpty) return cached;
     final prefs = await SharedPreferences.getInstance();
@@ -44,6 +58,21 @@ class BetRepeatStore {
       return disk;
     }
     return null;
+  }
+
+  static Future<bool> has({
+    required String roomId,
+    required String gameId,
+    required String accountId,
+    required BetRepeatChannel channel,
+  }) async {
+    final v = await read(
+      roomId: roomId,
+      gameId: gameId,
+      accountId: accountId,
+      channel: channel,
+    );
+    return v != null && v.isNotEmpty;
   }
 }
 
@@ -120,22 +149,4 @@ bool isUserBetChatMessage(ChatMessageModel message) {
   if (message.type != ChatMessageType.text) return false;
   if (message.isAdmin) return false;
   return isRepeatableBetContent(message.content);
-}
-
-String? findRepeatableFromMessages(
-  List<ChatMessageModel> messages,
-  UserModel? user,
-) {
-  final selfNames = <String>{'我'};
-  if (user != null) {
-    if (user.nickname.isNotEmpty) selfNames.add(user.nickname);
-    if (user.username.isNotEmpty) selfNames.add(user.username);
-  }
-  for (var i = messages.length - 1; i >= 0; i--) {
-    final m = messages[i];
-    if (!isUserBetChatMessage(m)) continue;
-    if (!selfNames.contains(m.sender)) continue;
-    return m.content.trim();
-  }
-  return null;
 }

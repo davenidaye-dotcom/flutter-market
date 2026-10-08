@@ -14,6 +14,7 @@ import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
+import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -117,6 +118,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   final _historyDisplayRowsNotifier = ValueNotifier<List<HistoryDrawRow>>(const []);
   final _betGuard = SubmitGuard(debounce: const Duration(milliseconds: 300));
   final _betBusy = ValueNotifier(false);
+  /// 当前彩种聊天通道是否有可重复注单
+  final _chatRepeatAvailable = ValueNotifier(false);
   final _walletGuard = SubmitGuard();
   bool _walletDialogOpen = false;
   bool _rebateDialogOpen = false;
@@ -738,14 +741,27 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   void _rememberSuccessfulBet(String command) {
-    unawaited(
-      BetRepeatStore.save(
+    unawaited(() async {
+      await BetRepeatStore.save(
         roomId: widget.roomId,
         gameId: _gameId,
         accountId: _accountId,
+        channel: BetRepeatChannel.chat,
         command: command,
-      ),
+      );
+      await _refreshChatRepeatAvailable();
+    }());
+  }
+
+  Future<void> _refreshChatRepeatAvailable() async {
+    final ok = await BetRepeatStore.has(
+      roomId: widget.roomId,
+      gameId: _gameId,
+      accountId: _accountId,
+      channel: BetRepeatChannel.chat,
     );
+    if (!mounted) return;
+    _chatRepeatAvailable.value = ok;
   }
 
   void _scheduleBetDraftSave() {
@@ -825,17 +841,32 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   Future<void> _repeatLastBet() async {
-    final user = ref.read(authSessionProvider).user;
     final command = await BetRepeatStore.read(
-          roomId: widget.roomId,
-          gameId: _gameId,
-          accountId: _accountId,
-        ) ??
-        findRepeatableFromMessages(_messagesNotifier.value, user);
+      roomId: widget.roomId,
+      gameId: _gameId,
+      accountId: _accountId,
+      channel: BetRepeatChannel.chat,
+    );
     if (!mounted) return;
     if (command == null || command.isEmpty) {
       AppToast.info('暂无可重复注单');
+      _chatRepeatAvailable.value = false;
       return;
+    }
+    final current = _betCtrl.text.trim();
+    if (current.isNotEmpty && current != command) {
+      final overwrite = await showEmulatorSafeDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('覆盖当前输入？'),
+          content: Text('用上一笔「$command」覆盖输入框'),
+          actions: [
+            TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
+            FilledButton(onPressed: safeDialogPop(ctx, true), child: const Text('覆盖')),
+          ],
+        ),
+      );
+      if (overwrite != true || !mounted) return;
     }
     _betCtrl.value = TextEditingValue(
       text: command,
@@ -849,6 +880,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         draft: command,
       ),
     );
+    AppToast.info('已填入上一笔：$command');
   }
 
   void _hydrateMessagesFromCacheIfReady() {
@@ -876,6 +908,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _messagesLoadingNotifier.value = false;
     _hydrateMessagesFromCacheIfReady();
     _scheduleDockLayoutSync();
+    unawaited(_refreshChatRepeatAvailable());
     final subGen = ++_chatSubGen;
     Future.microtask(() async {
       if (_disposed || subGen != _chatSubGen) return;
@@ -978,6 +1011,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _chatHiddenNotifier.dispose();
     _showJumpBottomNotifier.dispose();
     _betBusy.dispose();
+    _chatRepeatAvailable.dispose();
     super.dispose();
   }
 
@@ -995,6 +1029,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _historyExpandedNotifier.value = false;
     _fabSelectedNotifier.value = null;
     _messagesLoadingNotifier.value = false;
+    unawaited(_refreshChatRepeatAvailable());
 
     final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
     final warm = live.isChatTimelineWarm(gameId);
@@ -1129,6 +1164,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
   void _insertText(String text) {
     final value = _betCtrl.text;
+    if (BetKeypadPanel.isPlayMutexBlocked(value, text)) {
+      return;
+    }
     if (BetKeypadPanel.noRepeatTokens.contains(text) && value.endsWith(text)) {
       return;
     }
@@ -1889,44 +1927,50 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                   child: ValueListenableBuilder<bool>(
                     valueListenable: _betBusy,
                     builder: (_, submitting, __) {
-                      return ValueListenableBuilder<_BottomPanel>(
-                        valueListenable: _panelNotifier,
-                        builder: (_, panel, __) {
-                          if (panel == _BottomPanel.quickBet) {
-                            return const SizedBox.shrink();
-                          }
-                          return _ChatBetDock(
-                            canBet: canBet,
-                            isTrialAccount: isTrialAccount,
-                            submitting: submitting,
-                            panel: panel,
-                            controller: _betCtrl,
-                            onTapInput: () {
-                              if (!canBet || !_acceptPanelToggle()) return;
-                              if (_panel == _BottomPanel.keypad) {
-                                _setPanel(_BottomPanel.none);
-                              } else {
-                                _setPanel(_BottomPanel.keypad);
+                      return ValueListenableBuilder<bool>(
+                        valueListenable: _chatRepeatAvailable,
+                        builder: (_, repeatAvailable, __) {
+                          return ValueListenableBuilder<_BottomPanel>(
+                            valueListenable: _panelNotifier,
+                            builder: (_, panel, __) {
+                              if (panel == _BottomPanel.quickBet) {
+                                return const SizedBox.shrink();
                               }
-                              _fabSelectedNotifier.value = null;
-                              // 历史下拉保持展开，仅再点顶栏球号行才关
-                            },
-                            onToggleMenu: () {
-                              if (!canBet || !_acceptPanelToggle()) return;
-                              _setPanel(
-                                panel == _BottomPanel.menu
-                                    ? _BottomPanel.none
-                                    : _BottomPanel.menu,
+                              return _ChatBetDock(
+                                canBet: canBet,
+                                isTrialAccount: isTrialAccount,
+                                submitting: submitting,
+                                panel: panel,
+                                controller: _betCtrl,
+                                repeatAvailable: repeatAvailable,
+                                onTapInput: () {
+                                  if (!canBet || !_acceptPanelToggle()) return;
+                                  if (_panel == _BottomPanel.keypad) {
+                                    _setPanel(_BottomPanel.none);
+                                  } else {
+                                    _setPanel(_BottomPanel.keypad);
+                                  }
+                                  _fabSelectedNotifier.value = null;
+                                  // 历史下拉保持展开，仅再点顶栏球号行才关
+                                },
+                                onToggleMenu: () {
+                                  if (!canBet || !_acceptPanelToggle()) return;
+                                  _setPanel(
+                                    panel == _BottomPanel.menu
+                                        ? _BottomPanel.none
+                                        : _BottomPanel.menu,
+                                  );
+                                  _fabSelectedNotifier.value = null;
+                                  // 历史下拉保持展开
+                                },
+                                onSend: _submitBet,
+                                onInsert: _insertText,
+                                onBackspace: _backspace,
+                                onClearAll: _clearBetText,
+                                onAction: _handleAction,
+                                onMenuItem: _onMenuItem,
                               );
-                              _fabSelectedNotifier.value = null;
-                              // 历史下拉保持展开
                             },
-                            onSend: _submitBet,
-                            onInsert: _insertText,
-                            onBackspace: _backspace,
-                            onClearAll: _clearBetText,
-                            onAction: _handleAction,
-                            onMenuItem: _onMenuItem,
                           );
                         },
                       );
@@ -2023,6 +2067,7 @@ class _ChatBetDock extends StatelessWidget {
     required this.submitting,
     required this.panel,
     required this.controller,
+    required this.repeatAvailable,
     required this.onTapInput,
     required this.onToggleMenu,
     required this.onSend,
@@ -2038,6 +2083,7 @@ class _ChatBetDock extends StatelessWidget {
   final bool submitting;
   final _BottomPanel panel;
   final TextEditingController controller;
+  final bool repeatAvailable;
   final VoidCallback onTapInput;
   final VoidCallback onToggleMenu;
   final VoidCallback onSend;
@@ -2059,6 +2105,10 @@ class _ChatBetDock extends StatelessWidget {
         (panel == _BottomPanel.keypad || panel == _BottomPanel.menu);
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final trialDisabled = isTrialAccount ? _trialDisabled : const <String>{};
+    final keypadDisabled = <String>{
+      ...trialDisabled,
+      if (!repeatAvailable) '重复',
+    };
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -2097,13 +2147,19 @@ class _ChatBetDock extends StatelessWidget {
                       index: panel == _BottomPanel.menu ? 1 : 0,
                       sizing: StackFit.expand,
                       children: [
-                        BetKeypadPanel(
-                          enabled: canBet,
-                          disabledActions: trialDisabled,
-                          onInsert: onInsert,
-                          onBackspace: onBackspace,
-                          onClearAll: onClearAll,
-                          onAction: onAction,
+                        ValueListenableBuilder<TextEditingValue>(
+                          valueListenable: controller,
+                          builder: (_, value, __) {
+                            return BetKeypadPanel(
+                              enabled: canBet,
+                              disabledActions: keypadDisabled,
+                              currentText: value.text,
+                              onInsert: onInsert,
+                              onBackspace: onBackspace,
+                              onClearAll: onClearAll,
+                              onAction: onAction,
+                            );
+                          },
                         ),
                         BetActionMenuPanel(
                           onItemTap: onMenuItem,

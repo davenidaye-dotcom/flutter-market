@@ -12,6 +12,7 @@ class BetKeypadPanel extends StatefulWidget {
     required this.onAction,
     this.enabled = true,
     this.disabledActions = const {},
+    this.currentText = '',
   });
 
   final ValueChanged<String> onInsert;
@@ -21,8 +22,21 @@ class BetKeypadPanel extends StatefulWidget {
   final bool enabled;
   /// 试玩号禁用：上分 / 下分
   final Set<String> disabledActions;
+  /// 当前输入，用于玩法键互斥与禁连点
+  final String currentText;
 
-  /// 大/小/单/双/龙/虎/冠亚和、/ 禁止连续插入（与 [onInsert] 侧校验一致）
+  /// 大/小/单/双/龙/虎/冠亚和 整框互斥（只能出现其中一个）
+  static const playMutexTokens = [
+    '冠亚和', // 先匹配长词
+    '大',
+    '小',
+    '单',
+    '双',
+    '龙',
+    '虎',
+  ];
+
+  /// 大/小/单/双/龙/虎/冠亚和、/ 禁止连续插入
   static const noRepeatTokens = {
     '大',
     '小',
@@ -38,13 +52,28 @@ class BetKeypadPanel extends StatefulWidget {
     ['大', '1', '2', '3', '⌫'],
     ['小', '4', '5', '6', '龙'],
     ['单', '7', '8', '9', '虎'],
-    ['双', '空格', '0', '/', '冠亚和'],
+    ['双', '/', '0', '/', '冠亚和'],
   ];
 
   static const double actionRowHeight = 44;
   static const double keyRowHeight = 46;
 
   static double get panelHeight => actionRowHeight + keyRowHeight * 4 + 1;
+
+  /// 输入中已出现的玩法词；无则 null
+  static String? activePlayToken(String text) {
+    for (final t in playMutexTokens) {
+      if (text.contains(t)) return t;
+    }
+    return null;
+  }
+
+  /// 再插入 [token] 是否被玩法互斥挡住
+  static bool isPlayMutexBlocked(String current, String token) {
+    if (!playMutexTokens.contains(token)) return false;
+    final active = activePlayToken(current);
+    return active != null && active != token;
+  }
 
   @override
   State<BetKeypadPanel> createState() => _BetKeypadPanelState();
@@ -70,8 +99,10 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
       widget.onBackspace();
       return;
     }
-    // 「空格」键实际插入 /
-    widget.onInsert(key == '空格' ? '/' : key);
+    if (BetKeypadPanel.isPlayMutexBlocked(widget.currentText, key)) {
+      return;
+    }
+    widget.onInsert(key);
   }
 
   void _onAction(String action) {
@@ -81,6 +112,7 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final activePlay = BetKeypadPanel.activePlayToken(widget.currentText);
     return RepaintBoundary(
       child: ColoredBox(
         color: Colors.white,
@@ -105,7 +137,8 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
                       Expanded(
                         child: _KeyCell(
                           label: key,
-                          enabled: widget.enabled,
+                          enabled: widget.enabled &&
+                              !_isPlayKeyDisabled(key, activePlay),
                           onTap: () => _onKey(key),
                           onLongPress: key == '⌫' ? widget.onClearAll : null,
                         ),
@@ -117,6 +150,12 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
         ),
       ),
     );
+  }
+
+  bool _isPlayKeyDisabled(String key, String? activePlay) {
+    if (activePlay == null) return false;
+    if (!BetKeypadPanel.playMutexTokens.contains(key)) return false;
+    return key != activePlay;
   }
 }
 
@@ -263,7 +302,7 @@ class _KeyCellState extends State<_KeyCell> {
                       : Text(
                           widget.label,
                           style: TextStyle(
-                            fontSize: widget.label == '空格' ? 15.sp : 20.sp,
+                            fontSize: 20.sp,
                             color: textColor,
                             fontWeight: FontWeight.w500,
                           ),
