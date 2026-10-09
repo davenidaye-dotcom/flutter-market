@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/app_pull_refresh.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../widgets/host_ui.dart';
 import 'host_odds_edit_page.dart';
 
-/// 赔率设置 — 彩种列表入口（竞品：图标 + 名称 + PK10 副标题）
+/// 赔率设置 — 彩种列表入口（含赛车系列统一设置）
 class HostOddsLimitsPage extends ConsumerStatefulWidget {
   const HostOddsLimitsPage({super.key, required this.roomId});
   final String roomId;
@@ -56,7 +57,6 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
     return n.isEmpty ? _typeOf(g) : n;
   }
 
-  /// 副标题：接口有 category 用接口，否则 PK10 类默认 PK10
   String _subtitleOf(Map<String, dynamic> g) {
     final raw = (g['category'] ??
             g['gameCategory'] ??
@@ -66,7 +66,7 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
         .toString()
         .trim();
     if (raw.isNotEmpty) return raw;
-    return 'PK10';
+    return GameSeries.isPk10(_typeOf(g)) ? GameSeries.pk10Name : 'PK10';
   }
 
   (IconData, Color) _iconOf(String name, String type) {
@@ -89,22 +89,51 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
     return (Icons.sports_motorsports, const Color(0xFFE53935));
   }
 
-  void _open(Map<String, dynamic> g) {
+  List<({String type, String name})> get _catalog => _games
+      .map((e) => (type: _typeOf(e), name: _nameOf(e)))
+      .where((e) => e.type.isNotEmpty)
+      .toList();
+
+  bool get _hasPk10Series {
+    final types = _catalog.map((e) => e.type.toUpperCase()).toSet();
+    return types.contains('JS_SC') && types.contains('AZXY10') ||
+        types.any(GameSeries.isPk10);
+  }
+
+  void _open(Map<String, dynamic> g, {bool seriesMode = false}) {
     final type = _typeOf(g);
     if (type.isEmpty) return;
-    final catalog = _games
-        .map((e) => (type: _typeOf(e), name: _nameOf(e)))
-        .where((e) => e.type.isNotEmpty)
-        .toList();
     pushHostPage(
       context,
       HostOddsEditPage(
         roomId: widget.roomId,
         gameType: type,
         gameName: _nameOf(g),
-        games: catalog,
+        games: _catalog,
+        seriesMode: seriesMode,
       ),
     );
+  }
+
+  void _openSeries() {
+    Map<String, dynamic>? base;
+    for (final g in _games) {
+      if (_typeOf(g).toUpperCase() == 'JS_SC') {
+        base = g;
+        break;
+      }
+    }
+    if (base == null) {
+      for (final g in _games) {
+        if (GameSeries.isPk10(_typeOf(g))) {
+          base = g;
+          break;
+        }
+      }
+    }
+    base ??= _games.isEmpty ? null : _games.first;
+    if (base == null) return;
+    _open(base, seriesMode: true);
   }
 
   @override
@@ -118,7 +147,7 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: const [
                   SizedBox(height: 120),
-                  const AppPageLoading(),
+                  AppPageLoading(),
                 ],
               )
             : _games.isEmpty
@@ -134,75 +163,132 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
                       ),
                     ],
                   )
-                : ListView.separated(
+                : ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
-                    itemCount: _games.length,
-                    separatorBuilder: (_, _) => SizedBox(height: 10.h),
-                    itemBuilder: (_, i) {
-                      final g = _games[i];
-                      final name = _nameOf(g);
-                      final type = _typeOf(g);
-                      final sub = _subtitleOf(g);
-                      final (icon, color) = _iconOf(name, type);
-                      return Material(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12.r),
-                        child: InkWell(
-                          onTap: () => _open(g),
-                          borderRadius: BorderRadius.circular(12.r),
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 14.w,
-                              vertical: 12.h,
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44.w,
-                                  height: 44.w,
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(10.r),
-                                  ),
-                                  child: Icon(icon, color: color, size: 24.sp),
-                                ),
-                                SizedBox(width: 12.w),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        name,
-                                        style: TextStyle(
-                                          fontSize: 16.sp,
-                                          fontWeight: FontWeight.w700,
-                                          color: AppColors.textPrimary,
-                                        ),
-                                      ),
-                                      SizedBox(height: 2.h),
-                                      Text(
-                                        sub,
-                                        style: TextStyle(
-                                          fontSize: 12.sp,
-                                          color: AppColors.textHint,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.chevron_right,
-                                  size: 20.sp,
-                                  color: AppColors.textHint,
-                                ),
-                              ],
-                            ),
-                          ),
+                    children: [
+                      if (_hasPk10Series) ...[
+                        _seriesCard(),
+                        SizedBox(height: 12.h),
+                        Text(
+                          '或单独设置',
+                          style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
                         ),
-                      );
-                    },
+                        SizedBox(height: 8.h),
+                      ],
+                      for (var i = 0; i < _games.length; i++) ...[
+                        if (i > 0) SizedBox(height: 10.h),
+                        _gameCard(_games[i]),
+                      ],
+                    ],
                   ),
+      ),
+    );
+  }
+
+  Widget _seriesCard() {
+    final names = GameSeries.pk10Members
+        .where((t) => _catalog.any((g) => g.type.toUpperCase() == t))
+        .map(GameSeries.displayName)
+        .join(' · ');
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12.r),
+      child: InkWell(
+        onTap: _openSeries,
+        borderRadius: BorderRadius.circular(12.r),
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 14.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                GameSeries.pk10Name,
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                names.isEmpty ? '极速赛车 · 澳洲幸运10' : names,
+                style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+              ),
+              SizedBox(height: 10.h),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(vertical: 10.h),
+                decoration: BoxDecoration(
+                  color: AppColors.navBlue,
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  '按系列统一设置',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _gameCard(Map<String, dynamic> g) {
+    final name = _nameOf(g);
+    final type = _typeOf(g);
+    final sub = _subtitleOf(g);
+    final (icon, color) = _iconOf(name, type);
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12.r),
+      child: InkWell(
+        onTap: () => _open(g),
+        borderRadius: BorderRadius.circular(12.r),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+          child: Row(
+            children: [
+              Container(
+                width: 44.w,
+                height: 44.w,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Icon(icon, color: color, size: 24.sp),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2.h),
+                    Text(
+                      sub,
+                      style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, size: 20.sp, color: AppColors.textHint),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -1860,8 +1860,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     });
   }
 
-  int _toInt(dynamic v) =>
-      v is int ? v : (v is num ? v.toInt() : int.tryParse('$v') ?? 0);
+  /// 金额在接口里是字符串（如 "1280.00"）。int.tryParse 不认小数点，会把余额解析成 0。
+  int _toInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    final n = num.tryParse('$v'.trim());
+    return n?.toInt() ?? 0;
+  }
 
   @override
   void dispose() {

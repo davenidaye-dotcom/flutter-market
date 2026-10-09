@@ -5,6 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../shared/format/play_odds_merge.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
@@ -81,6 +82,7 @@ class AgentChildOddsPage extends ConsumerStatefulWidget {
 class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   final List<_OddsRow> _rows = [];
   final _stepCtrl = TextEditingController(text: '0.100');
+  final _minLimitCtrl = TextEditingController(text: '1');
   bool _loading = true;
   bool _saving = false;
   int _gameIndex = 0;
@@ -105,6 +107,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   @override
   void dispose() {
     _stepCtrl.dispose();
+    _minLimitCtrl.dispose();
     _clearRows();
     super.dispose();
   }
@@ -132,8 +135,11 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
       if (!mounted) return;
       _clearRows();
       final merged = mergePlayOddsRows(raw);
+      num? firstMin;
       for (final m in merged) {
         final shown = m.shown;
+        final minBet = _asNum(shown['minBet']);
+        firstMin ??= minBet;
         _rows.add(
           _OddsRow(
             plays: [
@@ -144,14 +150,17 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             rangeText: '${shown['rangeText'] ?? ''}',
             gameType: '${shown['gameType'] ?? _gameType}',
             oddsCtrl: TextEditingController(text: displayNumber(shown['odds'])),
-            maxBetCtrl: TextEditingController(text: displayNumber(shown['maxBet'] ?? shown['minBet'])),
-            periodLimitCtrl: TextEditingController(text: displayNumber(shown['periodLimit'])),
-            minBetCtrl: TextEditingController(text: displayNumber(shown['minBet'])),
+            maxBetCtrl: TextEditingController(text: displayNumber(shown['maxBet'] ?? 50000)),
+            periodLimitCtrl: TextEditingController(
+              text: displayNumber(shown['periodLimit'] ?? shown['userPeriodLimit'] ?? 0),
+            ),
+            minBetCtrl: TextEditingController(text: displayNumber(minBet ?? 1)),
             parentOdds: _asNum(shown['parentOdds']),
             hPlay: _asNum(shown['hPlay']),
           ),
         );
       }
+      _minLimitCtrl.text = displayNumber(firstMin ?? 1);
       setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
@@ -180,8 +189,9 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
     await _loadOdds();
   }
 
-  Future<void> _save() async {
+  Future<void> _save({bool syncSameSeries = false}) async {
     if (_saving) return;
+    final globalMin = num.tryParse(_minLimitCtrl.text.trim()) ?? 1;
     final payload = <Map<String, dynamic>>[];
     for (final r in _rows) {
       final odds = num.tryParse(r.oddsCtrl.text.trim());
@@ -191,13 +201,13 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
       }
       final maxBet = num.tryParse(r.maxBetCtrl.text.trim());
       final period = num.tryParse(r.periodLimitCtrl.text.trim());
-      final minBet = num.tryParse(r.minBetCtrl.text.trim());
+      final minBet = num.tryParse(r.minBetCtrl.text.trim()) ?? globalMin;
       for (final play in r.plays) {
         payload.add({
           'gameType': r.gameType.isEmpty ? _gameType : r.gameType,
           'playCode': play.code,
           'odds': odds,
-          'minBet': ?minBet,
+          'minBet': minBet,
           'maxBet': ?maxBet,
           'periodLimit': ?period,
         });
@@ -207,20 +217,66 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
       AppToast.error('没有赔率数据');
       return;
     }
+    if (syncSameSeries && GameSeries.peersOf(_gameType).isNotEmpty) {
+      final peers = GameSeries.peerNamesHint(_gameType);
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('同步同类型游戏'),
+          content: Text('将把当前赔率与限额同步到：$peers'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('同步')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
     setState(() => _saving = true);
     try {
       await ref.read(agentRepositoryProvider).saveChildOdds(
             widget.accountId,
             payload,
             gameType: _gameType,
+            syncSameSeries: syncSameSeries,
           );
-      AppToast.success('赔率返水已保存');
+      AppToast.success(syncSameSeries ? '已保存并同步同类型' : '赔率返水已保存');
       await _loadOdds();
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _onMore() async {
+    if (_saving || _loading) return;
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: const Text('保存'),
+              onTap: () => Navigator.pop(ctx, 'save'),
+            ),
+            if (GameSeries.isPk10(_gameType))
+              ListTile(
+                title: const Text('同步同类型游戏'),
+                subtitle: Text('覆盖 ${GameSeries.peerNamesHint(_gameType)}'),
+                onTap: () => Navigator.pop(ctx, 'sync'),
+              ),
+            ListTile(
+              title: const Text('取消'),
+              onTap: () => Navigator.pop(ctx),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'save') await _save();
+    if (action == 'sync') await _save(syncSameSeries: true);
   }
 
   @override
@@ -287,8 +343,13 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
               ),
             ),
           ),
+          if (GameSeries.isPk10(_gameType))
+            IconButton(
+              onPressed: _loading || _saving ? null : _onMore,
+              icon: Icon(Icons.more_horiz, size: 22.sp, color: AgentChrome.ink),
+            ),
           TextButton(
-            onPressed: _loading || _saving ? null : _save,
+            onPressed: _loading || _saving ? null : () => _save(),
             child: Text(
               _saving ? '...' : '保存',
               style: TextStyle(fontSize: 15.sp, color: AgentChrome.ink, fontWeight: FontWeight.w600),
@@ -341,6 +402,10 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
               _stepBtn('+', () => _adjustAll(1)),
             ],
           ),
+          SizedBox(height: 12.h),
+          Text('最低限额', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+          SizedBox(height: 6.h),
+          _inputBox(controller: _minLimitCtrl),
         ],
       ),
     );
@@ -412,7 +477,6 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -428,7 +492,6 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
               ),
               SizedBox(width: 8.w),
               Expanded(
-                flex: 3,
                 child: Padding(
                   padding: EdgeInsets.only(top: 18.h),
                   child: Column(
@@ -447,13 +510,27 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
                   ),
                 ),
               ),
-              SizedBox(width: 8.w),
+            ],
+          ),
+          SizedBox(height: 10.h),
+          Row(
+            children: [
               Expanded(
-                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('单期限额', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                    Text('单注限额', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                    SizedBox(height: 6.h),
+                    _inputBox(controller: row.maxBetCtrl),
+                  ],
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('单期总限额', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
                     SizedBox(height: 6.h),
                     _inputBox(controller: row.periodLimitCtrl),
                   ],

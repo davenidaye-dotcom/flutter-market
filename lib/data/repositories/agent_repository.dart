@@ -272,10 +272,16 @@ class AgentRepository {
     return const [];
   }
 
-  Future<void> saveChildOdds(int accountId, List<Map<String, dynamic>> rows, {String? gameType}) async {
+  Future<void> saveChildOdds(
+    int accountId,
+    List<Map<String, dynamic>> rows, {
+    String? gameType,
+    bool syncSameSeries = false,
+  }) async {
     await _client.put('/agent/accounts/$accountId/odds', data: {
       if (gameType != null && gameType.isNotEmpty) 'gameType': gameType,
       'rows': rows,
+      if (syncSameSeries) 'syncSameSeries': true,
     });
   }
 }

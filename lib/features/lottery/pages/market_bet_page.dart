@@ -134,8 +134,8 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   static const _ranks = ['冠军', '亚军', '三名', '四名', '五名', '六名', '七名', '八名', '九名', '十名'];
   static const _presets = [5, 10, 50, 100, 500];
   static const _twoSides = ['大', '小', '单', '双', '龙', '虎'];
+  static const _gyhSides = ['大', '小', '单', '双'];
   static const _sumValues = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-  static const _twoSideRanks = ['冠亚和', ..._ranks];
 
   @override
   void initState() {
@@ -151,7 +151,11 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
           ? _oddsFromOwner(await ref.read(ownerRepositoryProvider).getOdds(gameType: widget.gameId))
           : await ref.read(lotteryRepositoryProvider).getRoomOdds(widget.gameId);
       if (!mounted || odds.isEmpty) return;
-      setState(() => _roomOdds = odds);
+      setState(() {
+        _roomOdds = {
+          for (final e in odds.entries) e.key.toUpperCase(): e.value,
+        };
+      });
     } catch (_) {}
   }
 
@@ -168,14 +172,24 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   }
 
   String _roomOdd(String? key) {
-    if (key == null) return '';
-    final v = _roomOdds[key];
+    if (key == null || key.isEmpty) return '';
+    final v = _roomOdds[key.toUpperCase()];
     if (v == null || v.isEmpty) return '';
     return v;
   }
 
   String _oddsForUi(String uiKey) {
-    return _roomOdd(oddsKeyOf(uiKeyToPlayCode(uiKey)));
+    final key = oddsKeyOf(uiKeyToPlayCode(uiKey));
+    final direct = _roomOdd(key);
+    if (direct.isNotEmpty) return direct;
+    // 有的房间只配了「大、双 / 小、单」，大小单双仍要显示出赔率。
+    final alt = switch (uiKey) {
+      '冠亚和/大' || '冠亚和/双' => 'GYH_DS',
+      '冠亚和/小' || '冠亚和/单' => 'GYH_XS',
+      _ => null,
+    };
+    if (alt == null || alt == key) return '';
+    return _roomOdd(alt);
   }
 
   String _quickNumberOdds() {
@@ -617,12 +631,13 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   Widget _buildTwoSides(Set<String> selected) {
     return ListView.builder(
       padding: EdgeInsets.all(8.w),
-      itemCount: _twoSideRanks.length,
+      itemCount: _ranks.length,
       itemBuilder: (_, index) {
-        final rank = _twoSideRanks[index];
+        final rank = _ranks[index];
         final collapseKey = '两面-$rank';
         final collapsed = _collapsed.contains(collapseKey);
-        final sides = rank == '冠亚和' ? const ['大', '小', '单', '双'] : _twoSides;
+        // 六名到十名没有龙虎赔率，不显示龙虎。
+        final sides = index < 5 ? _twoSides : _gyhSides;
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -714,27 +729,56 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   }
 
   Widget _buildSum(Set<String> selected) {
-    final keys = _sumValues;
-    return GridView.builder(
+    const collapseKey = '冠亚和-大小单双';
+    final collapsed = _collapsed.contains(collapseKey);
+    return ListView(
       padding: EdgeInsets.all(8.w),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 6.h,
-        crossAxisSpacing: 6.w,
-        childAspectRatio: 2.8,
-      ),
-      itemCount: keys.length,
-      itemBuilder: (_, i) {
-        final n = keys[i];
-        final key = '冠亚和/$n';
-        return _OddsCell(
-          label: '$n',
-          odds: _oddsForUi('冠亚和/$n'),
-          selected: selected.contains(key),
-          onTap: () => _toggle(key),
-          expand: true,
-        );
-      },
+      children: [
+        _SectionHeader(
+          title: '冠亚和',
+          collapsed: collapsed,
+          onTap: () => _toggleCollapse(collapseKey),
+        ),
+        if (!collapsed)
+          Padding(
+            padding: EdgeInsets.only(bottom: 8.h),
+            child: Wrap(
+              spacing: 6.w,
+              runSpacing: 6.h,
+              children: [
+                for (final side in _gyhSides)
+                  _OddsCell(
+                    label: side,
+                    odds: _oddsForUi('冠亚和/$side'),
+                    selected: selected.contains('冠亚和/$side'),
+                    onTap: () => _toggle('冠亚和/$side'),
+                  ),
+              ],
+            ),
+          ),
+        for (var i = 0; i < _sumValues.length; i += 2)
+          Padding(
+            padding: EdgeInsets.only(bottom: 6.h),
+            child: Row(
+              children: [
+                Expanded(child: _sumNumberCell(_sumValues[i], selected)),
+                SizedBox(width: 6.w),
+                Expanded(child: _sumNumberCell(_sumValues[i + 1], selected)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _sumNumberCell(int n, Set<String> selected) {
+    final key = '冠亚和/$n';
+    return _OddsCell(
+      label: '$n',
+      odds: _oddsForUi(key),
+      selected: selected.contains(key),
+      onTap: () => _toggle(key),
+      expand: true,
     );
   }
 }

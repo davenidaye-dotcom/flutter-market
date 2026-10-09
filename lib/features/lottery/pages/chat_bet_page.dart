@@ -2197,6 +2197,42 @@ class _ChatHeader extends ConsumerWidget {
         (s) => (s.points, s.turnover, s.winLoss, s.rebate),
       ),
     );
+    final isHost = ref.watch(authSessionProvider.select((s) => s.isHostSide));
+    final pointsLabel = isHost ? '玩家总积分' : '积分';
+    final turnoverLabel = isHost ? '玩家总流水' : '流水';
+    final winLossLabel = isHost ? '玩家总输赢' : '输赢';
+    final rebateLabel = isHost ? '玩家总回水' : '回水';
+    // 房主四字标签更长，列加宽；彩种名可收缩，避免被顶出屏幕。
+    final leftW = isHost ? 108.w : 88.w;
+    final rightW = isHost ? 108.w : 72.w;
+    final title = GestureDetector(
+      onTap: onTapTitle,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: EdgeInsets.only(right: 8.w),
+        child: Row(
+          mainAxisSize: isHost ? MainAxisSize.max : MainAxisSize.min,
+          children: [
+            if (isHost)
+              Flexible(
+                child: Text(
+                  gameName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+                ),
+              )
+            else
+              Text(
+                gameName,
+                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+              ),
+            SizedBox(width: 2.w),
+            Icon(Icons.arrow_drop_down, size: 20.sp, color: AppColors.textPrimary),
+          ],
+        ),
+      ),
+    );
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -2214,43 +2250,26 @@ class _ChatHeader extends ConsumerWidget {
                 icon: Icon(Icons.arrow_back_ios, size: 18.sp),
                 onPressed: onBack,
               ),
-              GestureDetector(
-                onTap: onTapTitle,
-                behavior: HitTestBehavior.opaque,
-                child: Padding(
-                  padding: EdgeInsets.only(right: 8.w),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        gameName,
-                        style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
-                      ),
-                      SizedBox(width: 2.w),
-                      Icon(Icons.arrow_drop_down, size: 20.sp, color: AppColors.textPrimary),
-                    ],
-                  ),
-                ),
-              ),
-              const Spacer(),
+              if (isHost) Expanded(child: title) else title,
+              if (!isHost) const Spacer(),
               Padding(
-                padding: EdgeInsets.only(right: 28.w),
+                padding: EdgeInsets.only(right: isHost ? 4.w : 28.w),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: 88.w, child: _statText('积分:${wallet.$1}')),
-                        SizedBox(width: 72.w, child: _statText('流水:${wallet.$2}')),
+                        SizedBox(width: leftW, child: _statText('$pointsLabel:${wallet.$1}', compact: isHost)),
+                        SizedBox(width: rightW, child: _statText('$turnoverLabel:${wallet.$2}', compact: isHost)),
                       ],
                     ),
                     SizedBox(height: 2.h),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: 88.w, child: _statText('输赢:${wallet.$3}')),
-                        SizedBox(width: 72.w, child: _statText('回水:${wallet.$4}')),
+                        SizedBox(width: leftW, child: _statText('$winLossLabel:${wallet.$3}', compact: isHost)),
+                        SizedBox(width: rightW, child: _statText('$rebateLabel:${wallet.$4}', compact: isHost)),
                       ],
                     ),
                   ],
@@ -2263,11 +2282,17 @@ class _ChatHeader extends ConsumerWidget {
     );
   }
 
-  Widget _statText(String text) {
+  Widget _statText(String text, {bool compact = false}) {
     return Text(
       text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
       textAlign: TextAlign.left,
-      style: TextStyle(fontSize: 11.sp, color: AppColors.textPrimary, height: 1.2),
+      style: TextStyle(
+        fontSize: compact ? 10.sp : 11.sp,
+        color: AppColors.textPrimary,
+        height: 1.2,
+      ),
     );
   }
 }
