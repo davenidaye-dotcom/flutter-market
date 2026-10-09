@@ -326,41 +326,45 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
         : widget.gameName!.trim();
     return HostSubPageScaffold(
       title: title,
-      trailing: !_pk10 || _loading || _unbound
-          ? null
-          : InkWell(
-              onTap: _saving
-                  ? null
-                  : () => setState(() => _syncSameSeries = !_syncSameSeries),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 20.w,
-                    height: 20.w,
-                    child: Checkbox(
-                      value: _syncSameSeries,
-                      onChanged: _saving
-                          ? null
-                          : (v) => setState(() => _syncSameSeries = v ?? true),
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ),
-                  Text(
-                    '同步同类型',
-                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                  ),
-                  SizedBox(width: 8.w),
-                ],
-              ),
-            ),
       body: _loading
           ? const AppPageLoading()
           : _unbound
               ? _unboundBody()
               : Column(
                   children: [
+                    if (_pk10)
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 0),
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: InkWell(
+                            onTap: _saving
+                                ? null
+                                : () => setState(() => _syncSameSeries = !_syncSameSeries),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SizedBox(
+                                  width: 20.w,
+                                  height: 20.w,
+                                  child: Checkbox(
+                                    value: _syncSameSeries,
+                                    onChanged: _saving
+                                        ? null
+                                        : (v) => setState(() => _syncSameSeries = v ?? true),
+                                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ),
+                                Text(
+                                  '同步同类型',
+                                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     Padding(
                       padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 0),
                       child: HostWhiteCard(

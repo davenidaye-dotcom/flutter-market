@@ -203,8 +203,8 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
             ),
           ),
           Expanded(flex: 12, child: _num(_numStr(shown['odds']))),
-          Expanded(flex: 14, child: _num(_numStr(shown['periodLimit']))),
-          Expanded(flex: 12, child: _num(_numStr(shown['minBet']))),
+          Expanded(flex: 14, child: _num(_numStr(_limit(shown['periodLimit'], shown['userPeriodLimit'])))),
+          Expanded(flex: 12, child: _num(_numStr(_limit(shown['minBet'], 1)))),
         ],
       ),
     );
@@ -241,4 +241,18 @@ List<Map<String, dynamic>> _asMapList(dynamic v) {
 String _numStr(dynamic v) {
   if (v == null) return '';
   return displayNumber(v);
+}
+
+/// 0 / 空视为未设置，回退到备选值（与编辑页 periodLimit??userPeriodLimit 对齐）
+dynamic _limit(dynamic primary, dynamic fallback) {
+  num? asNum(dynamic v) {
+    if (v is num) return v;
+    return num.tryParse('$v');
+  }
+
+  final p = asNum(primary);
+  if (p != null && p > 0) return p;
+  final f = asNum(fallback);
+  if (f != null && f > 0) return f;
+  return fallback ?? primary ?? '';
 }
