@@ -436,7 +436,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         ),
       );
       if (confirmed == null || !mounted) return;
-      submitCommand = confirmed.command;
+      // 气泡/同房广播仍用盘口拼出的原文；确认框只带回改后 items。
       submitItems = confirmed.items;
     }
     _submitLocked = true;

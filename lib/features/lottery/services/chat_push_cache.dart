@@ -813,12 +813,48 @@ class ChatPushCache {
     final cacheKey = '$roomId:$gameId';
     final cached = _timelineCache[cacheKey];
     if (keys.contains(serverId)) {
+      // WS 已占 serverId：把本地头像/isSelf 补上去，避免开确认后头像丢失。
+      final fromLocal = local;
+      if (fromLocal != null) {
+        for (var i = 0; i < buffer.length; i++) {
+          final entry = buffer[i];
+          if (entry.dedupeKey != serverId) continue;
+          final existing = entry.push.message;
+          final existingAv = existing.avatarUrl?.trim() ?? '';
+          final localAv = fromLocal.avatarUrl?.trim() ?? '';
+          buffer[i] = _CachedChatPush(
+            dedupeKey: serverId,
+            push: LotteryChatPush(
+              gameId: entry.push.gameId,
+              message: existing.copyWith(
+                isSelf: existing.isSelf || fromLocal.isSelf,
+                avatarUrl: existingAv.isNotEmpty
+                    ? existing.avatarUrl
+                    : (localAv.isEmpty ? existing.avatarUrl : fromLocal.avatarUrl),
+                accountId: existing.accountId ?? fromLocal.accountId,
+              ),
+            ),
+          );
+          break;
+        }
+      }
       if (cached != null) {
         _timelineCache[cacheKey] = [
           for (final m in cached)
-            if (m.id != localId) m,
+            if (m.id != localId)
+              (m.id == serverId && fromLocal != null)
+                  ? m.copyWith(
+                      isSelf: m.isSelf || fromLocal.isSelf,
+                      avatarUrl: (m.avatarUrl?.trim().isNotEmpty == true)
+                          ? m.avatarUrl
+                          : fromLocal.avatarUrl,
+                      accountId: m.accountId ?? fromLocal.accountId,
+                    )
+                  : m,
         ];
       }
+      _invalidateGameCache(roomId, gameId);
+      _schedulePersist(roomId);
       return;
     }
     final kept = local;

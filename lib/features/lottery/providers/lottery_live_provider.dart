@@ -673,24 +673,34 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   }
 
   /// 自己的注单文字标 isSelf（靠右）；优先 accountId，其次昵称兜底。
+  /// 标为自己后若头像为空，回填当前登录用户头像。
   ChatMessageModel _tagSelfBetMessage(
     ChatMessageModel m, {
     String accountId = '',
   }) {
-    if (m.type != ChatMessageType.text || m.isSelf) return m;
+    if (m.type != ChatMessageType.text) return m;
     final user = _ref.read(authSessionProvider).user;
     final myId = (user?.id ?? '').trim();
     final aid = accountId.trim().isNotEmpty
         ? accountId.trim()
         : (m.accountId ?? '').trim();
-    if (myId.isNotEmpty && aid.isNotEmpty && aid == myId) {
-      return m.copyWith(isSelf: true, accountId: aid);
+    var tagged = m;
+    if (!m.isSelf) {
+      if (myId.isNotEmpty && aid.isNotEmpty && aid == myId) {
+        tagged = m.copyWith(isSelf: true, accountId: aid);
+      } else {
+        final nick = (user?.nickname ?? '').trim();
+        if (aid.isEmpty && nick.isNotEmpty && m.sender.trim() == nick) {
+          tagged = m.copyWith(isSelf: true);
+        }
+      }
     }
-    final nick = (user?.nickname ?? '').trim();
-    if (aid.isEmpty && nick.isNotEmpty && m.sender.trim() == nick) {
-      return m.copyWith(isSelf: true);
-    }
-    return m;
+    if (!tagged.isSelf) return tagged;
+    final existingAv = tagged.avatarUrl?.trim() ?? '';
+    if (existingAv.isNotEmpty) return tagged;
+    final mine = (user?.avatarUrl ?? '').trim();
+    if (mine.isEmpty) return tagged;
+    return tagged.copyWith(avatarUrl: mine);
   }
 
   void _ingestServerChatMessages(
@@ -1294,6 +1304,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    // 资金变动：user 频道，无 gameType。上分/下分/回水/结算入账后刷新顶栏。
+    if (type == 'WALLET_DELTA') {
+      _onWalletDelta(payload);
+      return;
+    }
+
     final gameType = _gameTypeFromEvent(event, payload);
     if (gameType == null || gameType.isEmpty) {
       if (type == 'RESYNC') {
@@ -1625,6 +1641,34 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           .read(hostApplyNoticeProvider.notifier)
           .onWsApplyNotice(payload);
     } catch (_) {}
+  }
+
+  /// 上分/下分/回水/结算等入账：即时写顶栏四字段（payload 已带 available/turnover/winLoss/rebate）。
+  void _onWalletDelta(Map<String, dynamic> payload) {
+    final rid = '${payload['roomId'] ?? ''}'.trim();
+    if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
+    // 房主顶栏是房间汇总，走 HTTP dashboard。
+    if (_wsIsHost || _ref.read(authSessionProvider).isHostSide) {
+      unawaited(refreshWallet());
+      return;
+    }
+    final hasAvailable = payload.containsKey('available');
+    final hasTurnover = payload.containsKey('turnover');
+    final hasWinLoss = payload.containsKey('winLoss');
+    final hasRebate =
+        payload.containsKey('rebate') || payload.containsKey('paidRebate');
+    if (!hasAvailable && !hasTurnover && !hasWinLoss && !hasRebate) {
+      unawaited(refreshWallet());
+      return;
+    }
+    state = state.copyWith(
+      points: hasAvailable ? _toInt(payload['available']) : null,
+      turnover: hasTurnover ? _toInt(payload['turnover']) : null,
+      winLoss: hasWinLoss ? _toInt(payload['winLoss']) : null,
+      rebate: hasRebate
+          ? _toInt(payload['paidRebate'] ?? payload['rebate'])
+          : null,
+    );
   }
 
   Map<String, dynamic> _wsPayload(Map<String, dynamic> event) {

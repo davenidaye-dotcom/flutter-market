@@ -15,13 +15,8 @@ import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../login_remember_store.dart';
 import '../providers/auth_session_provider.dart';
-
-/// 文档种子账号（01_账户体系说明 / 各端接口文档）
-const _kSeedPassword = 'Pass1234';
-const _kPlayerSeed = 'player01';
-const _kOwnerSeed = 'owner01';
-const _kAgentSeed = 'abcd658';
 
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key});
@@ -45,13 +40,37 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(_loadVersion);
+    Future.microtask(() async {
+      await _loadVersion();
+      await _applyRemember();
+    });
   }
 
   Future<void> _loadVersion() async {
     final version = await AppRelease.footerVersion();
     if (!mounted) return;
     setState(() => _version = version);
+  }
+
+  Future<void> _applyRemember() async {
+    final saved = await LoginRememberStore.load(_hostMode);
+    if (!mounted) return;
+    setState(() {
+      _remember = saved.remember;
+      if (saved.remember) {
+        _usernameCtrl.text = saved.username;
+        _passwordCtrl.text = saved.password;
+      } else {
+        _usernameCtrl.clear();
+        _passwordCtrl.clear();
+      }
+    });
+  }
+
+  Future<void> _switchHostMode(bool hostMode) async {
+    if (_hostMode == hostMode) return;
+    setState(() => _hostMode = hostMode);
+    await _applyRemember();
   }
 
   @override
@@ -63,12 +82,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.dispose();
   }
 
-  void _fill(String username, {required bool hostMode}) {
-    setState(() => _hostMode = hostMode);
-    _usernameCtrl.text = username;
-    _passwordCtrl.text = _kSeedPassword;
-  }
-
   Future<void> _login() async {
     if (_usernameCtrl.text.trim().isEmpty || _passwordCtrl.text.isEmpty) {
       AppToast.info('请输入用户名和密码');
@@ -77,14 +90,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _loading = true);
+    final username = _usernameCtrl.text.trim();
+    final password = _passwordCtrl.text;
     try {
       await ref.read(authSessionProvider.notifier).login(
-            username: _usernameCtrl.text.trim(),
-            password: _passwordCtrl.text,
+            username: username,
+            password: password,
             captchaToken: '',
             expectedRole: _hostMode ? AppRole.host : AppRole.player,
           );
       if (!mounted) return;
+      await LoginRememberStore.save(
+        hostMode: _hostMode,
+        remember: _remember,
+        username: username,
+        password: password,
+      );
       final user = ref.read(authSessionProvider).user;
       FocusManager.instance.primaryFocus?.unfocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
@@ -194,63 +215,24 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                     ),
                                   ),
                                 ),
-                                if (EnvConfig.isDebug) ...[
-                                  SizedBox(height: 12.h),
-                                  if (!_hostMode)
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: OutlinedButton(
-                                        onPressed: _loading
-                                            ? null
-                                            : () => _fill(_kPlayerSeed, hostMode: false),
-                                        child: const Text('填入 player01'),
-                                      ),
-                                    )
-                                  else
-                                    Wrap(
-                                      spacing: 8.w,
-                                      runSpacing: 8.h,
-                                      children: [
-                                        OutlinedButton(
-                                          onPressed: _loading
-                                              ? null
-                                              : () => _fill(_kOwnerSeed, hostMode: true),
-                                          child: const Text('owner01'),
-                                        ),
-                                        OutlinedButton(
-                                          onPressed: _loading
-                                              ? null
-                                              : () => _fill(_kAgentSeed, hostMode: true),
-                                          child: const Text('abcd658'),
-                                        ),
-                                      ],
-                                    ),
-                                ],
                                 SizedBox(height: 24.h),
                                 GlossyButton(text: '立即登录', onPressed: _login, loading: _loading),
-                                if (EnvConfig.isDebug) ...[
-                                  SizedBox(height: 12.h),
-                                  Text(
-                                    _hostMode
-                                        ? '房主：owner01 / Pass1234\n'
-                                            '代理：abcd658 / Pass1234'
-                                        : '玩家：player01 / Pass1234',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(fontSize: 11.sp, color: AppColors.textHint, height: 1.4),
-                                  ),
-                                ],
                                 SizedBox(height: 28.h),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                   children: [
                                     if (_hostMode)
-                                      _footerAction(Icons.person_outline, '玩家', () {
-                                        setState(() => _hostMode = false);
-                                      })
+                                      _footerAction(
+                                        Icons.person_outline,
+                                        '玩家',
+                                        () => _switchHostMode(false),
+                                      )
                                     else
-                                      _footerAction(Icons.person, '房主', () {
-                                        setState(() => _hostMode = true);
-                                      }),
+                                      _footerAction(
+                                        Icons.person,
+                                        '房主',
+                                        () => _switchHostMode(true),
+                                      ),
                                     if (!_hostMode)
                                       _footerAction(
                                         Icons.person_add_alt_1,

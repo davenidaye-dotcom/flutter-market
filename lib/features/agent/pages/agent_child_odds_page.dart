@@ -294,8 +294,6 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             child: Text(
               '赔率返水',
               textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 17.sp,
                 fontWeight: FontWeight.w700,
@@ -303,42 +301,40 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
               ),
             ),
           ),
+          if (GameSeries.isPk10(_gameType))
+            InkWell(
+              onTap: _loading || _saving
+                  ? null
+                  : () => setState(() => _syncSameSeries = !_syncSameSeries),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 20.w,
+                    height: 20.w,
+                    child: Checkbox(
+                      value: _syncSameSeries,
+                      onChanged: _loading || _saving
+                          ? null
+                          : (v) => setState(() => _syncSameSeries = v ?? true),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                  Text(
+                    '同步同类型',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  ),
+                  SizedBox(width: 4.w),
+                ],
+              ),
+            ),
           TextButton(
             onPressed: _loading || _saving ? null : _save,
             child: Text(
               _saving ? '...' : '保存',
               style: TextStyle(fontSize: 15.sp, color: AgentChrome.ink, fontWeight: FontWeight.w600),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _syncCheck() {
-    if (!GameSeries.isPk10(_gameType)) return const SizedBox.shrink();
-    return InkWell(
-      onTap: _loading || _saving
-          ? null
-          : () => setState(() => _syncSameSeries = !_syncSameSeries),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 20.w,
-            height: 20.w,
-            child: Checkbox(
-              value: _syncSameSeries,
-              onChanged: _loading || _saving
-                  ? null
-                  : (v) => setState(() => _syncSameSeries = v ?? true),
-              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              visualDensity: VisualDensity.compact,
-            ),
-          ),
-          Text(
-            '同步同类型',
-            style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -370,17 +366,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '统一修改',
-                  style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-                ),
-              ),
-              _syncCheck(),
-            ],
-          ),
+          Text('统一修改', style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink)),
           SizedBox(height: 10.h),
           Row(
             children: [

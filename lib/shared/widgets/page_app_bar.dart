@@ -260,23 +260,36 @@ class PageAppBar extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
       child: SizedBox(
         height: 44.h,
-        child: Row(
+        child: Stack(
+          alignment: Alignment.center,
           children: [
-            SizedBox(
-              width: 44.w,
-              child: onBack == null
-                  ? null
-                  : IconButton(
-                      icon: Icon(Icons.arrow_back_ios, size: 18.sp, color: color),
-                      onPressed: onBack,
+            Row(
+              children: [
+                SizedBox(
+                  width: 44.w,
+                  child: onBack == null
+                      ? null
+                      : IconButton(
+                          icon: Icon(Icons.arrow_back_ios, size: 18.sp, color: color),
+                          onPressed: onBack,
+                        ),
+                ),
+                const Spacer(),
+                if (trailing != null)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Padding(
+                      padding: EdgeInsets.only(right: 4.w),
+                      child: trailing,
                     ),
+                  ),
+              ],
             ),
-            Expanded(
+            IgnorePointer(
               child: Text(
                 title,
                 textAlign: TextAlign.center,
                 maxLines: 1,
-                softWrap: false,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 17.sp,
@@ -285,13 +298,6 @@ class PageAppBar extends StatelessWidget {
                 ),
               ),
             ),
-            if (trailing != null)
-              Padding(
-                padding: EdgeInsets.only(right: 4.w),
-                child: trailing,
-              )
-            else
-              SizedBox(width: 44.w),
           ],
         ),
       ),

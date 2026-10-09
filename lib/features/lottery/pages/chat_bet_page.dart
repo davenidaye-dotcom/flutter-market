@@ -821,8 +821,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         final label = content.isNotEmpty
             ? content
             : (playName.isNotEmpty ? '$playName/$amountRaw' : '$amountRaw');
-        final total = amountRaw != null && '${amountRaw}'.trim().isNotEmpty
-            ? '${amountRaw}'.trim()
+        final totalRaw = amountRaw ?? row['totalAmount'] ?? row['total_amount'];
+        final total = totalRaw != null && '${totalRaw}'.trim().isNotEmpty
+            ? '${totalRaw}'.trim()
             : (betSlipTotalFromText(label) ?? '—');
         slips.add(
           BetSlipRow(
@@ -1406,7 +1407,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         },
       );
       if (confirmed == null || !mounted) return;
-      submitCommand = confirmed.command;
+      // 气泡/同房广播仍用输入原文；确认框只带回改后 items。
       submitItems = confirmed.items;
     }
 

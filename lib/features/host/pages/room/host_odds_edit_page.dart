@@ -349,17 +349,23 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '修改$_gameName赔率',
-      trailing: TextButton(
-        onPressed: _saving || _loading ? null : _save,
-        child: Text(
-          _saving ? '...' : '保存',
-          style: TextStyle(
-            fontSize: 15.sp,
-            color: AppColors.navBlue,
-            fontWeight: FontWeight.w600,
+      title: _gameName,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _syncCheck(),
+          TextButton(
+            onPressed: _saving || _loading ? null : _save,
+            child: Text(
+              _saving ? '...' : '保存',
+              style: TextStyle(
+                fontSize: 15.sp,
+                color: AppColors.navBlue,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-        ),
+        ],
       ),
       body: _loading
           ? const AppPageLoading()
@@ -447,13 +453,6 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       ),
       child: Column(
         children: [
-          if (GameSeries.isPk10(_gameType)) ...[
-            Align(
-              alignment: Alignment.centerRight,
-              child: _syncCheck(),
-            ),
-            SizedBox(height: 8.h),
-          ],
           _labeledRow(
             '统一调节赔率',
             child: _stepperField(
