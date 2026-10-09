@@ -79,10 +79,12 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   bool _loading = true;
   bool _saving = false;
   bool _unbound = false;
+  /// 默认勾选：保存时同步同系列
+  bool _syncSameSeries = true;
   final _step = 0.01;
   List<_OddsRow> _rows = [];
 
-  bool get _pk10 => widget.gameType == 'JS_SC' || widget.gameType == 'AZXY10';
+  bool get _pk10 => GameSeries.isPk10(widget.gameType);
 
   @override
   void initState() {
@@ -242,7 +244,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
     });
   }
 
-  Future<void> _save({bool syncSameSeries = false}) async {
+  Future<void> _save() async {
     if (_saving) return;
     final items = <Map<String, dynamic>>[];
     for (final row in _rows) {
@@ -267,17 +269,18 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
         });
       }
     }
+    final doSync = _syncSameSeries && _pk10;
     setState(() => _saving = true);
     try {
       await ref.read(ownerRepositoryProvider).updateFeipanOdds({
         'gameType': widget.gameType,
         'items': items,
-        'syncSameSeries': syncSameSeries,
+        'syncSameSeries': doSync,
       });
       if (!mounted) return;
       setState(() => _dirty = false);
-      AppToast.success(syncSameSeries ? '已保存并同步同类型' : '赔率已保存');
-      if (syncSameSeries) await _load();
+      AppToast.success(doSync ? '已保存并同步同类型' : '赔率已保存');
+      if (doSync) await _load();
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
@@ -288,20 +291,6 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   Future<void> _reset() async {
     if (_saving) return;
     await _load();
-  }
-
-  Future<void> _syncSameSeries() async {
-    if (!_pk10 || _saving) return;
-    final peers = GameSeries.peerNamesHint(widget.gameType);
-    final ok = await hostConfirm(
-      context,
-      title: '同步同类型',
-      message: peers.isEmpty
-          ? '将保存当前飞单赔率。'
-          : '将把当前飞单赔率同步到：$peers（按各自上下限夹值）。',
-    );
-    if (!ok || !mounted) return;
-    await _save(syncSameSeries: true);
   }
 
   String _roomText(double? value) {
@@ -337,6 +326,35 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
         : widget.gameName!.trim();
     return HostSubPageScaffold(
       title: title,
+      trailing: !_pk10 || _loading || _unbound
+          ? null
+          : InkWell(
+              onTap: _saving
+                  ? null
+                  : () => setState(() => _syncSameSeries = !_syncSameSeries),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 20.w,
+                    height: 20.w,
+                    child: Checkbox(
+                      value: _syncSameSeries,
+                      onChanged: _saving
+                          ? null
+                          : (v) => setState(() => _syncSameSeries = v ?? true),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                  Text(
+                    '同步同类型',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  ),
+                  SizedBox(width: 8.w),
+                ],
+              ),
+            ),
       body: _loading
           ? const AppPageLoading()
           : _unbound
@@ -421,17 +439,6 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                       label: _saving ? '...' : '保存',
                       enabled: !_saving,
                       onPressed: _save,
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: _barBtn(
-                      label: '同步同类型',
-                      enabled: _pk10 && !_saving,
-                      fg: const Color(0xFF333333),
-                      bg: Colors.white,
-                      border: const Color(0xFFE0E4EA),
-                      onTap: _syncSameSeries,
                     ),
                   ),
                   SizedBox(width: 8.w),

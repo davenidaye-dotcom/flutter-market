@@ -85,6 +85,8 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   final _minLimitCtrl = TextEditingController(text: '1');
   bool _loading = true;
   bool _saving = false;
+  /// 默认勾选：保存时同步同系列
+  bool _syncSameSeries = true;
   int _gameIndex = 0;
   final List<({String type, String name})> _games = const [
     (type: 'JS_SC', name: '极速赛车'),
@@ -189,7 +191,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
     await _loadOdds();
   }
 
-  Future<void> _save({bool syncSameSeries = false}) async {
+  Future<void> _save() async {
     if (_saving) return;
     final globalMin = num.tryParse(_minLimitCtrl.text.trim()) ?? 1;
     final payload = <Map<String, dynamic>>[];
@@ -217,66 +219,22 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
       AppToast.error('没有赔率数据');
       return;
     }
-    if (syncSameSeries && GameSeries.peersOf(_gameType).isNotEmpty) {
-      final peers = GameSeries.peerNamesHint(_gameType);
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('同步同类型游戏'),
-          content: Text('将把当前赔率与限额同步到：$peers'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('同步')),
-          ],
-        ),
-      );
-      if (ok != true || !mounted) return;
-    }
+    final doSync = _syncSameSeries && GameSeries.isPk10(_gameType);
     setState(() => _saving = true);
     try {
       await ref.read(agentRepositoryProvider).saveChildOdds(
             widget.accountId,
             payload,
             gameType: _gameType,
-            syncSameSeries: syncSameSeries,
+            syncSameSeries: doSync,
           );
-      AppToast.success(syncSameSeries ? '已保存并同步同类型' : '赔率返水已保存');
+      AppToast.success(doSync ? '已保存并同步同类型' : '赔率返水已保存');
       await _loadOdds();
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
       if (mounted) setState(() => _saving = false);
     }
-  }
-
-  Future<void> _onMore() async {
-    if (_saving || _loading) return;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('保存'),
-              onTap: () => Navigator.pop(ctx, 'save'),
-            ),
-            if (GameSeries.isPk10(_gameType))
-              ListTile(
-                title: const Text('同步同类型游戏'),
-                subtitle: Text('覆盖 ${GameSeries.peerNamesHint(_gameType)}'),
-                onTap: () => Navigator.pop(ctx, 'sync'),
-              ),
-            ListTile(
-              title: const Text('取消'),
-              onTap: () => Navigator.pop(ctx),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (action == 'save') await _save();
-    if (action == 'sync') await _save(syncSameSeries: true);
   }
 
   @override
@@ -344,12 +302,35 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             ),
           ),
           if (GameSeries.isPk10(_gameType))
-            IconButton(
-              onPressed: _loading || _saving ? null : _onMore,
-              icon: Icon(Icons.more_horiz, size: 22.sp, color: AgentChrome.ink),
+            InkWell(
+              onTap: _loading || _saving
+                  ? null
+                  : () => setState(() => _syncSameSeries = !_syncSameSeries),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 20.w,
+                    height: 20.w,
+                    child: Checkbox(
+                      value: _syncSameSeries,
+                      onChanged: _loading || _saving
+                          ? null
+                          : (v) => setState(() => _syncSameSeries = v ?? true),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                  Text(
+                    '同步同类型',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  ),
+                  SizedBox(width: 4.w),
+                ],
+              ),
             ),
           TextButton(
-            onPressed: _loading || _saving ? null : () => _save(),
+            onPressed: _loading || _saving ? null : _save,
             child: Text(
               _saving ? '...' : '保存',
               style: TextStyle(fontSize: 15.sp, color: AgentChrome.ink, fontWeight: FontWeight.w600),

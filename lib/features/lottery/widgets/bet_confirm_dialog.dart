@@ -270,6 +270,16 @@ class _BetConfirmSheetState extends State<_BetConfirmSheet> {
                 Row(
                   children: [
                     Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 10.h),
+                        ),
+                        child: const Text('取消'),
+                      ),
+                    ),
+                    SizedBox(width: 10.w),
+                    Expanded(
                       child: FilledButton(
                         onPressed: _submit,
                         style: FilledButton.styleFrom(
@@ -277,16 +287,6 @@ class _BetConfirmSheetState extends State<_BetConfirmSheet> {
                           padding: EdgeInsets.symmetric(vertical: 10.h),
                         ),
                         child: const Text('确定'),
-                      ),
-                    ),
-                    SizedBox(width: 10.w),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        style: OutlinedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(vertical: 10.h),
-                        ),
-                        child: const Text('取消'),
                       ),
                     ),
                   ],

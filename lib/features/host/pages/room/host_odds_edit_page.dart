@@ -10,7 +10,7 @@ import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// 某个彩种的赔率编辑页；顶栏可切换其它彩种；系列模式保存时同步同类型
+/// 某个彩种的赔率编辑页；顶栏可切换其它彩种；勾选「同步同类型」后保存时写入同系列
 class HostOddsEditPage extends ConsumerStatefulWidget {
   const HostOddsEditPage({
     super.key,
@@ -18,15 +18,12 @@ class HostOddsEditPage extends ConsumerStatefulWidget {
     required this.gameType,
     required this.gameName,
     required this.games,
-    this.seriesMode = false,
   });
 
   final String roomId;
   final String gameType;
   final String gameName;
   final List<({String type, String name})> games;
-  /// true：按赛车系列编辑，保存默认同步同类型
-  final bool seriesMode;
 
   @override
   ConsumerState<HostOddsEditPage> createState() => _HostOddsEditPageState();
@@ -83,6 +80,8 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   late String _gameName;
   bool _loading = true;
   bool _saving = false;
+  /// 默认勾选：保存时同步同系列其它彩种
+  bool _syncSameSeries = true;
 
   final _stepCtrl = TextEditingController(text: '0.01');
   final _minLimitCtrl = TextEditingController(text: '1');
@@ -277,7 +276,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     await _loadOdds();
   }
 
-  Future<void> _save({bool syncSameSeries = false}) async {
+  Future<void> _save() async {
     final minLimit = num.tryParse(_minLimitCtrl.text.trim()) ?? 1;
     final items = <Map<String, dynamic>>[];
     for (final r in _rows) {
@@ -299,16 +298,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
         });
       }
     }
-    final doSync = syncSameSeries || widget.seriesMode;
-    if (doSync && GameSeries.peersOf(_gameType).isNotEmpty) {
-      final peers = GameSeries.peerNamesHint(_gameType);
-      final ok = await hostConfirm(
-        context,
-        title: '同步同类型游戏',
-        message: '将把当前赔率同步到：$peers。各彩种原值将被覆盖。',
-      );
-      if (!ok || !mounted) return;
-    }
+    final doSync = _syncSameSeries && GameSeries.isPk10(_gameType);
     setState(() => _saving = true);
     try {
       await ref.read(ownerRepositoryProvider).updateOdds({
@@ -325,57 +315,49 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     }
   }
 
-  Future<void> _onMore() async {
-    if (_saving || _loading) return;
-    final action = await showModalBottomSheet<String>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: const Text('保存'),
-              onTap: () => Navigator.pop(ctx, 'save'),
+  Widget _syncCheck() {
+    if (!GameSeries.isPk10(_gameType)) return const SizedBox.shrink();
+    return InkWell(
+      onTap: _saving || _loading
+          ? null
+          : () => setState(() => _syncSameSeries = !_syncSameSeries),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 20.w,
+            height: 20.w,
+            child: Checkbox(
+              value: _syncSameSeries,
+              onChanged: _saving || _loading
+                  ? null
+                  : (v) => setState(() => _syncSameSeries = v ?? true),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
             ),
-            if (GameSeries.isPk10(_gameType))
-              ListTile(
-                title: const Text('同步同类型游戏'),
-                subtitle: Text('覆盖 ${GameSeries.peerNamesHint(_gameType)}'),
-                onTap: () => Navigator.pop(ctx, 'sync'),
-              ),
-            ListTile(
-              title: const Text('取消'),
-              onTap: () => Navigator.pop(ctx),
-            ),
-          ],
-        ),
+          ),
+          Text(
+            '同步同类型',
+            style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+          ),
+          SizedBox(width: 4.w),
+        ],
       ),
     );
-    if (action == 'save') await _save();
-    if (action == 'sync') await _save(syncSameSeries: true);
   }
 
   @override
   Widget build(BuildContext context) {
-    final title = widget.seriesMode
-        ? '修改${GameSeries.seriesNameOf(_gameType)}倍率'
-        : '修改$_gameName倍率';
     return HostSubPageScaffold(
-      title: title,
+      title: '修改$_gameName倍率',
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (GameSeries.isPk10(_gameType))
-            IconButton(
-              onPressed: _saving || _loading ? null : _onMore,
-              icon: Icon(Icons.more_horiz, color: AppColors.navBlue, size: 22.sp),
-            ),
+          _syncCheck(),
           TextButton(
-            onPressed: _saving || _loading
-                ? null
-                : () => _save(syncSameSeries: widget.seriesMode),
+            onPressed: _saving || _loading ? null : _save,
             child: Text(
-              _saving ? '...' : (widget.seriesMode ? '同步保存' : '保存'),
+              _saving ? '...' : '保存',
               style: TextStyle(
                 fontSize: 15.sp,
                 color: AppColors.navBlue,
@@ -390,30 +372,12 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
           : ListView(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [
-                if (widget.seriesMode || GameSeries.isPk10(_gameType)) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8F0FF),
-                      borderRadius: BorderRadius.circular(8.r),
-                      border: Border.all(color: const Color(0xFFB8D0FF)),
-                    ),
-                    child: Text(
-                      widget.seriesMode
-                          ? '保存后同步到：${GameSeries.pk10Members.map(GameSeries.displayName).join('、')}。若各彩种原赔率不同，将被当前值覆盖。'
-                          : '可将当前设置「同步同类型」到 ${GameSeries.peerNamesHint(_gameType)}',
-                      style: TextStyle(fontSize: 12.sp, color: const Color(0xFF1A4BAA), height: 1.4),
-                    ),
-                  ),
-                  SizedBox(height: 10.h),
-                ],
                 _gameCard(),
                 SizedBox(height: 10.h),
                 _globalCard(),
                 SizedBox(height: 16.h),
                 Text(
-                  widget.seriesMode ? '${GameSeries.seriesNameOf(_gameType)}赔率' : '$_gameName赔率',
+                  '$_gameName赔率',
                   style: TextStyle(
                     fontSize: 15.sp,
                     fontWeight: FontWeight.w700,
@@ -442,8 +406,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   }
 
   Widget _gameCard() {
-    final canSwitch = !widget.seriesMode && widget.games.length > 1;
-    final label = widget.seriesMode ? GameSeries.seriesNameOf(_gameType) : _gameName;
+    final canSwitch = widget.games.length > 1;
     return GestureDetector(
       onTap: canSwitch ? _switchGame : null,
       child: Container(
@@ -465,19 +428,9 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
             ),
             SizedBox(width: 10.w),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
-                  ),
-                  if (widget.seriesMode)
-                    Text(
-                      '底稿：$_gameName',
-                      style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
-                    ),
-                ],
+              child: Text(
+                _gameName,
+                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
               ),
             ),
             if (canSwitch) ...[
