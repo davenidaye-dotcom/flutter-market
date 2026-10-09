@@ -70,9 +70,14 @@ class OwnerRepository {
     await _client.put('/owner/room/announcement', data: {'content': content});
   }
 
-  Future<void> updateRoomPassword(String? password) async {
+  Future<void> updateRoomPassword(
+    String? password, {
+    String? oldPassword,
+  }) async {
     await _client.put('/owner/room/password', data: {
-      'password': password ?? '',
+      'enterPassword': password ?? '',
+      if (oldPassword != null && oldPassword.isNotEmpty)
+        'oldEnterPassword': oldPassword,
     });
   }
 

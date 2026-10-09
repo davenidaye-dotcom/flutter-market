@@ -356,7 +356,7 @@ class _PlayerCard extends StatelessWidget {
     for (final k in keys) {
       if (row[k] != null) return hostNumStr(row[k], fraction: 2);
     }
-    return '0.00';
+    return '0';
   }
 
   HostSignedPnl _signed(List<String> keys) {

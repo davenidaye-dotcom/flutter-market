@@ -2300,16 +2300,16 @@ class _ChatHeader extends ConsumerWidget {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: leftW, child: _statText('$pointsLabel:${wallet.$1}', compact: isHost)),
-                        SizedBox(width: rightW, child: _statText('$turnoverLabel:${wallet.$2}', compact: isHost)),
+                        SizedBox(width: leftW, child: _statText('$pointsLabel:${displayNumber(wallet.$1)}', compact: isHost)),
+                        SizedBox(width: rightW, child: _statText('$turnoverLabel:${displayNumber(wallet.$2)}', compact: isHost)),
                       ],
                     ),
                     SizedBox(height: 2.h),
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(width: leftW, child: _statText('$winLossLabel:${wallet.$3}', compact: isHost)),
-                        SizedBox(width: rightW, child: _statText('$rebateLabel:${wallet.$4}', compact: isHost)),
+                        SizedBox(width: leftW, child: _statText('$winLossLabel:${displayNumber(wallet.$3)}', compact: isHost)),
+                        SizedBox(width: rightW, child: _statText('$rebateLabel:${displayNumber(wallet.$4)}', compact: isHost)),
                       ],
                     ),
                   ],

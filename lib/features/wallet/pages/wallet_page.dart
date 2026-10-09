@@ -17,6 +17,7 @@ import 'bet_records_page.dart';
 import 'points_change_page.dart';
 import 'welfare_report_page.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../../shared/format/display_number.dart';
 
 class WalletPage extends ConsumerStatefulWidget {
   const WalletPage({super.key, required this.roomId});
@@ -178,7 +179,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                       Text('总资产', style: TextStyle(fontSize: 15.sp, color: brown)),
                                       SizedBox(height: 8.h),
                                       Text(
-                                        s == null ? '--' : '${s.availablePoints.toInt()}',
+                                        s == null ? '--' : displayNumber(s.availablePoints),
                                         style: TextStyle(
                                           fontSize: 34.sp,
                                           fontWeight: FontWeight.bold,
@@ -191,7 +192,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                           Expanded(
                                             child: _metric(
                                               '流水',
-                                              s == null ? '--' : '${s.todayTurnover.toInt()}',
+                                              s == null ? '--' : displayNumber(s.todayTurnover),
                                               brown,
                                             ),
                                           ),
@@ -199,7 +200,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                             Expanded(
                                               child: _metric(
                                                 '回水',
-                                                s == null ? '--' : '${s.paidRebate.toInt()}',
+                                                s == null ? '--' : displayNumber(s.paidRebate),
                                                 brown,
                                                 valueColor: AppColors.success,
                                               ),
@@ -207,7 +208,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                           Expanded(
                                             child: _metric(
                                               '盈亏',
-                                              s == null ? '--' : '${s.todayWinLoss.toInt()}',
+                                              s == null ? '--' : displayNumber(s.todayWinLoss),
                                               brown,
                                               valueColor: AppColors.danger,
                                             ),

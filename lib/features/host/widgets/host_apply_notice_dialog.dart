@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../providers/host_apply_notice_provider.dart';
@@ -75,11 +76,8 @@ class _HostApplyNoticeDialogState
 
   @override
   Widget build(BuildContext context) {
-    final amountText = notice.amount == null
-        ? ''
-        : (notice.amount! == notice.amount!.truncateToDouble()
-            ? notice.amount!.toInt().toString()
-            : notice.amount!.toString());
+    final amountText =
+        notice.amount == null ? '' : displayNumber(notice.amount);
     final nick =
         notice.nickname.isEmpty ? '玩家' : notice.nickname;
 

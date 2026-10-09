@@ -7,9 +7,8 @@ import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
-import '../widgets/date_range_filter.dart';
 import '../utils/draw_snapshot_utils.dart';
-import '../widgets/compact_draw_snapshot_row.dart';
+import '../widgets/member_ledger_card.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 
 /// Points change records
@@ -75,7 +74,7 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
         child: SafeArea(
           child: Column(
             children: [
-              PageAppBar(title: '\u79ef\u5206\u53d8\u66f4', onBack: () => appSafePop(context)),
+              PageAppBar(title: '积分变更', onBack: () => appSafePop(context)),
               SizedBox(height: 8.h),
               Padding(
                 padding: EdgeInsets.symmetric(horizontal: 12.w),
@@ -94,7 +93,7 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                           textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary),
                           decoration: InputDecoration(
-                            hintText: '\u8bf7\u8f93\u5165\u671f\u53f7',
+                            hintText: '请输入期号',
                             hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
                             border: InputBorder.none,
                             isDense: true,
@@ -116,7 +115,7 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                           borderRadius: BorderRadius.circular(20.r),
                         ),
                         child: Text(
-                          '\u67e5\u8be2',
+                          '查询',
                           style: TextStyle(fontSize: 14.sp, color: Colors.white, fontWeight: FontWeight.w500),
                         ),
                       ),
@@ -126,161 +125,71 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
               ),
               SizedBox(height: 12.h),
               Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w),
-                  child: ReportCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 10.h),
-                          child: Text(
-                            '\u5168\u90e8\u8bb0\u5f55',
-                            style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary),
+                child: _loading
+                    ? const AppPageLoading()
+                    : _rows.isEmpty
+                        ? Center(
+                            child: Text(
+                              '暂无数据',
+                              style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 12.h),
+                            itemCount: _rows.length,
+                            separatorBuilder: (_, _) => SizedBox(height: 10.h),
+                            itemBuilder: (_, i) {
+                              final r = _rows[i];
+                              final changeType =
+                                  '${r['changeType'] ?? r['change_type'] ?? ''}';
+                              final issue =
+                                  '${r['issueNo'] ?? r['issue_no'] ?? ''}';
+                              final balanceRaw =
+                                  r['balanceAfter'] ?? r['balance_after'];
+                              final fields = <(String, String)>[];
+                              if (balanceRaw != null &&
+                                  '$balanceRaw'.trim().isNotEmpty) {
+                                fields.add(
+                                  ('变动后', displayNumber(balanceRaw)),
+                                );
+                              }
+                              if (issue.isNotEmpty) {
+                                fields.add(('期号', issue));
+                              }
+                              final ranks = parseDrawRanks(pickDrawRanks(r));
+                              return MemberLedgerCard(
+                                typeLabel: ledgerChangeLabel(changeType),
+                                amount: r['amount'] ?? r['points'],
+                                toneKey: changeType,
+                                fields: fields,
+                                remark: '${r['remark'] ?? ''}',
+                                time:
+                                    '${r['createdAt'] ?? r['createTime'] ?? ''}',
+                                ranks: ranks,
+                                sumGy: pickSumGy(r),
+                              );
+                            },
                           ),
-                        ),
-                        const Divider(height: 1, color: AppColors.divider),
-                        Expanded(
-                          child: _loading
-                              ? const AppPageLoading()
-                              : _rows.isEmpty
-                                  ? Center(
-                                      child: Text(
-                                        '\u6682\u65e0\u6570\u636e',
-                                        style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                                      ),
-                                    )
-                                  : ListView.separated(
-                                      itemCount: _rows.length,
-                                      separatorBuilder: (_, _) =>
-                                          const Divider(height: 1, color: AppColors.divider),
-                                      itemBuilder: (_, i) {
-                                        final r = _rows[i];
-                                        final changeType =
-                                            '${r['changeType'] ?? r['change_type'] ?? ''}';
-                                        final label = ledgerChangeLabel(changeType);
-                                        final amount = r['amount'] ?? r['points'];
-                                        final amountNum = amount is num
-                                            ? amount.toDouble()
-                                            : double.tryParse('$amount') ?? 0;
-                                        final shown = displayNumber(amountNum);
-                                        final amountText = amountNum > 0 ? '+$shown' : shown;
-                                        final issue =
-                                            '${r['issueNo'] ?? r['issue_no'] ?? ''}';
-                                        final time =
-                                            '${r['createdAt'] ?? r['createTime'] ?? ''}';
-                                        final balance =
-                                            '${r['balanceAfter'] ?? r['balance_after'] ?? ''}';
-                                        final ranks = parseDrawRanks(
-                                          pickDrawRanks(r),
-                                        );
-                                        final sumGy = pickSumGy(r);
-                                        final amountColor = amountNum >= 0
-                                            ? const Color(0xFFE53935)
-                                            : AppColors.textPrimary;
-                                        return BetLedgerRecordTile(
-                                          drawRanks: ranks,
-                                          sumGy: sumGy,
-                                          topLine: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                children: [
-                                                  Text(
-                                                    label,
-                                                    style: TextStyle(
-                                                      fontSize: 13.sp,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: AppColors.textPrimary,
-                                                    ),
-                                                  ),
-                                                  const Spacer(),
-                                                  Text(
-                                                    amountText,
-                                                    style: TextStyle(
-                                                      fontSize: 14.sp,
-                                                      fontWeight: FontWeight.w600,
-                                                      color: amountColor,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              SizedBox(height: 4.h),
-                                              Row(
-                                                children: [
-                                                  if (issue.isNotEmpty)
-                                                    Text(
-                                                      '第${issueTail(issue)}期',
-                                                      style: TextStyle(
-                                                        fontSize: 11.sp,
-                                                        color: AppColors.textHint,
-                                                      ),
-                                                    ),
-                                                  if (issue.isNotEmpty &&
-                                                      time.isNotEmpty)
-                                                    Text(
-                                                      ' · ',
-                                                      style: TextStyle(
-                                                        fontSize: 11.sp,
-                                                        color: AppColors.textHint,
-                                                      ),
-                                                    ),
-                                                  if (time.isNotEmpty)
-                                                    Expanded(
-                                                      child: Text(
-                                                        time,
-                                                        maxLines: 1,
-                                                        overflow:
-                                                            TextOverflow.ellipsis,
-                                                        style: TextStyle(
-                                                          fontSize: 11.sp,
-                                                          color:
-                                                              AppColors.textHint,
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  if (balance.isNotEmpty)
-                                                    Text(
-                                                      '余$balance',
-                                                      style: TextStyle(
-                                                        fontSize: 11.sp,
-                                                        color:
-                                                            AppColors.textSecondary,
-                                                      ),
-                                                    ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                      },
-                                    ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ),
               Container(
                 padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 12.h),
                 child: Row(
                   children: [
                     Text(
-                      '\u9875\u7801 $_page / $_totalPages  \u5171 $_totalCount \u6761',
+                      '页码 $_page / $_totalPages  共 $_totalCount 条',
                       style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
                     ),
                     const Spacer(),
-                    _pageBtn('\u4e0a\u4e00\u9875', () {
+                    _pageBtn('上一页', () {
                       if (_page > 1) {
                         setState(() => _page--);
                         _load();
                       }
                     }),
                     SizedBox(width: 8.w),
-                    _pageBtn('\u4e0b\u4e00\u9875', () {
+                    _pageBtn('下一页', () {
                       if (_totalPages == 0 || _page >= _totalPages) {
-                        AppToast.info('\u5df2\u662f\u6700\u540e\u4e00\u9875');
+                        AppToast.info('已是最后一页');
                         return;
                       }
                       setState(() => _page++);

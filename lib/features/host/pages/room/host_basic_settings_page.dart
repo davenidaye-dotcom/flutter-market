@@ -5,6 +5,7 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../wallet/utils/draw_snapshot_utils.dart';
 import '../../widgets/host_ui.dart';
 
 /// Basic room settings from owner/room
@@ -20,6 +21,7 @@ class HostBasicSettingsPage extends ConsumerStatefulWidget {
 class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
   final _nameCtrl = TextEditingController();
   final _pwdCtrl = TextEditingController();
+  final _oldPwdCtrl = TextEditingController();
   Map<String, dynamic> _room = {};
   bool _loading = true;
   bool _saving = false;
@@ -34,7 +36,18 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
   void dispose() {
     _nameCtrl.dispose();
     _pwdCtrl.dispose();
+    _oldPwdCtrl.dispose();
     super.dispose();
+  }
+
+  String _fmtExpire(dynamic raw) {
+    if (raw == null) return '-';
+    var s = '$raw'.trim();
+    if (s.isEmpty || s == 'null' || s == '-') return '-';
+    s = s.replaceFirst('T', ' ');
+    final dot = s.indexOf('.');
+    if (dot > 0) s = s.substring(0, dot);
+    return s;
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -45,6 +58,9 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
       _room = data;
       _nameCtrl.text =
           (data['roomName'] ?? data['name'] ?? '').toString();
+      // 不把哈希写入输入框；是否已设置看 hasEnterPassword
+      _pwdCtrl.clear();
+      _oldPwdCtrl.clear();
       setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
@@ -61,11 +77,12 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
         await ref.read(ownerRepositoryProvider).updateRoomName(name);
       }
       if (_pwdCtrl.text.isNotEmpty) {
-        await ref
-            .read(ownerRepositoryProvider)
-            .updateRoomPassword(_pwdCtrl.text);
+        await ref.read(ownerRepositoryProvider).updateRoomPassword(
+              _pwdCtrl.text,
+              oldPassword: _hasPassword ? _oldPwdCtrl.text : null,
+            );
       }
-      AppToast.success('\u4fdd\u5b58\u6210\u529f');
+      AppToast.success('保存成功');
       await _load(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
@@ -74,13 +91,25 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
     }
   }
 
+  bool get _hasPassword {
+    final v = _room['hasEnterPassword'];
+    if (v == true) return true;
+    if (v == false) return false;
+    return '$v'.toLowerCase() == 'true';
+  }
+
   @override
   Widget build(BuildContext context) {
     final code = (_room['roomCode'] ?? widget.roomId).toString();
-    final expire = (_room['authExpire'] ?? _room['expireAt'] ?? '-').toString();
-    final status = (_room['status'] ?? _room['roomStatus'] ?? '-').toString();
+    final expire = _fmtExpire(
+      _room['authExpire'] ?? _room['expireAt'] ?? _room['expireTime'],
+    );
+    final statusRaw =
+        (_room['status'] ?? _room['roomStatus'] ?? '-').toString();
+    final status =
+        statusRaw == '-' ? '-' : roomStatusLabel(statusRaw);
     return HostSubPageScaffold(
-      title: '\u57fa\u7840\u8bbe\u7f6e',
+      title: '基础设置',
       body: _loading
           ? const AppPageLoading()
           : ListView(
@@ -89,15 +118,15 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
                 HostWhiteCard(
                   child: Column(
                     children: [
-                      _editRow('\u623f\u95f4\u540d\u79f0', _nameCtrl),
+                      _editRow('房间名称', _nameCtrl),
                       _divider(),
-                      _row('\u623f\u95f4\u53f7', code, readonly: true),
+                      _row('房间号', code, readonly: true),
                       _divider(),
-                      _row('\u6388\u6743\u5230\u671f\u65e5', expire, readonly: true),
+                      _row('授权到期日', expire, readonly: true),
                       _divider(),
-                      _row('\u623f\u95f4\u72b6\u6001', status, readonly: true),
+                      _row('房间状态', status, readonly: true),
                       _divider(),
-                      _editRow('\u8fdb\u623f\u5bc6\u7801', _pwdCtrl, obscure: true),
+                      _passwordBlock(),
                     ],
                   ),
                 ),
@@ -112,13 +141,69 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
                       borderRadius: BorderRadius.circular(22.r),
                     ),
                     child: Text(
-                      _saving ? '...' : '\u4fdd\u5b58',
+                      _saving ? '...' : '保存',
                       style: TextStyle(fontSize: 16.sp, color: Colors.white),
                     ),
                   ),
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _passwordBlock() {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 4.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('进房密码', style: TextStyle(fontSize: 14.sp)),
+              const Spacer(),
+              Text(
+                _hasPassword ? '已设置' : '未设置',
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  color: AppColors.textHint,
+                ),
+              ),
+            ],
+          ),
+          if (_hasPassword) ...[
+            SizedBox(height: 4.h),
+            EmulatorSafeTextField(
+              controller: _oldPwdCtrl,
+              obscureText: false,
+              textAlign: TextAlign.right,
+              decoration: InputDecoration(
+                border: InputBorder.none,
+                isDense: true,
+                hintText: '原进房密码',
+                hintStyle: TextStyle(
+                  fontSize: 13.sp,
+                  color: AppColors.textHint,
+                ),
+              ),
+            ),
+          ],
+          SizedBox(height: 4.h),
+          EmulatorSafeTextField(
+            controller: _pwdCtrl,
+            obscureText: false,
+            textAlign: TextAlign.right,
+            decoration: InputDecoration(
+              border: InputBorder.none,
+              isDense: true,
+              hintText: '新密码，留空则不修改',
+              hintStyle: TextStyle(
+                fontSize: 13.sp,
+                color: AppColors.textHint,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -141,8 +226,7 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
     );
   }
 
-  Widget _editRow(String label, TextEditingController ctrl,
-      {bool obscure = false}) {
+  Widget _editRow(String label, TextEditingController ctrl) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4.h),
       child: Row(
@@ -152,7 +236,6 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
           Expanded(
             child: EmulatorSafeTextField(
               controller: ctrl,
-              obscureText: obscure,
               textAlign: TextAlign.right,
               decoration: const InputDecoration(
                 border: InputBorder.none,

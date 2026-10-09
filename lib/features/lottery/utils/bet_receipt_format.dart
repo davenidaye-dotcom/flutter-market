@@ -1,3 +1,5 @@
+import '../../../shared/format/display_number.dart';
+
 /// 机器人投注确认 / 下单排名 / 中奖核对文案，对齐：`亚军[ 6/50 ]`
 String formatBetReceiptText({
   String mention = '',
@@ -12,7 +14,7 @@ String formatBetReceiptText({
   final iss = issue.trim();
   if (iss.isNotEmpty) lines.add('$iss期投注成功!');
   if (total != null && '$total'.trim().isNotEmpty) {
-    lines.add('总金额:$total');
+    lines.add('总金额:${displayNumber(total)}');
   }
   var hasItem = false;
   if (items != null) {
@@ -56,11 +58,11 @@ String formatWinCheckText({
     return lines.join('\n');
   }
   for (final w in list) {
-    lines.add('[${w.name}]中奖金额:${w.winAmount}');
+    lines.add('[${w.name}]中奖金额:${displayNumber(w.winAmount)}');
     for (final play in w.plays) {
       if (play.isNotEmpty) lines.add(play);
     }
-    lines.add('输赢:${w.winLoss}');
+    lines.add('输赢:${displayNumber(w.winLoss)}');
   }
   return lines.join('\n');
 }
@@ -80,8 +82,11 @@ String formatBetRankText({
       final m = Map<String, dynamic>.from(raw);
       final rank = m['rank'] ?? '';
       final name = (m['nickname'] ?? m['displayName'] ?? '会员').toString();
-      final amount = m['amount'] ?? '';
-      lines.add('$rank. [$name] $amount');
+      final amount = m['amount'];
+      final amountText = amount == null || '$amount'.trim().isEmpty
+          ? ''
+          : displayNumber(amount);
+      lines.add('$rank. [$name] $amountText');
     }
   }
   if (lines.length == 2) lines.add('暂无下注');

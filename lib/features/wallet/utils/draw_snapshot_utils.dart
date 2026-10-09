@@ -43,7 +43,8 @@ String ledgerChangeLabel(String type) {
     case 'REDPACK':
       return '红包';
     case 'COMMISSION':
-      return '代理佣金';
+    case 'AGENT_REBATE':
+      return '代理抽佣';
     case 'UP':
     case 'OWNER_CREDIT_UP':
       return '上分';
@@ -98,6 +99,41 @@ String betStatusLabel(String status) {
       return '已取消';
     case 'VOID':
       return '已作废';
+    default:
+      return status;
+  }
+}
+
+/// 上下分申请状态
+String applyStatusLabel(String status) {
+  switch (status.toUpperCase()) {
+    case 'PENDING':
+      return '待审';
+    case 'APPROVED':
+      return '已通过';
+    case 'REJECTED':
+      return '已拒绝';
+    case 'CANCELLED':
+    case 'CANCEL':
+      return '已取消';
+    default:
+      return status;
+  }
+}
+
+/// 房间状态
+String roomStatusLabel(String status) {
+  switch (status.toUpperCase()) {
+    case 'OPEN':
+      return '开启';
+    case 'CLOSED':
+      return '关闭';
+    case 'EXPIRED':
+      return '已过期';
+    case 'DISABLED':
+      return '停用';
+    case 'EMPTY':
+      return '空房';
     default:
       return status;
   }

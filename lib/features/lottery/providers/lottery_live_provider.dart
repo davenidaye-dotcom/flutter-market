@@ -46,10 +46,11 @@ class RoomLotteryLiveState {
 
   final List<LotteryGameModel> games;
   final String announcement;
-  final int points;
-  final int turnover;
-  final int winLoss;
-  final int rebate;
+  /// 顶栏金额：保留小数，展示侧用 displayNumber 抹零。
+  final num points;
+  final num turnover;
+  final num winLoss;
+  final num rebate;
   /// 本房会员 playMode=TRIAL（试玩号）
   final bool isTrialAccount;
   final bool ready;
@@ -75,10 +76,10 @@ class RoomLotteryLiveState {
   RoomLotteryLiveState copyWith({
     List<LotteryGameModel>? games,
     String? announcement,
-    int? points,
-    int? turnover,
-    int? winLoss,
-    int? rebate,
+    num? points,
+    num? turnover,
+    num? winLoss,
+    num? rebate,
     bool? isTrialAccount,
     bool? ready,
     String? loadError,
@@ -279,10 +280,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       try {
         final dash = await _ref.read(ownerRepositoryProvider).getDashboard();
         state = state.copyWith(
-          points: _toInt(dash['balance']),
-          turnover: _toInt(dash['turnover']),
-          winLoss: _toInt(dash['playerWinLoss']),
-          rebate: _toInt(dash['rebate']),
+          points: _toNum(dash['balance']),
+          turnover: _toNum(dash['turnover']),
+          winLoss: _toNum(dash['playerWinLoss']),
+          rebate: _toNum(dash['rebate']),
         );
       } catch (_) {}
       return;
@@ -290,10 +291,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     try {
       final wallet = await _ref.read(walletRepositoryProvider).getSummary(roomId);
       state = state.copyWith(
-        points: wallet.availablePoints.toInt(),
-        turnover: wallet.todayTurnover.toInt(),
-        winLoss: wallet.todayWinLoss.toInt(),
-        rebate: wallet.paidRebate.toInt(),
+        points: wallet.availablePoints,
+        turnover: wallet.todayTurnover,
+        winLoss: wallet.todayWinLoss,
+        rebate: wallet.paidRebate,
         isTrialAccount: wallet.isTrial,
       );
     } catch (_) {}
@@ -950,10 +951,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       } catch (_) {}
       try {
         final dash = await _ref.read(ownerRepositoryProvider).getDashboard();
-        points = _toInt(dash['balance']);
-        turnover = _toInt(dash['turnover']);
-        winLoss = _toInt(dash['playerWinLoss']);
-        rebate = _toInt(dash['rebate']);
+        points = _toNum(dash['balance']);
+        turnover = _toNum(dash['turnover']);
+        winLoss = _toNum(dash['playerWinLoss']);
+        rebate = _toNum(dash['rebate']);
       } catch (_) {}
       try {
         final room = await _ref.read(ownerRepositoryProvider).getRoom();
@@ -992,14 +993,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     );
   }
 
-  Future<(int, int, int, int, bool)> _loadWalletSummary() async {
+  Future<(num, num, num, num, bool)> _loadWalletSummary() async {
     try {
       final wallet = await _ref.read(walletRepositoryProvider).getSummary(roomId);
       return (
-        wallet.availablePoints.toInt(),
-        wallet.todayTurnover.toInt(),
-        wallet.todayWinLoss.toInt(),
-        wallet.paidRebate.toInt(),
+        wallet.availablePoints,
+        wallet.todayTurnover,
+        wallet.todayWinLoss,
+        wallet.paidRebate,
         wallet.isTrial,
       );
     } catch (_) {
@@ -1516,8 +1517,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         final aid = raw['accountId'];
         final id = aid is num ? aid.toInt() : int.tryParse('$aid');
         if (id != myId) continue;
-        final winLoss = _toInt(raw['winLoss']);
-        final winAmount = _toInt(raw['winAmount']);
+        final winLoss = _toNum(raw['winLoss']);
+        final winAmount = _toNum(raw['winAmount']);
         if (winAmount != 0) {
           state = state.copyWith(points: state.points + winAmount);
         }
@@ -1703,11 +1704,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
     state = state.copyWith(
-      points: hasAvailable ? _toInt(payload['available']) : null,
-      turnover: hasTurnover ? _toInt(payload['turnover']) : null,
-      winLoss: hasWinLoss ? _toInt(payload['winLoss']) : null,
+      points: hasAvailable ? _toNum(payload['available']) : null,
+      turnover: hasTurnover ? _toNum(payload['turnover']) : null,
+      winLoss: hasWinLoss ? _toNum(payload['winLoss']) : null,
       rebate: hasRebate
-          ? _toInt(payload['paidRebate'] ?? payload['rebate'])
+          ? _toNum(payload['paidRebate'] ?? payload['rebate'])
           : null,
     );
   }
@@ -1732,10 +1733,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
     state = state.copyWith(
-      points: hasBalance ? _toInt(balRaw) : null,
-      turnover: hasTurnover ? _toInt(turnRaw) : null,
-      winLoss: hasWinLoss ? _toInt(wlRaw) : null,
-      rebate: hasRebate ? _toInt(rbRaw) : null,
+      points: hasBalance ? _toNum(balRaw) : null,
+      turnover: hasTurnover ? _toNum(turnRaw) : null,
+      winLoss: hasWinLoss ? _toNum(wlRaw) : null,
+      rebate: hasRebate ? _toNum(rbRaw) : null,
     );
   }
 
@@ -1972,12 +1973,18 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     });
   }
 
-  /// 金额在接口里是字符串（如 "1280.00"）。int.tryParse 不认小数点，会把余额解析成 0。
+  /// 倒计时/时间戳/ID 等整数字段。
   int _toInt(dynamic v) {
     if (v is int) return v;
     if (v is num) return v.toInt();
     final n = num.tryParse('$v'.trim());
     return n?.toInt() ?? 0;
+  }
+
+  /// 金额字段：接口常为字符串（如 "1280.00"），保留小数，展示侧抹零。
+  num _toNum(dynamic v) {
+    if (v is num) return v;
+    return num.tryParse('$v'.trim()) ?? 0;
   }
 
   @override

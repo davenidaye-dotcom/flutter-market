@@ -56,7 +56,7 @@ class _AgentInfoPageState extends ConsumerState<AgentInfoPage>
       final s = _data['summary'];
       if (s is Map && s[k] != null) return hostNumStr(s[k], fraction: fraction);
     }
-    return fraction <= 0 ? '0' : '0.00';
+    return '0';
   }
 
   List<Map<String, dynamic>> get _rows {

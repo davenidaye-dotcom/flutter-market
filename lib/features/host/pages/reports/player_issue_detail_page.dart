@@ -130,7 +130,7 @@ class _PlayerIssueDetailPageState extends ConsumerState<PlayerIssueDetailPage> {
     for (final k in keys) {
       if (_summary[k] != null) return hostNumStr(_summary[k], fraction: fraction);
     }
-    return fraction == 0 ? '0' : '0.00';
+    return '0';
   }
 
   Color _resultColor(String text) {

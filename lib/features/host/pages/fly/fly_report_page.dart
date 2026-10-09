@@ -74,12 +74,12 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
   String _v(String k, {int fraction = 2}) {
     final s = _data['summary'];
     if (s is Map && s[k] != null) return hostNumStr(s[k], fraction: fraction);
-    return fraction == 0 ? '0' : '0.00';
+    return '0';
   }
 
   String _totalWinLoss() {
     final s = _data['summary'];
-    if (s is! Map) return '0.00';
+    if (s is! Map) return '0';
     final wl = _n(s['winLoss']);
     final rebate = _n(s['rebate']);
     return hostNumStr(wl + rebate, fraction: 2);

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
-import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../widgets/host_ui.dart';
 
@@ -72,12 +71,15 @@ class _HostAnnouncementsPageState extends ConsumerState<HostAnnouncementsPage> {
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [
                 HostWhiteCard(
-                  child: EmulatorSafeTextField(
+                  child: TextField(
                     controller: _ctrl,
+                    keyboardType: TextInputType.multiline,
+                    enableSuggestions: true,
+                    autocorrect: true,
                     maxLines: 8,
                     decoration: InputDecoration(
                       border: InputBorder.none,
-                      hintText: '\u8bf7\u8f93\u5165\u623f\u95f4\u516c\u544a',
+                      hintText: '请输入房间公告',
                       hintStyle: TextStyle(
                         fontSize: 14.sp,
                         color: AppColors.textHint,

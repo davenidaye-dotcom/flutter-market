@@ -1,16 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
-import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../utils/draw_snapshot_utils.dart';
 import '../widgets/date_range_filter.dart';
+import '../widgets/member_ledger_card.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../../shared/widgets/emulator_safe_text_field.dart';
 
-/// \u4e0a\u4e0b\u5206\u8bb0\u5f55\uff08\u7533\u8bf7\u8bb0\u5f55\uff09
+/// 上下分记录（申请记录）
 class ApplyRecordsPage extends ConsumerStatefulWidget {
   const ApplyRecordsPage({super.key});
 
@@ -58,6 +59,19 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
     }
   }
 
+  String _applyTypeLabel(String type) {
+    switch (type.toUpperCase()) {
+      case 'UP':
+        return '上分';
+      case 'DOWN':
+        return '下分';
+      case 'ENTER':
+        return '进房';
+      default:
+        return type.isEmpty ? '申请' : type;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return AppPageScaffold(
@@ -66,7 +80,7 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
           child: Column(
             children: [
               PageAppBar(
-                title: '\u4e0a\u4e0b\u5206\u8bb0\u5f55',
+                title: '上下分记录',
                 onBack: () => appSafePop(context),
               ),
               SizedBox(height: 8.h),
@@ -82,93 +96,38 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
               ),
               SizedBox(height: 12.h),
               Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12.w),
-                  child: ReportCard(
-                    child: Column(
-                      children: [
-                        SizedBox(
-                          height: 42.h,
-                          child: Row(
-                            children: [
-                              _h('\u7c7b\u578b'),
-                              _h('\u65f6\u95f4'),
-                              _h('\u79ef\u5206'),
-                              _h('\u72b6\u6001'),
-                            ],
+                child: _loading
+                    ? const AppPageLoading()
+                    : _rows.isEmpty
+                        ? const Center(child: AppEmptyHint())
+                        : ListView.separated(
+                            padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 12.h),
+                            itemCount: _rows.length,
+                            separatorBuilder: (_, _) => SizedBox(height: 10.h),
+                            itemBuilder: (_, i) {
+                              final r = _rows[i];
+                              final type =
+                                  '${r['applyType'] ?? r['type'] ?? ''}';
+                              final status = '${r['status'] ?? ''}';
+                              return MemberLedgerCard(
+                                typeLabel: _applyTypeLabel(type),
+                                amount: r['amount'] ?? r['points'],
+                                toneKey: type.isNotEmpty ? type : status,
+                                fields: [
+                                  if (status.isNotEmpty)
+                                    ('状态', applyStatusLabel(status)),
+                                ],
+                                time:
+                                    '${r['createdAt'] ?? r['createTime'] ?? ''}',
+                                remark: '${r['remark'] ?? ''}',
+                              );
+                            },
                           ),
-                        ),
-                        const Divider(height: 1, color: AppColors.divider),
-                        Expanded(
-                          child: _loading
-                              ? const AppPageLoading()
-                              : _rows.isEmpty
-                                  ? const Center(child: AppEmptyHint())
-                                  : ListView.separated(
-                                      itemCount: _rows.length,
-                                      separatorBuilder: (_, _) =>
-                                          const Divider(height: 1, color: AppColors.divider),
-                                      itemBuilder: (_, i) {
-                                        final r = _rows[i];
-                                        return SizedBox(
-                                          height: 42.h,
-                                          child: Row(
-                                            children: [
-                                              _c(_applyTypeLabel('${r['applyType'] ?? r['type'] ?? ''}')),
-                                              _c('${r['createdAt'] ?? r['createTime'] ?? ''}'),
-                                              _c('${r['amount'] ?? r['points'] ?? ''}'),
-                                              _c('${r['status'] ?? ''}'),
-                                            ],
-                                          ),
-                                        );
-                                      },
-                                    ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ),
-              SizedBox(height: 12.h),
             ],
           ),
         ),
       ),
     );
-  }
-
-  Widget _h(String t) => Expanded(
-        child: Text(
-          t,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 14.sp,
-            color: AppColors.textPrimary,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      );
-
-  Widget _c(String t) => Expanded(
-        child: Text(
-          t,
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 12.sp, color: AppColors.textPrimary),
-        ),
-      );
-
-  String _applyTypeLabel(String type) {
-    switch (type.toUpperCase()) {
-      case 'UP':
-        return '\u4e0a\u5206';
-      case 'DOWN':
-        return '\u4e0b\u5206';
-      case 'ENTER':
-        return '\u8fdb\u623f';
-      default:
-        return type;
-    }
   }
 }
