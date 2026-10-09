@@ -472,50 +472,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     await refreshDrawHistoryRows(gameId);
   }
 
-  int _maxDrawIssueKeyInCache(String gameId) {
-    var maxKey = 0;
-    for (final m in ChatPushCache.instance.bufferedForGame(roomId, gameId)) {
-      if (m.type != ChatMessageType.resultCard) continue;
-      final issue = extractIssue(m);
-      if (issue == null || issue.isEmpty) continue;
-      // 完整期号比大小，勿用后四位
-      final n = int.tryParse(issue.trim()) ?? 0;
-      if (n > maxKey) maxKey = n;
-    }
-    return maxKey;
-  }
-
-  bool _cacheNeedsDrawBackfill(String gameId) {
-    final cache = ChatPushCache.instance;
-    if (cache.hasDrawGap(roomId, gameId)) return true;
-    final g = _engine.gameById(gameId) ?? state.gameById(gameId);
-    if (g == null) return false;
-    final prevIssue = g.previousIssue ?? '';
-    if (prevIssue.isEmpty) return false;
-    if (!cache.hasDrawForIssue(roomId, gameId, prevIssue)) return true;
-    final prevKey = int.tryParse(prevIssue.trim()) ?? 0;
-    if (prevKey <= 0) return false;
-    final cacheMax = _maxDrawIssueKeyInCache(gameId);
-    return prevKey > cacheMax;
-  }
-
-  /// 顶栏期号已前进但聊天缓存缺开奖时，用 engine 态 + HTTP 历史回补。
+  /// 开奖历史面板可按需拉 HTTP；聊天时间线不再补开奖卡。
   Future<void> reconcileChatDraws(String gameId) async {
     if (gameId.isEmpty || !mounted) return;
     if (_engine.hasHeldDraws(gameId)) return;
-    final g = _engine.gameById(gameId) ?? state.gameById(gameId);
-    if (g == null) return;
-
-    final prevIssue = g.previousIssue ?? '';
-    final ranks = g.previousResults;
-    if (prevIssue.isNotEmpty &&
-        ranks.isNotEmpty &&
-        !ChatPushCache.instance.hasDrawForIssue(roomId, gameId, prevIssue)) {
-      _pushDrawChat(gameId, prevIssue, ranks);
-    }
-
-    if (!_cacheNeedsDrawBackfill(gameId)) return;
-    // 后台回补勿 resetPages，否则会抹掉用户已上拉的更老期
     await _fetchDrawHistoryRowsFromApi(
       gameId,
       pageNum: 1,
@@ -530,6 +490,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _reconcileDebounceByGame[gameId] = Timer(const Duration(milliseconds: 600), () {
       _reconcileDebounceByGame.remove(gameId);
       if (!mounted) return;
+      // 仅刷新开奖历史面板数据，不往聊天补开奖结果卡
       unawaited(reconcileChatDraws(gameId));
     });
   }
@@ -632,35 +593,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   bool isChatTimelineWarm(String gameId) {
     if (gameId.isEmpty) return false;
-    final cache = ChatPushCache.instance;
-    if (!cache.hasDrawsForGame(roomId, gameId)) return false;
-    if (cache.hasDrawGap(roomId, gameId)) return false;
-    // 相对顶栏 previousIssue 落后则不算暖，必须 HTTP 回补（防 3844 当 3952 用）。
-    if (_cacheNeedsDrawBackfill(gameId)) return false;
-    final timeline =
-        cache.timelineForGame(roomId, gameId, syntheticSeals: false);
-    final g = _engine.gameById(gameId) ?? state.gameById(gameId);
-    if (g != null &&
-        !isDrawTimelineFresh(
-          timeline,
-          g.currentIssue,
-          previousIssue: g.previousIssue,
-        )) {
-      return false;
-    }
-    final drawCount =
-        timeline.where((m) => m.type == ChatMessageType.resultCard).length;
-    if (drawCount < 1) return false;
-    // 多期开奖却完全没有下注/核对：历史回补未生效，不算暖，强制再拉 messages
-    if (drawCount >= 2) {
-      final hasMid = timeline.any((m) =>
-          m.type == ChatMessageType.text ||
-          m.type == ChatMessageType.betReceipt ||
-          m.type == ChatMessageType.betListCheck ||
-          m.type == ChatMessageType.winCheck);
-      if (!hasMid) return false;
-    }
-    return true;
+    // 有任意已推送消息即暖；缺期开奖卡不再强制回补聊天
+    return ChatPushCache.instance
+        .timelineForGame(roomId, gameId, syntheticSeals: false)
+        .isNotEmpty;
   }
 
   Future<void> loadChatMessagesFromServer(String gameId) async {
@@ -1879,19 +1815,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     ChatMessageModel message,
   ) async {
     if (!mounted) return;
-    final needsBackfill = ChatPushCache.instance.hasDrawGap(roomId, gameId) ||
-        _cacheNeedsDrawBackfill(gameId);
-    if (needsBackfill) {
-      await reconcileChatDraws(gameId);
-      if (!mounted) return;
-    }
+    // 实时开奖卡已上屏；缺期不往聊天补卡，只刷新历史面板缓存
+    unawaited(reconcileChatDraws(gameId));
     _bumpDrawCache();
-    // 仅在回补改写了缓存时再通知一次，避免无缺口时双刷 UI。
-    if (needsBackfill && !_chatPushController.isClosed) {
-      _chatPushController.add(
-        LotteryChatPush(gameId: gameId, message: message),
-      );
-    }
   }
 
   String _nowTime() {
