@@ -41,6 +41,7 @@ class RoomLotteryLiveState {
     this.uiTick = 0,
     this.interactionPaused = false,
     this.betConfirm = false,
+    this.longDragonEpoch = 0,
   });
 
   final List<LotteryGameModel> games;
@@ -61,6 +62,8 @@ class RoomLotteryLiveState {
   final bool interactionPaused;
   /// 房主「下注确认」开关
   final bool betConfirm;
+  /// 长龙 WS/HTTP 更新代次
+  final int longDragonEpoch;
 
   LotteryGameModel? gameById(String id) {
     for (final g in games) {
@@ -84,6 +87,7 @@ class RoomLotteryLiveState {
     int? uiTick,
     bool? interactionPaused,
     bool? betConfirm,
+    int? longDragonEpoch,
   }) {
     return RoomLotteryLiveState(
       games: games ?? this.games,
@@ -99,6 +103,7 @@ class RoomLotteryLiveState {
       uiTick: uiTick ?? this.uiTick,
       interactionPaused: interactionPaused ?? this.interactionPaused,
       betConfirm: betConfirm ?? this.betConfirm,
+      longDragonEpoch: longDragonEpoch ?? this.longDragonEpoch,
     );
   }
 }
@@ -146,8 +151,24 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   final Set<String> _settleOptimisticApplied = {};
   /// WIN_LIST 若早于开奖卡片到达，先挂起，等 DRAW 上屏后再推，避免核对插在开奖上方闪一下。
   final Map<String, _PendingWinList> _pendingWinListByKey = {};
+  /// gameType → 近50期长龙 items（与后端 LONG_DRAGON / HTTP 同源）
+  final Map<String, List<Map<String, dynamic>>> _longDragonByGame = {};
 
   Stream<LotteryChatPush> get chatPushes => _chatPushController.stream;
+
+  List<Map<String, dynamic>>? longDragonItems(String gameId) {
+    final id = gameId.trim();
+    if (id.isEmpty) return null;
+    return _longDragonByGame[id];
+  }
+
+  void cacheLongDragon(String gameId, List<Map<String, dynamic>> items) {
+    final id = gameId.trim();
+    if (id.isEmpty) return;
+    _longDragonByGame[id] = List<Map<String, dynamic>>.from(items);
+    if (!mounted) return;
+    state = state.copyWith(longDragonEpoch: state.longDragonEpoch + 1);
+  }
 
   Stream<CsChatPush> get csPushes => _csPushController.stream;
 
@@ -1459,10 +1480,25 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    if (type == 'LONG_DRAGON') {
+      _onLongDragonWs(gameType, payload);
+      return;
+    }
+
     if (type == 'SETTLE_RESULT') {
       _onSettleResult(gameType, payload);
       return;
     }
+  }
+
+  void _onLongDragonWs(String gameType, Map<String, dynamic> payload) {
+    final raw = payload['items'];
+    if (raw is! List) return;
+    final items = <Map<String, dynamic>>[];
+    for (final e in raw) {
+      if (e is Map) items.add(Map<String, dynamic>.from(e));
+    }
+    cacheLongDragon(gameType, items);
   }
 
   void _onSettleResult(String gameType, Map<String, dynamic> payload) {

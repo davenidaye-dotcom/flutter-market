@@ -209,13 +209,15 @@ class _UserBetBubble extends StatelessWidget {
         bubble,
       ],
     );
+    // 自己：贴内容区右缘（与开奖结果卡右缘对齐），去掉 Spacer 避免短气泡漂中间。
     return Padding(
       padding: EdgeInsets.only(bottom: 12.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment:
+            mine ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: mine
             ? [
-                const Spacer(),
                 Flexible(child: body),
                 SizedBox(width: 8.w),
                 avatar,

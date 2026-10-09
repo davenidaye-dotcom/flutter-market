@@ -1520,19 +1520,32 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         _longDragonRowsNotifier.value != null) {
       return;
     }
+    // 优先用 WS 缓存（近50期）
+    if (!force) {
+      final cached = ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .longDragonItems(_gameId);
+      if (cached != null) {
+        _applyLongDragonItems(cached);
+        _longDragonLoadedGameId = _gameId;
+        return;
+      }
+    }
     if (_longDragonLoadingNotifier.value) return;
     final gen = ++_longDragonLoadGen;
     _longDragonLoadingNotifier.value = true;
     try {
+      final isHost = ref.read(authSessionProvider).isHostSide;
       final items = await ref.read(lotteryRepositoryProvider).getLongDragon(
             gameId: _gameId,
-            limit: 100,
+            limit: 50,
+            asOwner: isHost,
           );
       if (!mounted || gen != _longDragonLoadGen) return;
-      final mapped = _mapLongDragonItems(items)
-        ..sort((a, b) => b.streak.compareTo(a.streak));
-      _longDragonRowsNotifier.value =
-          mapped.where((e) => e.streak >= 2).take(LongDragonPanel.maxRows).toList();
+      ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .cacheLongDragon(_gameId, items);
+      _applyLongDragonItems(items);
       _longDragonLoadedGameId = _gameId;
     } catch (_) {
       if (!mounted || gen != _longDragonLoadGen) return;
@@ -1542,6 +1555,23 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         _longDragonLoadingNotifier.value = false;
       }
     }
+  }
+
+  void _applyLongDragonItems(List<Map<String, dynamic>> items) {
+    final mapped = _mapLongDragonItems(items)
+      ..sort((a, b) => b.streak.compareTo(a.streak));
+    _longDragonRowsNotifier.value =
+        mapped.where((e) => e.streak >= 2).take(LongDragonPanel.maxRows).toList();
+  }
+
+  void _syncLongDragonFromLive() {
+    if (_topPanelNotifier.value != _TopPanel.longDragon) return;
+    final cached = ref
+        .read(roomLotteryLiveProvider(widget.roomId).notifier)
+        .longDragonItems(_gameId);
+    if (cached == null) return;
+    _applyLongDragonItems(cached);
+    _longDragonLoadedGameId = _gameId;
   }
 
   List<LongDragonRow> _mapLongDragonItems(List<Map<String, dynamic>> items) {
@@ -1674,6 +1704,14 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         _scheduleHistoryRowsRefresh();
       },
     );
+    // 开奖后 LONG_DRAGON WS：面板打开时即时刷新近50期
+    ref.listen<int>(
+      roomLotteryLiveProvider(widget.roomId).select((s) => s.longDragonEpoch),
+      (prev, next) {
+        if (_disposed || !mounted || prev == next) return;
+        _syncLongDragonFromLive();
+      },
+    );
     return AppPageScaffold(
       resizeToAvoidBottomInset: false,
       backgroundColor: Colors.white,
@@ -1794,11 +1832,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     addAutomaticKeepAlives: false,
                                     addRepaintBoundaries: true,
                                     findChildIndexCallback: _findChildIndex,
-                                    // 右 padding 收紧：自己气泡+头像贴到右侧 FAB 竖带下方。
+                                    // 左右同宽：与开奖结果卡同一内容区右缘。
                                     padding: EdgeInsets.fromLTRB(
                                       12.w,
                                       12.h,
-                                      2.w,
+                                      12.w,
                                       bottomPad,
                                     ),
                                     itemCount: messages.length,

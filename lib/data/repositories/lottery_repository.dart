@@ -434,10 +434,14 @@ class LotteryRepository {
 
   Future<List<Map<String, dynamic>>> getLongDragon({
     required String gameId,
-    int limit = 100,
+    int limit = 50,
+    bool asOwner = false,
   }) async {
+    final path = asOwner
+        ? '/owner/games/$gameId/trends/long-dragon'
+        : '/member/games/$gameId/trends/long-dragon';
     final data = await _client.get(
-      '/member/games/$gameId/trends/long-dragon',
+      path,
       query: {'limit': limit},
     );
     if (data is Map && data['items'] is List) {
