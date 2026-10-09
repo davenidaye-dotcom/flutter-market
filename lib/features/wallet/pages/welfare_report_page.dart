@@ -5,6 +5,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
+import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../utils/draw_snapshot_utils.dart';
