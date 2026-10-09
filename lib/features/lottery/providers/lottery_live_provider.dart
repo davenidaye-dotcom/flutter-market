@@ -1310,6 +1310,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    // 房主顶栏全房汇总：room:{id}:sys，无 gameType。
+    if (type == 'ROOM_WALLET_SUMMARY') {
+      _onRoomWalletSummary(payload);
+      return;
+    }
+
     final gameType = _gameTypeFromEvent(event, payload);
     if (gameType == null || gameType.isEmpty) {
       if (type == 'RESYNC') {
@@ -1647,9 +1653,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   void _onWalletDelta(Map<String, dynamic> payload) {
     final rid = '${payload['roomId'] ?? ''}'.trim();
     if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
-    // 房主顶栏是房间汇总，走 HTTP dashboard。
+    // 房主顶栏等 ROOM_WALLET_SUMMARY（全房合计），不套用个人 available。
     if (_wsIsHost || _ref.read(authSessionProvider).isHostSide) {
-      unawaited(refreshWallet());
       return;
     }
     final hasAvailable = payload.containsKey('available');
@@ -1668,6 +1673,33 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       rebate: hasRebate
           ? _toInt(payload['paidRebate'] ?? payload['rebate'])
           : null,
+    );
+  }
+
+  /// 房主「玩家总*」扩展 payload：balance/turnover/winLoss/rebate（多别名），零 HTTP。
+  void _onRoomWalletSummary(Map<String, dynamic> payload) {
+    final rid = '${payload['roomId'] ?? ''}'.trim();
+    if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
+    if (!_wsIsHost && !_ref.read(authSessionProvider).isHostSide) {
+      return;
+    }
+    final balRaw = payload['balance'] ?? payload['available'] ?? payload['points'];
+    final turnRaw = payload['turnover'];
+    final wlRaw = payload['playerWinLoss'] ?? payload['winLoss'];
+    final rbRaw = payload['paidRebate'] ?? payload['rebate'];
+    final hasBalance = balRaw != null;
+    final hasTurnover = turnRaw != null;
+    final hasWinLoss = wlRaw != null;
+    final hasRebate = rbRaw != null;
+    if (!hasBalance && !hasTurnover && !hasWinLoss && !hasRebate) {
+      unawaited(refreshWallet());
+      return;
+    }
+    state = state.copyWith(
+      points: hasBalance ? _toInt(balRaw) : null,
+      turnover: hasTurnover ? _toInt(turnRaw) : null,
+      winLoss: hasWinLoss ? _toInt(wlRaw) : null,
+      rebate: hasRebate ? _toInt(rbRaw) : null,
     );
   }
 

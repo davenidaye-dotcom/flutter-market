@@ -1794,10 +1794,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     addAutomaticKeepAlives: false,
                                     addRepaintBoundaries: true,
                                     findChildIndexCallback: _findChildIndex,
+                                    // 右 padding 收紧：自己气泡+头像贴到右侧 FAB 竖带下方。
                                     padding: EdgeInsets.fromLTRB(
                                       12.w,
                                       12.h,
-                                      12.w,
+                                      2.w,
                                       bottomPad,
                                     ),
                                     itemCount: messages.length,
