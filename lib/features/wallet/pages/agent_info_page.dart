@@ -10,6 +10,8 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../host/data/host_mock.dart';
+import '../../room/cs_rich.dart';
+import '../../room/cs_share_helper.dart';
 
 /// Agent info for player — GET /member/agent-info
 class AgentInfoPage extends ConsumerStatefulWidget {
@@ -77,6 +79,59 @@ class _AgentInfoPageState extends ConsumerState<AgentInfoPage>
     AppToast.success('已复制ID');
   }
 
+  String get _startStr => DateRangeFilter.format(start);
+  String get _endStr => DateRangeFilter.format(end);
+
+  Future<void> _shareSummary() async {
+    final paid = _n(['paidCommission']);
+    await shareToCustomerService(
+      context,
+      ref,
+      refType: 'AGENT_SUMMARY',
+      refId: csAgentSummaryRefId(_startStr, _endStr),
+      preview: '代理汇总 · 已返 $paid · $_startStr~$_endStr',
+    );
+  }
+
+  Future<void> _shareDownline(Map<String, dynamic> r) async {
+    final id = (r['accountId'] ?? r['id'] ?? '').toString();
+    if (id.isEmpty) {
+      AppToast.error('玩家无效');
+      return;
+    }
+    final name =
+        (r['nickname'] ?? r['label'] ?? r['username'] ?? id).toString();
+    final turnover =
+        hostNumStr(r['subordinateTurnover'] ?? r['turnover'], fraction: 2);
+    final paid = hostNumStr(r['paidCommission'], fraction: 2);
+    await shareToCustomerService(
+      context,
+      ref,
+      refType: 'AGENT_DOWNLINE',
+      refId: csAgentDownlineRefId(id, _startStr, _endStr),
+      preview: '下级玩家 · $name · 流水 $turnover / 已返 $paid',
+    );
+  }
+
+  Widget _shareBtn(VoidCallback onTap) {
+    return TextButton(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        minimumSize: Size(0, 28.h),
+        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: Text(
+        '发给客服',
+        style: TextStyle(
+          fontSize: 12.sp,
+          color: AppColors.navBlue,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final blue = AppColors.navBlue;
@@ -108,7 +163,24 @@ class _AgentInfoPageState extends ConsumerState<AgentInfoPage>
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Padding(
-                                padding: EdgeInsets.fromLTRB(8.w, 16.h, 8.w, 4.h),
+                                padding:
+                                    EdgeInsets.fromLTRB(12.w, 12.h, 8.w, 0),
+                                child: Row(
+                                  children: [
+                                    Text(
+                                      '区间汇总',
+                                      style: TextStyle(
+                                        fontSize: 14.sp,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const Spacer(),
+                                    _shareBtn(_shareSummary),
+                                  ],
+                                ),
+                              ),
+                              Padding(
+                                padding: EdgeInsets.fromLTRB(8.w, 8.h, 8.w, 4.h),
                                 child: Row(
                                   children: [
                                     _stat('已返佣金', _n(['paidCommission'])),
@@ -197,9 +269,17 @@ class _AgentInfoPageState extends ConsumerState<AgentInfoPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            name.isEmpty ? '-' : name,
-            style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name.isEmpty ? '-' : name,
+                  style:
+                      TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
+                ),
+              ),
+              _shareBtn(() => _shareDownline(r)),
+            ],
           ),
           SizedBox(height: 4.h),
           Row(

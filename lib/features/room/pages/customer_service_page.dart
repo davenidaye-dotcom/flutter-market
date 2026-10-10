@@ -35,6 +35,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
   final _sendingNotifier = ValueNotifier(false);
   StreamSubscription<CsChatPush>? _csSub;
   bool _sharePrompting = false;
+  bool _attachOpen = false;
 
   @override
   void initState() {
@@ -188,11 +189,18 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
     }
   }
 
-  Future<void> _pickAndSend() async {
-    await showCsAttachSheet(
-      context: context,
-      onPicked: (file, msgType) => _uploadAndSend(file, msgType),
-    );
+  Future<void> _pickImage() async {
+    final file = await pickCsGalleryImage();
+    if (file == null || !mounted) return;
+    setState(() => _attachOpen = false);
+    await _uploadAndSend(file, 'IMAGE');
+  }
+
+  Future<void> _pickVideo() async {
+    final file = await pickCsGalleryVideo();
+    if (file == null || !mounted) return;
+    setState(() => _attachOpen = false);
+    await _uploadAndSend(file, 'VIDEO');
   }
 
   Future<void> _uploadAndSend(XFile file, String msgType) async {
@@ -321,49 +329,71 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
                   color: const Color(0xFFEEEEEE),
                   child: SafeArea(
                     top: false,
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(8.w, 8.h, 8.w, 10.h),
-                      child: ValueListenableBuilder<bool>(
-                        valueListenable: _sendingNotifier,
-                        builder: (_, sending, __) {
-                          return Row(
-                            children: [
-                              IconButton(
-                                onPressed: sending ? null : _pickAndSend,
-                                icon: Icon(Icons.add_circle_outline,
-                                    color: AppColors.navBlue, size: 26.sp),
-                              ),
-                              Expanded(
-                                child: EmulatorSafeTextField(
-                                  controller: _ctrl,
-                                  enabled: !sending,
-                                  keyboardType: TextInputType.text,
-                                  enableSuggestions: true,
-                                  autocorrect: true,
-                                  textInputAction: TextInputAction.send,
-                                  onSubmitted: (_) => _send(),
-                                  decoration: InputDecoration(
-                                    hintText: '请输入消息',
-                                    filled: true,
-                                    fillColor: Colors.white,
-                                    contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 14.w, vertical: 10.h),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(20.r),
-                                      borderSide: BorderSide.none,
+                    child: ValueListenableBuilder<bool>(
+                      valueListenable: _sendingNotifier,
+                      builder: (_, sending, __) {
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Padding(
+                              padding:
+                                  EdgeInsets.fromLTRB(8.w, 8.h, 8.w, 10.h),
+                              child: Row(
+                                children: [
+                                  IconButton(
+                                    onPressed: sending
+                                        ? null
+                                        : () => setState(
+                                              () => _attachOpen = !_attachOpen,
+                                            ),
+                                    icon: Icon(
+                                      _attachOpen
+                                          ? Icons.close
+                                          : Icons.add_circle_outline,
+                                      color: AppColors.navBlue,
+                                      size: 26.sp,
                                     ),
                                   ),
-                                ),
+                                  Expanded(
+                                    child: EmulatorSafeTextField(
+                                      controller: _ctrl,
+                                      enabled: !sending,
+                                      keyboardType: TextInputType.text,
+                                      enableSuggestions: true,
+                                      autocorrect: true,
+                                      textInputAction: TextInputAction.send,
+                                      onSubmitted: (_) => _send(),
+                                      decoration: InputDecoration(
+                                        hintText: '请输入消息',
+                                        filled: true,
+                                        fillColor: Colors.white,
+                                        contentPadding: EdgeInsets.symmetric(
+                                            horizontal: 14.w, vertical: 10.h),
+                                        border: OutlineInputBorder(
+                                          borderRadius:
+                                              BorderRadius.circular(20.r),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    onPressed: sending ? null : _send,
+                                    icon: Icon(Icons.send,
+                                        color: AppColors.navBlue, size: 26.sp),
+                                  ),
+                                ],
                               ),
-                              IconButton(
-                                onPressed: sending ? null : _send,
-                                icon: Icon(Icons.send,
-                                    color: AppColors.navBlue, size: 26.sp),
+                            ),
+                            if (_attachOpen)
+                              CsAttachPanel(
+                                enabled: !sending,
+                                onPickImage: _pickImage,
+                                onPickVideo: _pickVideo,
                               ),
-                            ],
-                          );
-                        },
-                      ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),

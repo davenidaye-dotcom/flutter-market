@@ -327,6 +327,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   final _scroll = ScrollController();
   final _msgs = <Map<String, dynamic>>[];
   bool _loading = true;
+  bool _attachOpen = false;
   StreamSubscription<CsChatPush>? _csSub;
 
   @override
@@ -437,11 +438,18 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     }
   }
 
-  Future<void> _pickAndSend() async {
-    await showCsAttachSheet(
-      context: context,
-      onPicked: (file, msgType) => _uploadAndSend(file, msgType),
-    );
+  Future<void> _pickImage() async {
+    final file = await pickCsGalleryImage();
+    if (file == null || !mounted) return;
+    setState(() => _attachOpen = false);
+    await _uploadAndSend(file, 'IMAGE');
+  }
+
+  Future<void> _pickVideo() async {
+    final file = await pickCsGalleryVideo();
+    if (file == null || !mounted) return;
+    setState(() => _attachOpen = false);
+    await _uploadAndSend(file, 'VIDEO');
   }
 
   Future<void> _uploadAndSend(XFile file, String msgType) async {
@@ -512,33 +520,54 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                       ),
               ),
               KeyboardInputLift(
-                child: Container(
+                child: ColoredBox(
                   color: Colors.white,
-                  padding: EdgeInsets.fromLTRB(8.w, 8.h, 12.w, 8.h),
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        onPressed: _pickAndSend,
-                        icon: Icon(Icons.add_circle_outline,
-                            color: AppColors.navBlue, size: 26.sp),
-                      ),
-                      Expanded(
-                        child: EmulatorSafeTextField(
-                          controller: _ctrl,
-                          keyboardType: TextInputType.text,
-                          enableSuggestions: true,
-                          autocorrect: true,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _send(),
-                          decoration: InputDecoration(
-                            hintText: '输入回复（用户端显示为房间客服）',
-                            hintStyle: TextStyle(
-                                fontSize: 13.sp, color: AppColors.textHint),
-                            border: InputBorder.none,
-                          ),
+                      Padding(
+                        padding: EdgeInsets.fromLTRB(8.w, 8.h, 12.w, 8.h),
+                        child: Row(
+                          children: [
+                            IconButton(
+                              onPressed: () => setState(
+                                () => _attachOpen = !_attachOpen,
+                              ),
+                              icon: Icon(
+                                _attachOpen
+                                    ? Icons.close
+                                    : Icons.add_circle_outline,
+                                color: AppColors.navBlue,
+                                size: 26.sp,
+                              ),
+                            ),
+                            Expanded(
+                              child: EmulatorSafeTextField(
+                                controller: _ctrl,
+                                keyboardType: TextInputType.text,
+                                enableSuggestions: true,
+                                autocorrect: true,
+                                textInputAction: TextInputAction.send,
+                                onSubmitted: (_) => _send(),
+                                decoration: InputDecoration(
+                                  hintText: '输入回复（用户端显示为房间客服）',
+                                  hintStyle: TextStyle(
+                                      fontSize: 13.sp,
+                                      color: AppColors.textHint),
+                                  border: InputBorder.none,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                                onPressed: _send, child: const Text('发送')),
+                          ],
                         ),
                       ),
-                      TextButton(onPressed: _send, child: const Text('发送')),
+                      if (_attachOpen)
+                        CsAttachPanel(
+                          onPickImage: _pickImage,
+                          onPickVideo: _pickVideo,
+                        ),
                     ],
                   ),
                 ),

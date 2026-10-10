@@ -716,7 +716,7 @@ class OwnerRepository {
     String refId,
   ) async {
     final data = await _client.get(
-      '/owner/cs/sessions/$accountId/refs/$refType/$refId',
+      '/owner/cs/sessions/$accountId/refs/${Uri.encodeComponent(refType)}/${Uri.encodeComponent(refId)}',
     );
     return _asMap(data);
   }

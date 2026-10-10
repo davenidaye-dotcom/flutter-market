@@ -78,7 +78,9 @@ class MemberRepository {
   }
 
   Future<Map<String, dynamic>> getCsRef(String refType, String refId) async {
-    final data = await _client.get('/member/cs/refs/$refType/$refId');
+    final data = await _client.get(
+      '/member/cs/refs/${Uri.encodeComponent(refType)}/${Uri.encodeComponent(refId)}',
+    );
     return _asMap(data);
   }
 
