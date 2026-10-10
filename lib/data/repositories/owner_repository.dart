@@ -650,7 +650,7 @@ class OwnerRepository {
     await _client.put('/owner/feipan/odds', data: body);
   }
 
-  /// 用代理模板赔率覆盖当前彩种飞单赔率。仅 JS_SC、AZXY10。
+  /// 用代理模板赔率覆盖当前彩种飞单赔率（PK10：JS_SC / AZXY10 / TW_BG_*）。
   Future<void> syncFeipanPk10Odds({required String gameType}) async {
     await _client.post('/owner/feipan/odds/sync-pk10', query: {
       'gameType': gameType,

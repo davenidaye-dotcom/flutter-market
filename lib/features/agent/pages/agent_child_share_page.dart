@@ -33,7 +33,12 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
   /// gameType → 占成上限（分给这个账号再往下分）
   final Map<String, int> _child = {};
 
-  static const _names = {'JS_SC': '极速赛车', 'AZXY10': '澳洲幸运10'};
+  static const _names = {
+    'JS_SC': '极速赛车',
+    'AZXY10': '澳洲幸运10',
+    'TW_BG_Q': '台湾宾果赛车(前)',
+    'TW_BG_H': '台湾宾果赛车(后)',
+  };
 
   @override
   void initState() {

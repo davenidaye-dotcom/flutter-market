@@ -30,8 +30,8 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
   @override
   bool get wantKeepAlive => true;
 
-  /// 关闭下注页不销毁，再进同彩种秒开。最多保活 2 个彩种，防内存涨。
-  static const _maxKeptChats = 2;
+  /// 关闭下注页不销毁，再进同彩种秒开。最多保活 4 个彩种（与当前 PK10 上线数一致）。
+  static const _maxKeptChats = 4;
   final Map<String, OverlayEntry> _chatOverlays = {};
   final List<String> _chatLru = [];
   String? _activeChatGameId;

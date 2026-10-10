@@ -91,6 +91,8 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   final List<({String type, String name})> _games = const [
     (type: 'JS_SC', name: '极速赛车'),
     (type: 'AZXY10', name: '澳洲幸运10'),
+    (type: 'TW_BG_Q', name: '台湾宾果赛车(前)'),
+    (type: 'TW_BG_H', name: '台湾宾果赛车(后)'),
   ];
 
   static const _pageBg = Color(0xFFE8EEF5);

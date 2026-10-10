@@ -108,7 +108,7 @@ class LotteryGameModel {
 
   static const mockList = [
     LotteryGameModel(
-      id: 'speed_racing',
+      id: 'JS_SC',
       name: '极速赛车',
       currentIssue: '34089569',
       previousIssue: '34089569',
@@ -116,7 +116,7 @@ class LotteryGameModel {
       isDrawing: true,
     ),
     LotteryGameModel(
-      id: 'aus_lucky10',
+      id: 'AZXY10',
       name: '澳洲幸运10',
       currentIssue: '21343314',
       previousIssue: '21343313',
@@ -124,28 +124,20 @@ class LotteryGameModel {
       previousResults: [10, 2, 9, 4, 8, 5, 7, 3, 6, 1],
     ),
     LotteryGameModel(
-      id: 'bingo_racing_a',
-      name: '宾果赛车A',
-      currentIssue: '115040681',
-      previousIssue: '115040680',
-      countdownSeconds: 428,
-      previousResults: [10, 2, 9, 4, 8, 5, 7, 3, 6, 1],
+      id: 'TW_BG_Q',
+      name: '台湾宾果赛车(前)',
+      currentIssue: '115057415',
+      previousIssue: '115057414',
+      countdownSeconds: 240,
+      previousResults: [1, 7, 4, 8, 10, 6, 2, 3, 5, 9],
     ),
     LotteryGameModel(
-      id: 'bingo_racing_b',
-      name: '宾果赛车B',
-      currentIssue: '115040682',
-      previousIssue: '115040681',
-      countdownSeconds: 512,
-      previousResults: [1, 3, 5, 7, 9, 2, 4, 6, 8, 10],
-    ),
-    LotteryGameModel(
-      id: 'speed_boat',
-      name: '极速飞艇',
-      currentIssue: '88001234',
-      previousIssue: '88001233',
-      countdownSeconds: 180,
-      previousResults: [8, 5, 2, 10, 1, 4, 7, 3, 9, 6],
+      id: 'TW_BG_H',
+      name: '台湾宾果赛车(后)',
+      currentIssue: '115057415',
+      previousIssue: '115057414',
+      countdownSeconds: 240,
+      previousResults: [5, 7, 10, 8, 2, 1, 9, 3, 4, 6],
     ),
   ];
 }

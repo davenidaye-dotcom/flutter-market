@@ -308,7 +308,9 @@ class _HostDefaultRebatePageState extends ConsumerState<HostDefaultRebatePage> {
     if (key.contains('澳洲') || key.contains('AZXY') || key.contains('AUS')) {
       return (Icons.flag, const Color(0xFF43A047));
     }
-    if (key.contains('宾果') || key.contains('BINGO')) {
+    if (key.contains('宾果') ||
+        key.contains('BINGO') ||
+        key.contains('TW_BG')) {
       return (Icons.sports_esports, const Color(0xFFEF6C00));
     }
     if (key.contains('秒速') || key.contains('MS')) {

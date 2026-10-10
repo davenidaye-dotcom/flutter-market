@@ -89,8 +89,8 @@ String agentAccountTypeLabel(Map<String, dynamic> row) {
 
 bool _looksLikeEnum(String s) => s.contains('_') && s == s.toUpperCase();
 
-/// 已上线彩种。报表、收付统计、个人信息只显示这两个。
-const agentLiveGameTypes = {'JS_SC', 'AZXY10'};
+/// 已上线彩种。报表、收付统计、个人信息只显示这些。
+const agentLiveGameTypes = {'JS_SC', 'AZXY10', 'TW_BG_Q', 'TW_BG_H'};
 
 List<Map<String, dynamic>> agentLiveGames(List<Map<String, dynamic>> games) {
   return [

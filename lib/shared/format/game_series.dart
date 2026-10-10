@@ -4,11 +4,13 @@ class GameSeries {
 
   static const pk10 = 'PK10';
   static const pk10Name = '赛车系列';
-  static const pk10Members = ['JS_SC', 'AZXY10'];
+  static const pk10Members = ['JS_SC', 'AZXY10', 'TW_BG_Q', 'TW_BG_H'];
 
   static const Map<String, String> gameNames = {
     'JS_SC': '极速赛车',
     'AZXY10': '澳洲幸运10',
+    'TW_BG_Q': '台湾宾果赛车(前)',
+    'TW_BG_H': '台湾宾果赛车(后)',
   };
 
   static bool isPk10(String? gameType) {

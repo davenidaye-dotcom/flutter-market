@@ -144,7 +144,10 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
       'JS_SC': '极速赛车',
       'JS_FT': '极速飞艇',
       'XY_FT': '幸运飞艇',
+      'AZXY10': '澳洲幸运10',
       'AZ_XY10': '澳洲幸运10',
+      'TW_BG_Q': '台湾宾果赛车(前)',
+      'TW_BG_H': '台湾宾果赛车(后)',
       'SG_FT': 'SG飞艇',
     };
     return map[t] ?? (t.isEmpty ? '—' : t);
