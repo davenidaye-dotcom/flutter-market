@@ -253,7 +253,7 @@ class LotteryRepository {
       type: switch (msgType) {
         'DRAW_RESULT' => ChatMessageType.resultCard,
         'SEAL_WARN' || 'SEALED' || 'SYS' => ChatMessageType.system,
-        'BET_RECEIPT' => ChatMessageType.betReceipt,
+        'BET_RECEIPT' || 'BET_FAIL' => ChatMessageType.betReceipt,
         'BET_RANK' ||
         'BET_LIST_CHECK' ||
         'GUESS_LIST_CHECK' ||

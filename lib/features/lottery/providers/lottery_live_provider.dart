@@ -1389,8 +1389,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
-    // 他人/本机机器人确认卡
-    if (type == 'BET_RECEIPT') {
+    // 他人/本机机器人确认卡 / 投注失败卡
+    if (type == 'BET_RECEIPT' || type == 'BET_FAIL') {
       _onBetReceiptWs(gameType, payload);
       return;
     }
@@ -1561,18 +1561,23 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   void _onBetReceiptWs(String gameType, Map<String, dynamic> payload) {
     final orderId = (payload['orderId'] ?? '').toString().trim();
     final issue = (payload['issueNo'] ?? '').toString().trim();
-    final content = formatBetReceiptText(
-      mention: (payload['mentionName'] ?? '').toString(),
-      issue: issue,
-      total: payload['totalAmount'],
-      items: payload['items'] is List ? payload['items'] as List : null,
-      fallbackContent: (payload['content'] ?? payload['text'] ?? '').toString(),
-    ).trim();
+    final fallback =
+        (payload['content'] ?? payload['text'] ?? '').toString().trim();
+    // BET_FAIL 文案已由后端拼好；成功卡仍走 formatBetReceiptText
+    final content = fallback.contains('投注失败')
+        ? fallback
+        : formatBetReceiptText(
+            mention: (payload['mentionName'] ?? '').toString(),
+            issue: issue,
+            total: payload['totalAmount'],
+            items: payload['items'] is List ? payload['items'] as List : null,
+            fallbackContent: fallback,
+          ).trim();
     if (content.isEmpty) return;
     final key = orderId.isNotEmpty
         ? 'bet-receipt-$gameType-$orderId'
         : (issue.isNotEmpty
-            ? 'bet-receipt-$gameType-$issue-${content.hashCode}'
+            ? 'bet-fail-$gameType-$issue-${content.hashCode}'
             : 'bet-receipt-$gameType-${DateTime.now().millisecondsSinceEpoch}');
     var sender = (payload['senderName'] ?? '机器人').toString().trim();
     if (sender.isEmpty || sender == '管理员') sender = '机器人';

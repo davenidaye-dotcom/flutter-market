@@ -1260,6 +1260,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       });
       if (done != true || !mounted) return;
       AppToast.success('$label申请已提交');
+      // 下分已冻结：立刻拉可用积分，避免只靠 WALLET_DELTA 时顶栏滞后
+      unawaited(
+        ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
+      );
     } catch (e) {
       AppToast.error(e.toString());
     } finally {

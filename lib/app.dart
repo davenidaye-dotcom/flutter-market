@@ -59,7 +59,7 @@ class _LetouAppState extends ConsumerState<LetouApp> {
       builder: (context, child) {
         return MaterialApp.router(
           title: EnvConfig.environment.appName,
-          debugShowCheckedModeBanner: EnvConfig.isDebug,
+          debugShowCheckedModeBanner: false,
           theme: AppTheme.light,
           routerConfig: router,
           locale: const Locale('zh', 'CN'),
