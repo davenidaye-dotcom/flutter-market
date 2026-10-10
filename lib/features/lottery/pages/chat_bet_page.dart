@@ -1463,12 +1463,13 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     }
   }
 
-  /// 飞单代理额度不足 ≠ 玩家积分不足，Toast 与机器人卡对齐。
+  /// 不对玩家展示「飞单失败」细节；代理额度不足后端已静默跳过飞单。
   String _betFailToast(Object e) {
     final msg = e is ApiException ? e.message : e.toString();
-    if (msg.contains('代理会员可用额度不足') ||
-        msg.contains('FLIGHT_CREDIT_INSUFFICIENT')) {
-      return '飞单失败：代理会员可用额度不足（非玩家积分）';
+    if (msg.contains('飞单失败') ||
+        msg.contains('FLIGHT_CREDIT_INSUFFICIENT') ||
+        msg.contains('代理会员可用额度不足')) {
+      return '注单失败';
     }
     return msg;
   }
