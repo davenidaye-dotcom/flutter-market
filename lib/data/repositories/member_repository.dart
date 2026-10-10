@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../../core/network/api_client.dart';
@@ -82,6 +84,18 @@ class MemberRepository {
       '/member/cs/refs/${Uri.encodeComponent(refType)}/${Uri.encodeComponent(refId)}',
     );
     return _asMap(data);
+  }
+
+  Future<void> hideCsMessage(String messageId) async {
+    await _client.delete('/member/cs/messages/$messageId');
+  }
+
+  Future<void> clearCsMessages() async {
+    await _client.delete('/member/cs/messages');
+  }
+
+  Future<Uint8List> downloadCsMediaBytes(String mediaId) {
+    return _client.getBytes('/member/cs/media/$mediaId/file');
   }
 
   Future<Map<String, dynamic>> getRoomIntro({required String gameType}) async {

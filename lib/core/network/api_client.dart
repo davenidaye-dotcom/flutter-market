@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 import '../../config/env/env_config.dart';
 import 'api_exception.dart';
@@ -124,6 +126,23 @@ class ApiClient {
     try {
       final res = await _dio.delete<dynamic>(path, queryParameters: query);
       return unwrapResponse(res);
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
+  /// 二进制下载（客服图片等）；走同一套签名/鉴权，不走 JSON unwrap。
+  Future<Uint8List> getBytes(String path) async {
+    try {
+      final res = await _dio.get<List<int>>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = res.data;
+      if (data == null || data.isEmpty) {
+        throw const ApiException(message: '文件为空');
+      }
+      return Uint8List.fromList(data);
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
     }

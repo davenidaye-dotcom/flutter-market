@@ -126,6 +126,20 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
     await _loadSessions();
   }
 
+  Future<void> _clearSession(_CsSession s) async {
+    final ok = await confirmCsClearHistory(context, title: '删除会话记录');
+    if (!ok || !mounted) return;
+    try {
+      await ref.read(ownerRepositoryProvider).clearCsSessionMessages(s.accountId);
+      setState(() {
+        _sessions.removeWhere((e) => e.accountId == s.accountId);
+      });
+      AppToast.success('已清空（仅本端）');
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
+  }
+
   Future<void> _loadSessions({bool silent = false}) async {
     if (!silent) setState(() => _loading = true);
     try {
@@ -226,6 +240,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
                               final s = _sessions[i];
                               return HostWhiteCard(
                                 onTap: () => setState(() => _open = s),
+                                onLongPress: () => _clearSession(s),
                                 child: Row(
                                   children: [
                                     CircleAvatar(
@@ -445,11 +460,23 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     await _uploadAndSend(file, 'IMAGE');
   }
 
-  Future<void> _pickVideo() async {
-    final file = await pickCsGalleryVideo();
-    if (file == null || !mounted) return;
-    setState(() => _attachOpen = false);
-    await _uploadAndSend(file, 'VIDEO');
+  Future<void> _hideMessage(Map<String, dynamic> m) async {
+    final id = (m['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final ok = await confirmCsSideDelete(context);
+    if (!ok || !mounted) return;
+    try {
+      await ref.read(ownerRepositoryProvider).hideCsMessage(
+            widget.session.accountId,
+            id,
+          );
+      setState(() {
+        _msgs.removeWhere((e) => (e['id'] ?? '').toString() == id);
+      });
+      AppToast.success('已删除（仅本端）');
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
   }
 
   Future<void> _uploadAndSend(XFile file, String msgType) async {
@@ -515,6 +542,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                             mine: mine,
                             ownerSide: true,
                             onOpenShare: () => _openShare(m),
+                            onLongPress: () => _hideMessage(m),
                           );
                         },
                       ),
@@ -566,7 +594,6 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                       if (_attachOpen)
                         CsAttachPanel(
                           onPickImage: _pickImage,
-                          onPickVideo: _pickVideo,
                         ),
                     ],
                   ),

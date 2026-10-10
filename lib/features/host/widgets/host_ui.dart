@@ -50,11 +50,18 @@ class HostSubPageScaffold extends StatelessWidget {
 }
 
 class HostWhiteCard extends StatelessWidget {
-  const HostWhiteCard({super.key, required this.child, this.padding, this.onTap});
+  const HostWhiteCard({
+    super.key,
+    required this.child,
+    this.padding,
+    this.onTap,
+    this.onLongPress,
+  });
 
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -67,11 +74,12 @@ class HostWhiteCard extends StatelessWidget {
       ),
       child: child,
     );
-    if (onTap == null) return content;
+    if (onTap == null && onLongPress == null) return content;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         borderRadius: BorderRadius.circular(12.r),
         child: content,
       ),

@@ -210,6 +210,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       ),
                       const Divider(indent: 16, endIndent: 16, height: 1),
                       _tile('分享App', onTap: () => AppRelease.share(context)),
+                      if (roomId != null && roomId.isNotEmpty) ...[
+                        const Divider(indent: 16, endIndent: 16, height: 1),
+                        _tile('清空客服聊天记录', onTap: () => _clearCsHistory()),
+                      ],
                     ],
                   ),
                 ),
@@ -260,6 +264,33 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     }
     await Clipboard.setData(ClipboardData(text: id));
     AppToast.success('已复制ID');
+  }
+
+  Future<void> _clearCsHistory() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清空客服聊天记录'),
+        content: const Text('仅本端清空，房主仍可见。确定清空？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await ref.read(memberRepositoryProvider).clearCsMessages();
+      AppToast.success('已清空（仅本端）');
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
   }
 
   Widget _tile(String label, {VoidCallback? onTap}) {

@@ -196,11 +196,19 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
     await _uploadAndSend(file, 'IMAGE');
   }
 
-  Future<void> _pickVideo() async {
-    final file = await pickCsGalleryVideo();
-    if (file == null || !mounted) return;
-    setState(() => _attachOpen = false);
-    await _uploadAndSend(file, 'VIDEO');
+  Future<void> _hideMessage(Map<String, dynamic> m) async {
+    final id = (m['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final ok = await confirmCsSideDelete(context);
+    if (!ok || !mounted) return;
+    try {
+      await ref.read(memberRepositoryProvider).hideCsMessage(id);
+      _messagesNotifier.value =
+          _messagesNotifier.value.where((e) => (e['id'] ?? '').toString() != id).toList();
+      AppToast.success('已删除（仅本端）');
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
   }
 
   Future<void> _uploadAndSend(XFile file, String msgType) async {
@@ -307,6 +315,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
                                   mine: mine,
                                   ownerSide: false,
                                   onOpenShare: () => _openShare(m),
+                                  onLongPress: () => _hideMessage(m),
                                 ),
                                 if (time.isNotEmpty)
                                   Text(
@@ -389,7 +398,6 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
                               CsAttachPanel(
                                 enabled: !sending,
                                 onPickImage: _pickImage,
-                                onPickVideo: _pickVideo,
                               ),
                           ],
                         );

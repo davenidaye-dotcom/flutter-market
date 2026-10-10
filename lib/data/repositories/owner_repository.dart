@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../../core/network/api_client.dart';
@@ -719,6 +721,18 @@ class OwnerRepository {
       '/owner/cs/sessions/$accountId/refs/${Uri.encodeComponent(refType)}/${Uri.encodeComponent(refId)}',
     );
     return _asMap(data);
+  }
+
+  Future<void> hideCsMessage(String accountId, String messageId) async {
+    await _client.delete('/owner/cs/sessions/$accountId/messages/$messageId');
+  }
+
+  Future<void> clearCsSessionMessages(String accountId) async {
+    await _client.delete('/owner/cs/sessions/$accountId/messages');
+  }
+
+  Future<Uint8List> downloadCsMediaBytes(String mediaId) {
+    return _client.getBytes('/owner/cs/media/$mediaId/file');
   }
 
   // --- assistants ---

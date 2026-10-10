@@ -1,13 +1,15 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:video_player/video_player.dart';
 
-import '../../config/env/env_config.dart';
 import '../../config/theme/app_colors.dart';
-import '../../core/network/session_store.dart';
+import '../../core/network/api_client.dart';
 import '../../shared/format/display_number.dart';
 import '../wallet/utils/draw_snapshot_utils.dart';
+
+final Map<String, Uint8List> _csMediaBytesCache = {};
 
 Map<String, dynamic> csMessageRow(Map<String, dynamic> raw) {
   return {
@@ -35,27 +37,62 @@ Map<String, dynamic> csPushRow(dynamic push) {
   };
 }
 
-String csMediaFileUrl({required bool owner, required String mediaId}) {
-  final base = EnvConfig.apiBaseUrl.replaceAll(RegExp(r'/+$'), '');
-  final path = owner
-      ? '/owner/cs/media/$mediaId/file'
-      : '/member/cs/media/$mediaId/file';
-  return '$base$path';
+String csMediaPath({required bool owner, required String mediaId}) =>
+    owner ? '/owner/cs/media/$mediaId/file' : '/member/cs/media/$mediaId/file';
+
+Future<Uint8List> loadCsMediaBytes({
+  required bool ownerSide,
+  required String mediaId,
+}) async {
+  final key = '${ownerSide ? 'o' : 'm'}:$mediaId';
+  final cached = _csMediaBytesCache[key];
+  if (cached != null) return cached;
+  final path = csMediaPath(owner: ownerSide, mediaId: mediaId);
+  final bytes = await ApiClient.instance.getBytes(path);
+  _csMediaBytesCache[key] = bytes;
+  return bytes;
 }
 
-Map<String, String> csAuthHeaders() {
-  final token = SessionStore.instance.accessToken;
-  final headers = <String, String>{
-    'clientid': EnvConfig.clientId,
-  };
-  if (token != null && token.isNotEmpty) {
-    headers['Authorization'] = 'Bearer $token';
-  }
-  final roomId = SessionStore.instance.roomId;
-  if (roomId != null && roomId.isNotEmpty) {
-    headers['X-Room-Id'] = roomId;
-  }
-  return headers;
+Future<bool> confirmCsSideDelete(BuildContext context) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('删除消息'),
+      content: const Text('仅本端删除，对方仍可见。确定删除？'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
+}
+
+Future<bool> confirmCsClearHistory(BuildContext context, {required String title}) async {
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title),
+      content: const Text('仅本端清空，对方仍可见。确定清空？'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('取消'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('清空'),
+        ),
+      ],
+    ),
+  );
+  return ok == true;
 }
 
 String csAgentSummaryRefId(String startDate, String endDate) =>
@@ -96,30 +133,20 @@ Future<XFile?> pickCsGalleryImage() async {
   final picker = ImagePicker();
   return picker.pickImage(
     source: ImageSource.gallery,
-    imageQuality: 85,
-    maxWidth: 1920,
+    imageQuality: 70,
+    maxWidth: 1280,
   );
 }
 
-Future<XFile?> pickCsGalleryVideo() async {
-  final picker = ImagePicker();
-  return picker.pickVideo(
-    source: ImageSource.gallery,
-    maxDuration: const Duration(seconds: 60),
-  );
-}
-
-/// 微信风底部宫格：相册 / 视频。逻辑仍走 image_picker。
+/// 微信风底部宫格：仅相册。
 class CsAttachPanel extends StatelessWidget {
   const CsAttachPanel({
     super.key,
     required this.onPickImage,
-    required this.onPickVideo,
     this.enabled = true,
   });
 
   final VoidCallback onPickImage;
-  final VoidCallback onPickVideo;
   final bool enabled;
 
   @override
@@ -135,13 +162,6 @@ class CsAttachPanel extends StatelessWidget {
             label: '相册',
             enabled: enabled,
             onTap: onPickImage,
-          ),
-          SizedBox(width: 28.w),
-          _AttachTile(
-            icon: Icons.videocam_outlined,
-            label: '视频',
-            enabled: enabled,
-            onTap: onPickVideo,
           ),
         ],
       ),
@@ -208,12 +228,14 @@ class CsMessageBubble extends StatelessWidget {
     required this.mine,
     required this.ownerSide,
     this.onOpenShare,
+    this.onLongPress,
   });
 
   final Map<String, dynamic> message;
   final bool mine;
   final bool ownerSide;
   final VoidCallback? onOpenShare;
+  final VoidCallback? onLongPress;
 
   @override
   Widget build(BuildContext context) {
@@ -222,84 +244,73 @@ class CsMessageBubble extends StatelessWidget {
     final mediaId = message['mediaId']?.toString() ?? '';
     final refType = message['refType']?.toString() ?? '';
 
+    Widget child;
     if (type == 'IMAGE') {
-      return Align(
-        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          constraints: BoxConstraints(maxWidth: 0.78.sw),
-          margin: EdgeInsets.only(bottom: 12.h),
-          padding: EdgeInsets.all(3.w),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(10.r),
-            border: Border.all(color: const Color(0xFFE0E0E0)),
-          ),
-          child: _ImageBody(
-            mediaId: mediaId,
-            ownerSide: ownerSide,
-            fallback: content,
-            fg: AppColors.textPrimary,
-          ),
+      child = Container(
+        constraints: BoxConstraints(maxWidth: 0.78.sw),
+        margin: EdgeInsets.only(bottom: 12.h),
+        padding: EdgeInsets.all(3.w),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10.r),
+          border: Border.all(color: const Color(0xFFE0E0E0)),
+        ),
+        child: _ImageBody(
+          mediaId: mediaId,
+          ownerSide: ownerSide,
+          fallback: content,
         ),
       );
-    }
-
-    if (type == 'VIDEO') {
-      return Align(
-        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          constraints: BoxConstraints(maxWidth: 0.72.sw),
-          margin: EdgeInsets.only(bottom: 12.h),
-          child: _VideoBody(
-            mediaId: mediaId,
-            ownerSide: ownerSide,
-            fallback: content,
-          ),
+    } else if (type == 'VIDEO') {
+      child = Container(
+        constraints: BoxConstraints(maxWidth: 0.72.sw),
+        margin: EdgeInsets.only(bottom: 12.h),
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0F0F0),
+          borderRadius: BorderRadius.circular(10.r),
+          border: Border.all(color: const Color(0xFFE0E0E0)),
+        ),
+        child: Text(
+          '视频已停用',
+          style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
         ),
       );
-    }
-
-    if (type == 'SHARE') {
-      return Align(
-        alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-        child: Container(
-          constraints: BoxConstraints(maxWidth: 0.84.sw),
-          margin: EdgeInsets.only(bottom: 12.h),
-          child: Material(
-            color: Colors.white,
+    } else if (type == 'SHARE') {
+      child = Container(
+        constraints: BoxConstraints(maxWidth: 0.84.sw),
+        margin: EdgeInsets.only(bottom: 12.h),
+        child: Material(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12.r),
+          child: InkWell(
+            onTap: onOpenShare,
+            onLongPress: onLongPress,
             borderRadius: BorderRadius.circular(12.r),
-            child: InkWell(
-              onTap: onOpenShare,
-              borderRadius: BorderRadius.circular(12.r),
-              child: Container(
-                padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 10.h),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12.r),
-                  border: Border.all(color: const Color(0xFFE0E0E0)),
-                ),
-                child: _ShareCardBody(
-                  refType: refType,
-                  content: content,
-                ),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 10.h),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: const Color(0xFFE0E0E0)),
+              ),
+              child: _ShareCardBody(
+                refType: refType,
+                content: content,
               ),
             ),
           ),
         ),
       );
-    }
-
-    final radius = BorderRadius.only(
-      topLeft: Radius.circular(14.r),
-      topRight: Radius.circular(14.r),
-      bottomLeft: Radius.circular(mine ? 14.r : 4.r),
-      bottomRight: Radius.circular(mine ? 4.r : 14.r),
-    );
-    final bg = mine ? AppColors.navBlue : AppColors.sidebarInactive;
-    final fg = mine ? Colors.white : AppColors.textPrimary;
-
-    return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+    } else {
+      final radius = BorderRadius.only(
+        topLeft: Radius.circular(14.r),
+        topRight: Radius.circular(14.r),
+        bottomLeft: Radius.circular(mine ? 14.r : 4.r),
+        bottomRight: Radius.circular(mine ? 4.r : 14.r),
+      );
+      final bg = mine ? AppColors.navBlue : AppColors.sidebarInactive;
+      final fg = mine ? Colors.white : AppColors.textPrimary;
+      child = Container(
         constraints: BoxConstraints(maxWidth: 0.72.sw),
         margin: EdgeInsets.only(bottom: 12.h),
         padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
@@ -308,6 +319,14 @@ class CsMessageBubble extends StatelessWidget {
           content,
           style: TextStyle(fontSize: 14.sp, height: 1.45, color: fg),
         ),
+      );
+    }
+
+    return Align(
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: GestureDetector(
+        onLongPress: onLongPress,
+        child: child,
       ),
     );
   }
@@ -395,80 +414,11 @@ class _ShareCardBody extends StatelessWidget {
   }
 }
 
-class _ImageBody extends StatelessWidget {
+class _ImageBody extends StatefulWidget {
   const _ImageBody({
     required this.mediaId,
     required this.ownerSide,
     required this.fallback,
-    required this.fg,
-  });
-
-  final String mediaId;
-  final bool ownerSide;
-  final String fallback;
-  final Color fg;
-
-  @override
-  Widget build(BuildContext context) {
-    if (mediaId.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.all(10.w),
-        child: Text(
-          fallback.isEmpty ? '[图片]' : fallback,
-          style: TextStyle(fontSize: 14.sp, color: fg),
-        ),
-      );
-    }
-    final url = csMediaFileUrl(owner: ownerSide, mediaId: mediaId);
-    return GestureDetector(
-      onTap: () {
-        showDialog<void>(
-          context: context,
-          builder: (_) => Dialog(
-            backgroundColor: Colors.black,
-            insetPadding: EdgeInsets.all(12.w),
-            child: InteractiveViewer(
-              child: Image.network(
-                url,
-                headers: csAuthHeaders(),
-                fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Center(
-                  child: Text(
-                    '图片加载失败',
-                    style: TextStyle(color: Colors.white, fontSize: 14.sp),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        );
-      },
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8.r),
-        child: Image.network(
-          url,
-          headers: csAuthHeaders(),
-          width: 180.w,
-          height: 140.h,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => SizedBox(
-            width: 120.w,
-            height: 80.h,
-            child: Center(
-              child: Text('[图片]', style: TextStyle(color: fg, fontSize: 13.sp)),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _VideoBody extends StatelessWidget {
-  const _VideoBody({
-    required this.mediaId,
-    required this.ownerSide,
-    required this.fallback,
   });
 
   final String mediaId;
@@ -476,131 +426,121 @@ class _VideoBody extends StatelessWidget {
   final String fallback;
 
   @override
-  Widget build(BuildContext context) {
-    if (mediaId.isEmpty) {
-      return Container(
-        padding: EdgeInsets.all(12.w),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0F0F0),
-          borderRadius: BorderRadius.circular(10.r),
-          border: Border.all(color: const Color(0xFFE0E0E0)),
-        ),
-        child: Text(
-          fallback.isEmpty ? '[视频]' : fallback,
-          style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary),
-        ),
-      );
-    }
-    return InkWell(
-      onTap: () {
-        final url = csMediaFileUrl(owner: ownerSide, mediaId: mediaId);
-        Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => _CsVideoPage(url: url),
-          ),
-        );
-      },
-      borderRadius: BorderRadius.circular(10.r),
-      child: Container(
-        width: 180.w,
-        height: 110.h,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0F0F0),
-          borderRadius: BorderRadius.circular(10.r),
-          border: Border.all(color: const Color(0xFFE0E0E0)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.play_circle_filled,
-              size: 42.sp,
-              color: AppColors.textSecondary,
-            ),
-            SizedBox(height: 4.h),
-            Text(
-              '视频',
-              style: TextStyle(
-                fontSize: 12.sp,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  State<_ImageBody> createState() => _ImageBodyState();
 }
 
-class _CsVideoPage extends StatefulWidget {
-  const _CsVideoPage({required this.url});
-  final String url;
-
-  @override
-  State<_CsVideoPage> createState() => _CsVideoPageState();
-}
-
-class _CsVideoPageState extends State<_CsVideoPage> {
-  late final VideoPlayerController _ctrl;
-  bool _ready = false;
+class _ImageBodyState extends State<_ImageBody> {
+  Uint8List? _bytes;
   String? _err;
+  bool _loading = false;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = VideoPlayerController.networkUrl(
-      Uri.parse(widget.url),
-      httpHeaders: csAuthHeaders(),
-    );
-    _ctrl.initialize().then((_) {
-      if (!mounted) return;
-      setState(() => _ready = true);
-      _ctrl.play();
-    }).catchError((e) {
-      if (!mounted) return;
-      setState(() => _err = e.toString());
-    });
+    _load();
   }
 
   @override
-  void dispose() {
-    _ctrl.dispose();
-    super.dispose();
+  void didUpdateWidget(covariant _ImageBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.mediaId != widget.mediaId ||
+        oldWidget.ownerSide != widget.ownerSide) {
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    if (widget.mediaId.isEmpty) {
+      setState(() {
+        _bytes = null;
+        _err = widget.fallback.isEmpty ? '图片无效' : widget.fallback;
+        _loading = false;
+      });
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _err = null;
+    });
+    try {
+      final bytes = await loadCsMediaBytes(
+        ownerSide: widget.ownerSide,
+        mediaId: widget.mediaId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _bytes = bytes;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _err = e.toString();
+        _loading = false;
+      });
+    }
+  }
+
+  void _openPreview() {
+    final bytes = _bytes;
+    if (bytes == null) {
+      _load();
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.all(12.w),
+        child: InteractiveViewer(
+          child: Image.memory(bytes, fit: BoxFit.contain),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        foregroundColor: Colors.white,
-        title: const Text('视频'),
+    if (_loading && _bytes == null) {
+      return SizedBox(
+        width: 120.w,
+        height: 80.h,
+        child: const Center(
+          child: SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    if (_bytes == null) {
+      return GestureDetector(
+        onTap: _load,
+        child: SizedBox(
+          width: 140.w,
+          height: 90.h,
+          child: Center(
+            child: Text(
+              _err == null || _err!.isEmpty ? '图片加载失败，点重试' : '图片加载失败，点重试',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+            ),
+          ),
+        ),
+      );
+    }
+    return GestureDetector(
+      onTap: _openPreview,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8.r),
+        child: Image.memory(
+          _bytes!,
+          width: 180.w,
+          height: 140.h,
+          fit: BoxFit.cover,
+        ),
       ),
-      body: Center(
-        child: _err != null
-            ? Text(_err!, style: const TextStyle(color: Colors.white))
-            : !_ready
-                ? const CircularProgressIndicator(color: Colors.white)
-                : AspectRatio(
-                    aspectRatio: _ctrl.value.aspectRatio == 0
-                        ? 16 / 9
-                        : _ctrl.value.aspectRatio,
-                    child: VideoPlayer(_ctrl),
-                  ),
-      ),
-      floatingActionButton: _ready
-          ? FloatingActionButton(
-              onPressed: () {
-                setState(() {
-                  _ctrl.value.isPlaying ? _ctrl.pause() : _ctrl.play();
-                });
-              },
-              child: Icon(
-                _ctrl.value.isPlaying ? Icons.pause : Icons.play_arrow,
-              ),
-            )
-          : null,
     );
   }
 }
