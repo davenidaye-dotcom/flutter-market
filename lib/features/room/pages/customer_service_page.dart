@@ -14,6 +14,7 @@ import '../../../shared/widgets/keyboard_input_lift.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import 'room_shell_page.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../cs_pending_share.dart';
 import '../cs_rich.dart';
 
 /// Online CS chat for member room.
@@ -33,6 +34,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
   final _loadingNotifier = ValueNotifier(true);
   final _sendingNotifier = ValueNotifier(false);
   StreamSubscription<CsChatPush>? _csSub;
+  bool _sharePrompting = false;
 
   @override
   void initState() {
@@ -99,10 +101,63 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
       _messagesNotifier.value = mergeCsHistory(server, _messagesNotifier.value);
       _loadingNotifier.value = false;
       _scrollToEnd();
+      if (!silent) unawaited(_maybePromptPendingShare());
     } catch (e) {
       if (!mounted) return;
       _loadingNotifier.value = false;
       AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _maybePromptPendingShare() async {
+    if (_sharePrompting || !mounted) return;
+    final pending = ref.read(pendingCsShareProvider);
+    if (pending == null) return;
+    _sharePrompting = true;
+    // 先清掉，避免重复弹；取消也不再自动弹
+    ref.read(pendingCsShareProvider.notifier).state = null;
+
+    final preview = pending.preview.isEmpty
+        ? '${pending.refType} #${pending.refId}'
+        : pending.preview;
+    try {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('发给客服'),
+          content: Text('确认将以下内容发送到本房客服？\n\n$preview'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('发送'),
+            ),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+      if (_sendingNotifier.value) return;
+      _sendingNotifier.value = true;
+      try {
+        final saved = await ref.read(memberRepositoryProvider).sendCsMessage(
+              pending.preview,
+              msgType: 'SHARE',
+              refType: pending.refType,
+              refId: pending.refId,
+            );
+        if (!mounted) return;
+        _ingest(csMessageRow(saved));
+        AppToast.success('已发送到客服');
+      } catch (e) {
+        AppToast.error(e.toString());
+      } finally {
+        _sendingNotifier.value = false;
+      }
+    } finally {
+      _sharePrompting = false;
     }
   }
 
@@ -180,6 +235,10 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
 
   @override
   Widget build(BuildContext context) {
+    // 已在客服 Tab 时再次「发给客服」也会弹确认
+    ref.listen<PendingCsShare?>(pendingCsShareProvider, (prev, next) {
+      if (next != null) unawaited(_maybePromptPendingShare());
+    });
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(
