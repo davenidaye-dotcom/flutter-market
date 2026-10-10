@@ -1603,6 +1603,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       roomId: '${payload['roomId'] ?? ''}',
       direction: '${payload['direction'] ?? ''}'.toUpperCase(),
       content: payload['content']?.toString() ?? '',
+      msgType: '${payload['msgType'] ?? 'TEXT'}'.toUpperCase(),
+      mediaId: '${payload['mediaId'] ?? ''}',
+      refType: '${payload['refType'] ?? ''}',
+      refId: '${payload['refId'] ?? ''}',
       createdAt: payload['createdAt']?.toString() ?? '',
     );
   }
@@ -1987,6 +1991,10 @@ class CsChatPush {
     this.roomId = '',
     this.direction = '',
     this.content = '',
+    this.msgType = 'TEXT',
+    this.mediaId = '',
+    this.refType = '',
+    this.refId = '',
     this.createdAt = '',
   });
 
@@ -1996,6 +2004,10 @@ class CsChatPush {
   final String roomId;
   final String direction;
   final String content;
+  final String msgType;
+  final String mediaId;
+  final String refType;
+  final String refId;
   final String createdAt;
 }
 

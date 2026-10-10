@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../../room/cs_rich.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/keyboard_input_lift.dart';
@@ -354,12 +356,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     if (push.accountId.isNotEmpty && push.accountId != widget.session.accountId) {
       return;
     }
-    _ingest({
-      'id': push.messageId,
-      'direction': push.direction,
-      'content': push.content,
-      'createdAt': push.createdAt,
-    });
+    _ingest(csPushRow(push));
   }
 
   void _scrollToEnd() {
@@ -380,12 +377,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
         (m['content'] ?? '').toString() == content);
     final exists = id.isNotEmpty && _msgs.any((m) => (m['id'] ?? '').toString() == id);
     if (!exists) {
-      _msgs.add({
-        'id': id,
-        'direction': dir,
-        'content': content,
-        'createdAt': row['createdAt']?.toString() ?? '',
-      });
+      _msgs.add(csMessageRow(row));
     }
     if (!mounted) return;
     setState(() {});
@@ -400,14 +392,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
             limit: 50,
           );
       if (!mounted) return;
-      final server = list
-          .map((m) => {
-                'id': '${m['id'] ?? ''}',
-                'direction': (m['direction'] ?? '').toString(),
-                'content': m['content']?.toString() ?? '',
-                'createdAt': m['createdAt']?.toString() ?? '',
-              })
-          .toList();
+      final server = list.map(csMessageRow).toList();
       final local = [for (final m in _msgs) Map<String, dynamic>.from(m)];
       setState(() {
         _msgs
@@ -426,12 +411,13 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   Future<void> _send() async {
     final t = _ctrl.text.trim();
     if (t.isEmpty) return;
-    final optimistic = {
+    final optimistic = csMessageRow({
       'id': '',
       'direction': 'OUT',
       'content': t,
+      'msgType': 'TEXT',
       'createdAt': '',
-    };
+    });
     setState(() {
       _msgs.add(optimistic);
       _ctrl.clear();
@@ -443,15 +429,55 @@ class _ChatViewState extends ConsumerState<_ChatView> {
             t,
           );
       if (!mounted) return;
-      _ingest({
-        'id': '${saved['id'] ?? ''}',
-        'direction': '${saved['direction'] ?? 'OUT'}',
-        'content': '${saved['content'] ?? t}',
-        'createdAt': '${saved['createdAt'] ?? ''}',
-      });
+      _ingest(csMessageRow(saved));
     } catch (e) {
       if (!mounted) return;
       setState(() => _msgs.remove(optimistic));
+      AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _pickAndSend() async {
+    await showCsAttachSheet(
+      context: context,
+      onPicked: (file, msgType) => _uploadAndSend(file, msgType),
+    );
+  }
+
+  Future<void> _uploadAndSend(XFile file, String msgType) async {
+    try {
+      final meta = await ref.read(ownerRepositoryProvider).uploadCsMedia(
+            file.path,
+            filename: file.name,
+          );
+      final mediaId = '${meta['mediaId'] ?? ''}';
+      if (mediaId.isEmpty) throw Exception('上传失败');
+      final saved = await ref.read(ownerRepositoryProvider).sendCsReply(
+            widget.session.accountId,
+            '',
+            msgType: msgType,
+            mediaId: mediaId,
+          );
+      if (!mounted) return;
+      _ingest(csMessageRow(saved));
+    } catch (e) {
+      AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _openShare(Map<String, dynamic> m) async {
+    final refType = m['refType']?.toString() ?? '';
+    final refId = m['refId']?.toString() ?? '';
+    if (refType.isEmpty || refId.isEmpty) return;
+    try {
+      final detail = await ref.read(ownerRepositoryProvider).getCsRef(
+            widget.session.accountId,
+            refType,
+            refId,
+          );
+      if (!mounted) return;
+      await showCsRefSheet(context, detail);
+    } catch (e) {
       AppToast.error(e.toString());
     }
   }
@@ -473,54 +499,49 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                         itemCount: _msgs.length,
                         itemBuilder: (_, i) {
                           final m = _msgs[i];
-                          final mine = (m['direction'] ?? '').toString().toUpperCase() == 'OUT';
-                          final text = m['content']?.toString() ?? '';
-                          return Align(
-                            alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                            child: Container(
-                              margin: EdgeInsets.only(bottom: 8.h),
-                              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                              decoration: BoxDecoration(
-                                color: mine ? AppColors.navBlue : Colors.white,
-                                borderRadius: BorderRadius.circular(8.r),
-                              ),
-                              child: Text(
-                                text,
-                                style: TextStyle(
-                                  fontSize: 14.sp,
-                                  color: mine ? Colors.white : AppColors.textPrimary,
-                                ),
-                              ),
-                            ),
+                          final mine =
+                              (m['direction'] ?? '').toString().toUpperCase() ==
+                                  'OUT';
+                          return CsMessageBubble(
+                            message: m,
+                            mine: mine,
+                            ownerSide: true,
+                            onOpenShare: () => _openShare(m),
                           );
                         },
                       ),
               ),
               KeyboardInputLift(
                 child: Container(
-                color: Colors.white,
-                padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: EmulatorSafeTextField(
-                        controller: _ctrl,
-                        keyboardType: TextInputType.text,
-                        enableSuggestions: true,
-                        autocorrect: true,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _send(),
-                        decoration: InputDecoration(
-                          hintText: '输入回复（用户端显示为房间客服）',
-                          hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
-                          border: InputBorder.none,
+                  color: Colors.white,
+                  padding: EdgeInsets.fromLTRB(8.w, 8.h, 12.w, 8.h),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: _pickAndSend,
+                        icon: Icon(Icons.add_circle_outline,
+                            color: AppColors.navBlue, size: 26.sp),
+                      ),
+                      Expanded(
+                        child: EmulatorSafeTextField(
+                          controller: _ctrl,
+                          keyboardType: TextInputType.text,
+                          enableSuggestions: true,
+                          autocorrect: true,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _send(),
+                          decoration: InputDecoration(
+                            hintText: '输入回复（用户端显示为房间客服）',
+                            hintStyle: TextStyle(
+                                fontSize: 13.sp, color: AppColors.textHint),
+                            border: InputBorder.none,
+                          ),
                         ),
                       ),
-                    ),
-                    TextButton(onPressed: _send, child: const Text('发送')),
-                  ],
+                      TextButton(onPressed: _send, child: const Text('发送')),
+                    ],
+                  ),
                 ),
-              ),
               ),
             ],
           ),

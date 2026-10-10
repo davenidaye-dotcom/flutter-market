@@ -10,6 +10,7 @@ import '../widgets/date_range_filter.dart';
 import '../widgets/member_ledger_card.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../room/cs_share_helper.dart';
 
 /// 上下分记录（申请记录）
 class ApplyRecordsPage extends ConsumerStatefulWidget {
@@ -109,6 +110,8 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                               final type =
                                   '${r['applyType'] ?? r['type'] ?? ''}';
                               final status = '${r['status'] ?? ''}';
+                              final appId =
+                                  '${r['applicationId'] ?? r['id'] ?? ''}';
                               return MemberLedgerCard(
                                 typeLabel: _applyTypeLabel(type),
                                 amount: r['amount'] ?? r['points'],
@@ -120,6 +123,16 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                                 time:
                                     '${r['createdAt'] ?? r['createTime'] ?? ''}',
                                 remark: '${r['remark'] ?? ''}',
+                                onShareToCs: appId.isEmpty
+                                    ? null
+                                    : () => shareToCustomerService(
+                                          context,
+                                          ref,
+                                          refType: 'SCORE_APP',
+                                          refId: appId,
+                                          preview:
+                                              '${_applyTypeLabel(type)} $appId',
+                                        ),
                               );
                             },
                           ),

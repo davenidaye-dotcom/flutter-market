@@ -12,6 +12,7 @@ import '../utils/draw_snapshot_utils.dart';
 import '../widgets/date_range_filter.dart';
 import '../widgets/member_ledger_card.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../room/cs_share_helper.dart';
 import 'member_bet_report_shared.dart';
 
 /// Welfare — GET /member/welfare
@@ -159,6 +160,7 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
                                     fields.add(('单号', refId));
                                   }
                                   final accountId = '${r['accountId'] ?? ''}';
+                                  final ledgerId = '${r['id'] ?? ''}';
                                   return MemberLedgerCard(
                                     typeLabel: _detailTypeLabel(changeType),
                                     amount: r['amount'],
@@ -169,6 +171,16 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
                                     fields: fields,
                                     remark: '${r['remark'] ?? ''}',
                                     time: '${r['createdAt'] ?? ''}',
+                                    onShareToCs: ledgerId.isEmpty
+                                        ? null
+                                        : () => shareToCustomerService(
+                                              context,
+                                              ref,
+                                              refType: 'WELFARE_LEDGER',
+                                              refId: ledgerId,
+                                              preview:
+                                                  '${_detailTypeLabel(changeType)} #$ledgerId',
+                                            ),
                                   );
                                 },
                               ),

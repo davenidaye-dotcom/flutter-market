@@ -10,6 +10,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../utils/draw_snapshot_utils.dart';
 import '../widgets/member_ledger_card.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../../room/cs_share_helper.dart';
 
 /// Points change records
 class PointsChangePage extends ConsumerStatefulWidget {
@@ -157,6 +158,7 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                                 fields.add(('期号', issue));
                               }
                               final ranks = parseDrawRanks(pickDrawRanks(r));
+                              final ledgerId = '${r['id'] ?? ''}';
                               return MemberLedgerCard(
                                 typeLabel: ledgerChangeLabel(changeType),
                                 amount: r['amount'] ?? r['points'],
@@ -167,6 +169,16 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                                     '${r['createdAt'] ?? r['createTime'] ?? ''}',
                                 ranks: ranks,
                                 sumGy: pickSumGy(r),
+                                onShareToCs: ledgerId.isEmpty
+                                    ? null
+                                    : () => shareToCustomerService(
+                                          context,
+                                          ref,
+                                          refType: 'POINT_LEDGER',
+                                          refId: ledgerId,
+                                          preview:
+                                              '${ledgerChangeLabel(changeType)} #$ledgerId',
+                                        ),
                               );
                             },
                           ),

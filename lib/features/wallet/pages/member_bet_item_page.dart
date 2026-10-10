@@ -9,6 +9,7 @@ import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../room/cs_share_helper.dart';
 import 'member_bet_report_shared.dart';
 
 /// 竞猜记录 L3：某期玩法明细
@@ -179,6 +180,20 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
                     return _ItemRow(
                       row: _rows[i],
                       timeLabel: _fullTime(_rows[i]['createdAt']),
+                      onShare: () {
+                        final orderId = '${_rows[i]['orderId'] ?? ''}';
+                        if (orderId.isEmpty) {
+                          AppToast.info('无注单号');
+                          return;
+                        }
+                        shareToCustomerService(
+                          context,
+                          ref,
+                          refType: 'BET_ORDER',
+                          refId: orderId,
+                          preview: '注单 #$orderId',
+                        );
+                      },
                     );
                   },
                 ),
@@ -192,10 +207,15 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
 }
 
 class _ItemRow extends StatelessWidget {
-  const _ItemRow({required this.row, required this.timeLabel});
+  const _ItemRow({
+    required this.row,
+    required this.timeLabel,
+    this.onShare,
+  });
 
   final Map<String, dynamic> row;
   final String timeLabel;
+  final VoidCallback? onShare;
 
   static const _green = Color(0xFF2E9E5B);
   static const _red = Color(0xFFE53935);
@@ -223,62 +243,88 @@ class _ItemRow extends StatelessWidget {
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 12.h),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 6.h),
+                    Text(
+                      [
+                        if (issueLabel.isNotEmpty) issueLabel,
+                        if (timeLabel.isNotEmpty) timeLabel,
+                      ].join('  '),
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Text(
+                display,
+                style: TextStyle(
+                  fontSize: 16.sp,
+                  fontWeight: FontWeight.w700,
+                  color: amountColor,
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Container(
+                width: 34.w,
+                height: 34.w,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: badgeColor,
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  badgeText,
                   style: TextStyle(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    fontSize: 13.sp,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 6.h),
-                Text(
-                  [
-                    if (issueLabel.isNotEmpty) issueLabel,
-                    if (timeLabel.isNotEmpty) timeLabel,
-                  ].join('  '),
+              ),
+            ],
+          ),
+          if (onShare != null) ...[
+            SizedBox(height: 4.h),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: onShare,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  '发给客服',
                   style: TextStyle(
                     fontSize: 12.sp,
-                    color: AppColors.textSecondary,
+                    color: AppColors.navBlue,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
-            ),
-          ),
-          SizedBox(width: 8.w),
-          Text(
-            display,
-            style: TextStyle(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w700,
-              color: amountColor,
-            ),
-          ),
-          SizedBox(width: 8.w),
-          Container(
-            width: 34.w,
-            height: 34.w,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: badgeColor,
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              badgeText,
-              style: TextStyle(
-                fontSize: 13.sp,
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
               ),
             ),
-          ),
+          ],
         ],
       ),
     );

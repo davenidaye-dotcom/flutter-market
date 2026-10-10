@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
@@ -12,6 +14,7 @@ import '../../../shared/widgets/keyboard_input_lift.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import 'room_shell_page.dart';
 import '../../../shared/widgets/app_page_loading.dart';
+import '../cs_rich.dart';
 
 /// Online CS chat for member room.
 class CustomerServicePage extends ConsumerStatefulWidget {
@@ -58,12 +61,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
       unawaited(_load(silent: true));
       return;
     }
-    _ingest({
-      'id': push.messageId,
-      'direction': push.direction,
-      'content': push.content,
-      'createdAt': push.createdAt,
-    });
+    _ingest(csPushRow(push));
   }
 
   void _ingest(Map<String, dynamic> row) {
@@ -78,12 +76,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
         (m['direction'] ?? '').toString().toUpperCase() == dir &&
         (m['content'] ?? '').toString() == content);
     if (id.isEmpty || list.every((m) => (m['id'] ?? '').toString() != id)) {
-      list.add({
-        'id': id,
-        'direction': dir,
-        'content': content,
-        'createdAt': row['createdAt']?.toString() ?? '',
-      });
+      list.add(csMessageRow(row));
     }
     _messagesNotifier.value = list;
     _scrollToEnd();
@@ -102,7 +95,8 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
     try {
       final list = await ref.read(memberRepositoryProvider).getCsMessages();
       if (!mounted) return;
-      _messagesNotifier.value = mergeCsHistory(list, _messagesNotifier.value);
+      final server = list.map(csMessageRow).toList();
+      _messagesNotifier.value = mergeCsHistory(server, _messagesNotifier.value);
       _loadingNotifier.value = false;
       _scrollToEnd();
     } catch (e) {
@@ -117,28 +111,70 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
     if (text.isEmpty || _sendingNotifier.value) return;
     _sendingNotifier.value = true;
     _ctrl.clear();
-    final optimistic = {
+    final optimistic = csMessageRow({
       'id': '',
       'direction': 'IN',
       'content': text,
+      'msgType': 'TEXT',
       'createdAt': DateTime.now().toIso8601String(),
-    };
+    });
     _messagesNotifier.value = [..._messagesNotifier.value, optimistic];
     _scrollToEnd();
     try {
       final saved = await ref.read(memberRepositoryProvider).sendCsMessage(text);
       if (!mounted) return;
-      _ingest({
-        'id': '${saved['id'] ?? ''}',
-        'direction': '${saved['direction'] ?? 'IN'}',
-        'content': '${saved['content'] ?? text}',
-        'createdAt': '${saved['createdAt'] ?? optimistic['createdAt']}',
-      });
+      _ingest(csMessageRow(saved));
     } catch (e) {
-      _messagesNotifier.value = _messagesNotifier.value.where((m) => m != optimistic).toList();
+      _messagesNotifier.value =
+          _messagesNotifier.value.where((m) => m != optimistic).toList();
       AppToast.error(e.toString());
     } finally {
       _sendingNotifier.value = false;
+    }
+  }
+
+  Future<void> _pickAndSend() async {
+    await showCsAttachSheet(
+      context: context,
+      onPicked: (file, msgType) => _uploadAndSend(file, msgType),
+    );
+  }
+
+  Future<void> _uploadAndSend(XFile file, String msgType) async {
+    if (_sendingNotifier.value) return;
+    _sendingNotifier.value = true;
+    try {
+      final meta = await ref.read(memberRepositoryProvider).uploadCsMedia(
+            file.path,
+            filename: file.name,
+          );
+      final mediaId = '${meta['mediaId'] ?? ''}';
+      if (mediaId.isEmpty) throw Exception('上传失败');
+      final saved = await ref.read(memberRepositoryProvider).sendCsMessage(
+            '',
+            msgType: msgType,
+            mediaId: mediaId,
+          );
+      if (!mounted) return;
+      _ingest(csMessageRow(saved));
+    } catch (e) {
+      AppToast.error(e.toString());
+    } finally {
+      _sendingNotifier.value = false;
+    }
+  }
+
+  Future<void> _openShare(Map<String, dynamic> m) async {
+    final refType = m['refType']?.toString() ?? '';
+    final refId = m['refId']?.toString() ?? '';
+    if (refType.isEmpty || refId.isEmpty) return;
+    try {
+      final detail =
+          await ref.read(memberRepositoryProvider).getCsRef(refType, refId);
+      if (!mounted) return;
+      await showCsRefSheet(context, detail);
+    } catch (e) {
+      AppToast.error(e.toString());
     }
   }
 
@@ -167,7 +203,9 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
                           return Center(
                             child: Text(
                               '暂无消息，请输入咨询',
-                              style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
+                              style: TextStyle(
+                                  fontSize: 13.sp,
+                                  color: AppColors.textSecondary),
                             ),
                           );
                         }
@@ -177,56 +215,40 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
                           itemCount: messages.length,
                           itemBuilder: (_, i) {
                             final m = messages[i];
-                            final mine = (m['direction']?.toString().toUpperCase() ?? '') == 'IN';
-                            final content = m['content']?.toString() ?? '';
+                            final mine =
+                                (m['direction']?.toString().toUpperCase() ??
+                                        '') ==
+                                    'IN';
                             final rawTime = m['createdAt']?.toString() ?? '';
-                            final time = rawTime.length >= 16 ? rawTime.substring(11, 16) : rawTime;
-                            final radius = BorderRadius.only(
-                              topLeft: Radius.circular(14.r),
-                              topRight: Radius.circular(14.r),
-                              bottomLeft: Radius.circular(mine ? 14.r : 4.r),
-                              bottomRight: Radius.circular(mine ? 4.r : 14.r),
-                            );
-                            return RepaintBoundary(
-                              child: Align(
-                                alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-                                child: Container(
-                                  constraints: BoxConstraints(maxWidth: 0.72.sw),
-                                  margin: EdgeInsets.only(bottom: 12.h),
-                                  child: Column(
-                                    crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        mine ? '我' : '客服',
-                                        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                                      ),
-                                      SizedBox(height: 4.h),
-                                      Container(
-                                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 10.h),
-                                        decoration: BoxDecoration(
-                                          color: mine ? AppColors.navBlue : AppColors.sidebarInactive,
-                                          borderRadius: radius,
-                                        ),
-                                        child: Text(
-                                          content,
-                                          style: TextStyle(
-                                            fontSize: 14.sp,
-                                            height: 1.45,
-                                            color: mine ? Colors.white : AppColors.textPrimary,
-                                          ),
-                                        ),
-                                      ),
-                                      if (time.isNotEmpty) ...[
-                                        SizedBox(height: 4.h),
-                                        Text(
-                                          time,
-                                          style: TextStyle(fontSize: 10.sp, color: AppColors.textHint),
-                                        ),
-                                      ],
-                                    ],
-                                  ),
+                            final time = rawTime.length >= 16
+                                ? rawTime.substring(11, 16)
+                                : rawTime;
+                            return Column(
+                              crossAxisAlignment: mine
+                                  ? CrossAxisAlignment.end
+                                  : CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  mine ? '我' : '客服',
+                                  style: TextStyle(
+                                      fontSize: 12.sp,
+                                      color: AppColors.textSecondary),
                                 ),
-                              ),
+                                SizedBox(height: 4.h),
+                                CsMessageBubble(
+                                  message: m,
+                                  mine: mine,
+                                  ownerSide: false,
+                                  onOpenShare: () => _openShare(m),
+                                ),
+                                if (time.isNotEmpty)
+                                  Text(
+                                    time,
+                                    style: TextStyle(
+                                        fontSize: 10.sp,
+                                        color: AppColors.textHint),
+                                  ),
+                              ],
                             );
                           },
                         );
@@ -237,48 +259,55 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
               ),
               KeyboardInputLift(
                 child: Material(
-                color: const Color(0xFFEEEEEE),
-                child: SafeArea(
-                  top: false,
-                  child: Padding(
-                    padding: EdgeInsets.fromLTRB(12.w, 8.h, 8.w, 10.h),
-                    child: ValueListenableBuilder<bool>(
-                      valueListenable: _sendingNotifier,
-                      builder: (_, sending, __) {
-                        return Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _ctrl,
-                                enabled: !sending,
-                                keyboardType: TextInputType.text,
-                                enableSuggestions: true,
-                                autocorrect: true,
-                                textInputAction: TextInputAction.send,
-                                onSubmitted: (_) => _send(),
-                                decoration: InputDecoration(
-                                  hintText: '请输入消息',
-                                  filled: true,
-                                  fillColor: Colors.white,
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 10.h),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(20.r),
-                                    borderSide: BorderSide.none,
+                  color: const Color(0xFFEEEEEE),
+                  child: SafeArea(
+                    top: false,
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(8.w, 8.h, 8.w, 10.h),
+                      child: ValueListenableBuilder<bool>(
+                        valueListenable: _sendingNotifier,
+                        builder: (_, sending, __) {
+                          return Row(
+                            children: [
+                              IconButton(
+                                onPressed: sending ? null : _pickAndSend,
+                                icon: Icon(Icons.add_circle_outline,
+                                    color: AppColors.navBlue, size: 26.sp),
+                              ),
+                              Expanded(
+                                child: EmulatorSafeTextField(
+                                  controller: _ctrl,
+                                  enabled: !sending,
+                                  keyboardType: TextInputType.text,
+                                  enableSuggestions: true,
+                                  autocorrect: true,
+                                  textInputAction: TextInputAction.send,
+                                  onSubmitted: (_) => _send(),
+                                  decoration: InputDecoration(
+                                    hintText: '请输入消息',
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 14.w, vertical: 10.h),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(20.r),
+                                      borderSide: BorderSide.none,
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                            IconButton(
-                              onPressed: sending ? null : _send,
-                              icon: Icon(Icons.send, color: AppColors.navBlue, size: 26.sp),
-                            ),
-                          ],
-                        );
-                      },
+                              IconButton(
+                                onPressed: sending ? null : _send,
+                                icon: Icon(Icons.send,
+                                    color: AppColors.navBlue, size: 26.sp),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ),
-              ),
               ),
             ],
           ),

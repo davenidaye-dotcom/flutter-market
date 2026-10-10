@@ -54,6 +54,7 @@ class MemberLedgerCard extends StatelessWidget {
     this.toneKey,
     this.ranks = const [],
     this.sumGy,
+    this.onShareToCs,
   });
 
   final String typeLabel;
@@ -67,6 +68,7 @@ class MemberLedgerCard extends StatelessWidget {
   final String? toneKey;
   final List<int> ranks;
   final int? sumGy;
+  final VoidCallback? onShareToCs;
 
   static const _green = Color(0xFF2E9E5B);
   static const _red = Color(0xFFE53935);
@@ -213,14 +215,35 @@ class MemberLedgerCard extends StatelessWidget {
               style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
             ),
           ],
-          if (when.isNotEmpty) ...[
+          if (when.isNotEmpty || onShareToCs != null) ...[
             SizedBox(height: 8.h),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                when,
-                style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-              ),
+            Row(
+              children: [
+                if (onShareToCs != null)
+                  TextButton(
+                    onPressed: onShareToCs,
+                    style: TextButton.styleFrom(
+                      padding: EdgeInsets.symmetric(horizontal: 8.w),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      '发给客服',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: AppColors.navBlue,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                const Spacer(),
+                if (when.isNotEmpty)
+                  Text(
+                    when,
+                    style:
+                        TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                  ),
+              ],
             ),
           ],
         ],

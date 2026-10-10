@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../../core/network/api_client.dart';
 
 /// Member profile / CS / redpacks / room intro.
@@ -50,8 +52,33 @@ class MemberRepository {
     return _asMapList(data);
   }
 
-  Future<Map<String, dynamic>> sendCsMessage(String content) async {
-    final data = await _client.post('/member/cs/messages', data: {'content': content});
+  Future<Map<String, dynamic>> sendCsMessage(
+    String content, {
+    String msgType = 'TEXT',
+    String? mediaId,
+    String? refType,
+    String? refId,
+  }) async {
+    final data = await _client.post('/member/cs/messages', data: {
+      if (content.isNotEmpty) 'content': content,
+      'msgType': msgType,
+      if (mediaId != null && mediaId.isNotEmpty) 'mediaId': mediaId,
+      if (refType != null && refType.isNotEmpty) 'refType': refType,
+      if (refId != null && refId.isNotEmpty) 'refId': refId,
+    });
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> uploadCsMedia(String path, {String? filename}) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(path, filename: filename),
+    });
+    final data = await _client.post('/member/cs/media', data: form);
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getCsRef(String refType, String refId) async {
+    final data = await _client.get('/member/cs/refs/$refType/$refId');
     return _asMap(data);
   }
 

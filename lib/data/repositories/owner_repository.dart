@@ -1,3 +1,5 @@
+import 'package:dio/dio.dart';
+
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 
@@ -685,11 +687,36 @@ class OwnerRepository {
 
   Future<Map<String, dynamic>> sendCsReply(
     String accountId,
-    String content,
-  ) async {
+    String content, {
+    String msgType = 'TEXT',
+    String? mediaId,
+  }) async {
     final data = await _client.post(
       '/owner/cs/sessions/$accountId/messages',
-      data: {'content': content},
+      data: {
+        if (content.isNotEmpty) 'content': content,
+        'msgType': msgType,
+        if (mediaId != null && mediaId.isNotEmpty) 'mediaId': mediaId,
+      },
+    );
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> uploadCsMedia(String path, {String? filename}) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(path, filename: filename),
+    });
+    final data = await _client.post('/owner/cs/media', data: form);
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getCsRef(
+    String accountId,
+    String refType,
+    String refId,
+  ) async {
+    final data = await _client.get(
+      '/owner/cs/sessions/$accountId/refs/$refType/$refId',
     );
     return _asMap(data);
   }
