@@ -6,6 +6,7 @@ import '../../../config/env/env_config.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../shared/format/display_number.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
@@ -40,7 +41,10 @@ final agentGameOptionsProvider = FutureProvider<List<Map<String, String>>>((ref)
       if (g is Map)
         {
           'type': (g['type'] ?? '').toString(),
-          'typeName': (g['typeName'] ?? g['type'] ?? '').toString(),
+          'typeName': GameSeries.displayName(
+            (g['type'] ?? '').toString(),
+            (g['typeName'] ?? g['type'] ?? '').toString(),
+          ),
         },
   ].where((e) => agentLiveGameTypes.contains(e['type'])).toList();
 });

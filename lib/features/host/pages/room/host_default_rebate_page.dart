@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
@@ -75,12 +76,15 @@ class _HostDefaultRebatePageState extends ConsumerState<HostDefaultRebatePage> {
       } else {
         for (final m in items) {
           final gt = (m['gameType'] ?? m['type'] ?? '').toString();
-          final gn = (m['gameName'] ?? m['typeName'] ?? gt).toString();
+          final gn = GameSeries.displayName(
+            gt,
+            (m['gameName'] ?? m['typeName'] ?? gt).toString(),
+          );
           final r = hostNumStr(m['ratio'] ?? ratio, fraction: 2);
           _rows.add(
             _RebateRow(
               gameType: gt,
-              gameName: gn.isEmpty ? gt : gn,
+              gameName: gn,
               controller: TextEditingController(text: r),
             ),
           );

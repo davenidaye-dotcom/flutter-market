@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
@@ -103,7 +104,10 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
 
   void _openGame(Map<String, dynamic> row) {
     final gameType = '${row['gameType'] ?? ''}'.trim();
-    final gameName = '${row['gameName'] ?? gameType}'.trim();
+    final gameName = GameSeries.displayName(
+      gameType,
+      '${row['gameName'] ?? gameType}'.trim(),
+    );
     if (gameType.isEmpty) {
       AppToast.error('缺少彩种');
       return;
@@ -112,7 +116,7 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
       MaterialPageRoute<void>(
         builder: (_) => MemberBetIssuePage(
           gameType: gameType,
-          gameName: gameName.isEmpty ? gameType : gameName,
+          gameName: gameName,
           start: _start,
           end: _end,
           quickIndex: _quickIndex,
@@ -296,7 +300,11 @@ class _GameCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = '${row['gameName'] ?? row['gameType'] ?? '—'}';
+    final gt = '${row['gameType'] ?? ''}'.trim();
+    final name = GameSeries.displayName(
+      gt,
+      '${row['gameName'] ?? gt}'.trim(),
+    );
     final player = memberBetMoney(row['playerResult']);
     final game = memberBetMoney(row['gameResult']);
     final orders = memberBetMoney(row['orderCount'], trimZero: true);
@@ -319,7 +327,7 @@ class _GameCard extends StatelessWidget {
                   SizedBox(width: 8.w),
                   Expanded(
                     child: Text(
-                      name,
+                      name.isEmpty ? '—' : name,
                       style: TextStyle(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w700,

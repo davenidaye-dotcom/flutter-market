@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../../lottery/providers/lottery_live_provider.dart';
 import '../../widgets/host_ui.dart';
@@ -102,12 +103,11 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
                   separatorBuilder: (_, _) => SizedBox(height: 8.h),
                   itemBuilder: (_, i) {
                     final g = _games[i];
-                    final name = (g['gameName'] ??
-                            g['typeName'] ??
-                            g['gameType'] ??
-                            g['type'] ??
-                            '')
-                        .toString();
+                    final gt = (g['gameType'] ?? g['type'] ?? '').toString();
+                    final name = GameSeries.displayName(
+                      gt,
+                      (g['gameName'] ?? g['typeName'] ?? gt).toString(),
+                    );
                     final enabled = _asEnabledFlag(g['enabled']);
                     return HostWhiteCard(
                       child: Row(

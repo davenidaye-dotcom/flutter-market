@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
@@ -80,12 +81,14 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
             room['joinAudit'] == 1 ||
             enterMode == 'AUDIT';
         _games = list
-            .map((g) => (
-                  (g['gameType'] ?? g['type'] ?? '').toString(),
-                  (g['gameName'] ?? g['typeName'] ?? g['gameType'] ?? g['type'] ?? '')
-                      .toString(),
-                  _asGameEnabled(g['enabled']),
-                ))
+            .map((g) {
+              final gt = (g['gameType'] ?? g['type'] ?? '').toString();
+              final gn = GameSeries.displayName(
+                gt,
+                (g['gameName'] ?? g['typeName'] ?? gt).toString(),
+              );
+              return (gt, gn, _asGameEnabled(g['enabled']));
+            })
             .where((e) => e.$1.isNotEmpty || e.$2.isNotEmpty)
             .toList();
         _loading = false;

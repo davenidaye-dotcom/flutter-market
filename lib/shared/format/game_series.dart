@@ -29,8 +29,15 @@ class GameSeries {
     return [for (final m in pk10Members) if (m != gt) m];
   }
 
-  static String displayName(String gameType) =>
-      gameNames[gameType] ?? gameType;
+  /// 已知彩种用目录名；否则去掉历史前缀「台湾」再展示。
+  static String displayName(String gameType, [String? apiOrDbName]) {
+    final gt = gameType.trim().toUpperCase();
+    final catalog = gameNames[gt];
+    if (catalog != null) return catalog;
+    final raw = (apiOrDbName ?? gameType).trim();
+    if (raw.startsWith('台湾')) return raw.substring(2);
+    return raw.isEmpty ? gameType : raw;
+  }
 
   static String peerNamesHint(String? gameType) {
     final peers = peersOf(gameType);

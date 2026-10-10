@@ -52,9 +52,9 @@ class _HostOddsLimitsPageState extends ConsumerState<HostOddsLimitsPage> {
       (g['gameType'] ?? g['type'] ?? '').toString();
 
   String _nameOf(Map<String, dynamic> g) {
-    final n = (g['gameName'] ?? g['typeName'] ?? g['gameType'] ?? g['type'] ?? '')
-        .toString();
-    return n.isEmpty ? _typeOf(g) : n;
+    final t = _typeOf(g);
+    final n = (g['gameName'] ?? g['typeName'] ?? t).toString();
+    return GameSeries.displayName(t, n);
   }
 
   String _subtitleOf(Map<String, dynamic> g) {

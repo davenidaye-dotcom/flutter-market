@@ -1,5 +1,6 @@
 import '../../core/network/api_client.dart';
 import '../../shared/format/display_number.dart';
+import '../../shared/format/game_series.dart';
 import '../../core/network/session_store.dart';
 import '../../features/lottery/utils/bet_receipt_format.dart';
 import '../../features/lottery/utils/draw_result_parse.dart';
@@ -73,9 +74,13 @@ class LotteryRepository {
       final sealSeconds = sealRaw is int
           ? sealRaw
           : int.tryParse('$sealRaw');
+      final gameType = m['gameType']?.toString() ?? '';
       final model = LotteryGameModel(
-        id: m['gameType']?.toString() ?? '',
-        name: m['gameName']?.toString() ?? m['gameType']?.toString() ?? '',
+        id: gameType,
+        name: GameSeries.displayName(
+          gameType,
+          m['gameName']?.toString() ?? gameType,
+        ),
         currentIssue: m['latestIssueNo']?.toString() ?? '',
         previousIssue: m['lastIssueNo']?.toString(),
         countdownSeconds: seconds,

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/app_pull_refresh.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../data/host_mock.dart';
@@ -137,20 +138,10 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
   }
 
   String _gameName(Map<String, dynamic> r) {
-    final name = '${r['gameName'] ?? r['typeName'] ?? r['label'] ?? ''}'.trim();
-    if (name.isNotEmpty) return name;
     final t = '${r['gameType'] ?? r['type'] ?? ''}'.trim();
-    const map = {
-      'JS_SC': '极速赛车',
-      'JS_FT': '极速飞艇',
-      'XY_FT': '幸运飞艇',
-      'AZXY10': '澳洲幸运10',
-      'AZ_XY10': '澳洲幸运10',
-      'TW_BG_Q': '宾果赛车(前)',
-      'TW_BG_H': '宾果赛车(后)',
-      'SG_FT': 'SG飞艇',
-    };
-    return map[t] ?? (t.isEmpty ? '—' : t);
+    final name = '${r['gameName'] ?? r['typeName'] ?? r['label'] ?? ''}'.trim();
+    final shown = GameSeries.displayName(t, name);
+    return shown.isEmpty ? '—' : shown;
   }
 
   String _timeOf(Map<String, dynamic> r) {
