@@ -18,6 +18,8 @@ import '../../../data/repositories/providers.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../../room/pages/room_shell_page.dart';
+import '../../room/cs_pending_share.dart';
+import '../../room/cs_rich.dart';
 import '../app_release.dart';
 import '../widgets/avatar_picker_sheet.dart';
 import 'personal_settings_page.dart';
@@ -267,27 +269,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   }
 
   Future<void> _clearCsHistory() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('清空客服聊天记录'),
-        content: const Text('仅本端清空，房主仍可见。确定清空？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('清空'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true || !mounted) return;
+    final ok = await confirmCsClearHistory(context);
+    if (!ok || !mounted) return;
     try {
       await ref.read(memberRepositoryProvider).clearCsMessages();
-      AppToast.success('已清空（仅本端）');
+      bumpCsHistoryRevision(ref);
+      AppToast.info('已删除');
     } catch (e) {
       AppToast.error(e.toString());
     }

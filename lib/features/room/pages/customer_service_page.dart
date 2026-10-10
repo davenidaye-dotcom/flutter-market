@@ -205,7 +205,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
       await ref.read(memberRepositoryProvider).hideCsMessage(id);
       _messagesNotifier.value =
           _messagesNotifier.value.where((e) => (e['id'] ?? '').toString() != id).toList();
-      AppToast.success('已删除（仅本端）');
+      AppToast.info('已删除');
     } catch (e) {
       AppToast.error(e.toString());
     }
@@ -254,6 +254,11 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
     // 已在客服 Tab 时再次「发给客服」也会弹确认
     ref.listen<PendingCsShare?>(pendingCsShareProvider, (prev, next) {
       if (next != null) unawaited(_maybePromptPendingShare());
+    });
+    ref.listen<int>(csHistoryRevisionProvider, (prev, next) {
+      if (prev == next) return;
+      _messagesNotifier.value = [];
+      unawaited(_load());
     });
     return AppPageScaffold(
       body: GradientBackground(

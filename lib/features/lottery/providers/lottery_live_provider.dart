@@ -1967,15 +1967,12 @@ List<Map<String, dynamic>> mergeCsHistory(
   List<Map<String, dynamic>> server,
   List<Map<String, dynamic>> local,
 ) {
-  final serverIds = {
-    for (final m in server)
-      if ((m['id'] ?? '').toString().isNotEmpty) (m['id'] ?? '').toString(),
-  };
+  // 服务端已隐藏/删除的有 id 消息不得从本地「复活」；只保留无 id 的乐观发送条。
   final extra = local.where((m) {
     final id = (m['id'] ?? '').toString();
+    if (id.isNotEmpty) return false;
     final dir = (m['direction'] ?? '').toString().toUpperCase();
     final content = (m['content'] ?? '').toString();
-    if (id.isNotEmpty) return !serverIds.contains(id);
     return !server.any((s) =>
         (s['direction'] ?? '').toString().toUpperCase() == dir &&
         (s['content'] ?? '').toString() == content);

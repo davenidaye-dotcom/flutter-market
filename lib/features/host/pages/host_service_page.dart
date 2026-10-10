@@ -127,14 +127,17 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   }
 
   Future<void> _clearSession(_CsSession s) async {
-    final ok = await confirmCsClearHistory(context, title: '删除会话记录');
+    final ok = await confirmCsClearHistory(context);
     if (!ok || !mounted) return;
     try {
       await ref.read(ownerRepositoryProvider).clearCsSessionMessages(s.accountId);
       setState(() {
         _sessions.removeWhere((e) => e.accountId == s.accountId);
+        if (_open?.accountId == s.accountId) {
+          _open = null;
+        }
       });
-      AppToast.success('已清空（仅本端）');
+      AppToast.info('已删除');
     } catch (e) {
       AppToast.error(e.toString());
     }
@@ -473,7 +476,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
       setState(() {
         _msgs.removeWhere((e) => (e['id'] ?? '').toString() == id);
       });
-      AppToast.success('已删除（仅本端）');
+      AppToast.info('已删除');
     } catch (e) {
       AppToast.error(e.toString());
     }

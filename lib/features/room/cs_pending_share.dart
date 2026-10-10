@@ -14,3 +14,10 @@ class PendingCsShare {
 }
 
 final pendingCsShareProvider = StateProvider<PendingCsShare?>((ref) => null);
+
+/// 清空/隐藏客服历史后递增，客服页 listen 后丢掉本地缓存并重拉。
+final csHistoryRevisionProvider = StateProvider<int>((ref) => 0);
+
+void bumpCsHistoryRevision(WidgetRef ref) {
+  ref.read(csHistoryRevisionProvider.notifier).state++;
+}

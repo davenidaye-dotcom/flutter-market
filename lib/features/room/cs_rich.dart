@@ -57,8 +57,8 @@ Future<bool> confirmCsSideDelete(BuildContext context) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
-      title: const Text('删除消息'),
-      content: const Text('仅本端删除，对方仍可见。确定删除？'),
+      title: const Text('确定删除消息'),
+      content: const Text('删除后将不可见'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
@@ -74,12 +74,12 @@ Future<bool> confirmCsSideDelete(BuildContext context) async {
   return ok == true;
 }
 
-Future<bool> confirmCsClearHistory(BuildContext context, {required String title}) async {
+Future<bool> confirmCsClearHistory(BuildContext context, {String title = '确定删除消息'}) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (ctx) => AlertDialog(
       title: Text(title),
-      content: const Text('仅本端清空，对方仍可见。确定清空？'),
+      content: const Text('删除后将不可见'),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
@@ -87,7 +87,7 @@ Future<bool> confirmCsClearHistory(BuildContext context, {required String title}
         ),
         TextButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: const Text('清空'),
+          child: const Text('删除'),
         ),
       ],
     ),
