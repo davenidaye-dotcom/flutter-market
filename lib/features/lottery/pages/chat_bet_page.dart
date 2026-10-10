@@ -1410,8 +1410,13 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         },
       );
       if (confirmed == null || !mounted) return;
-      // 气泡/同房广播仍用输入原文；确认框只带回改后 items。
-      submitItems = confirmed.items;
+      // 梭哈必须走后端按份数整除重算，不带确认框改后的 items。
+      if (command.contains('梭哈')) {
+        submitItems = null;
+      } else {
+        // 气泡/同房广播仍用输入原文；确认框只带回改后 items。
+        submitItems = confirmed.items;
+      }
     }
 
     _submitLocked = true;

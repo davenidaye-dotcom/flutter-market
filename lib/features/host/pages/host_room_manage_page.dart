@@ -75,6 +75,10 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       setState(() {
         _room = room;
         _betConfirm = room['betConfirm'] == true || room['betConfirm'] == 1;
+        final enterMode = '${room['enterMode'] ?? ''}'.trim().toUpperCase();
+        _joinAudit = room['joinAudit'] == true ||
+            room['joinAudit'] == 1 ||
+            enterMode == 'AUDIT';
         _games = list
             .map((g) => (
                   (g['gameType'] ?? g['type'] ?? '').toString(),
@@ -135,6 +139,18 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       AppToast.success(v ? '已开启下注确认' : '已关闭下注确认');
     } catch (e) {
       if (mounted) setState(() => _betConfirm = prev);
+      AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _toggleJoinAudit(bool v) async {
+    final prev = _joinAudit;
+    setState(() => _joinAudit = v);
+    try {
+      await ref.read(ownerRepositoryProvider).updateRoomFlags(joinAudit: v);
+      AppToast.success(v ? '已开启进房审核' : '已关闭进房审核');
+    } catch (e) {
+      if (mounted) setState(() => _joinAudit = prev);
       AppToast.error(e.toString());
     }
   }
@@ -310,7 +326,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                               _switchTile(
                                 '\u8fdb\u623f\u5ba1\u6838',
                                 _joinAudit,
-                                (v) => setState(() => _joinAudit = v),
+                                _toggleJoinAudit,
                               ),
                               const Divider(
                                   height: 1, color: AppColors.divider),

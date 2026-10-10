@@ -58,10 +58,11 @@ class OwnerRepository {
     await _client.put('/owner/room/name', data: {'roomName': roomName});
   }
 
-  /// 房间运行时开关（Redis）；读在 GET /owner/room 的 betConfirm
-  Future<void> updateRoomFlags({bool? betConfirm}) async {
+  /// 房间运行时开关；读在 GET /owner/room 的 betConfirm / enterMode / joinAudit
+  Future<void> updateRoomFlags({bool? betConfirm, bool? joinAudit}) async {
     await _client.put('/owner/room/flags', data: {
       if (betConfirm != null) 'betConfirm': betConfirm,
+      if (joinAudit != null) 'joinAudit': joinAudit,
     });
   }
 
