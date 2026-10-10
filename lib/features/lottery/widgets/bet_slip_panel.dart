@@ -241,7 +241,7 @@ class BetSlipPanel extends ConsumerWidget {
       final amount = m['amount'];
       final amountText = amount == null ? '—' : displayNumber(amount);
       final odds = m['odds'] ?? m['oddsSnapshot'] ?? m['odds_snapshot'];
-      final oddsText = odds == null ? '—' : displayNumber(odds);
+      final oddsText = odds == null ? '—' : displayNumber(odds, maxDecimals: 4);
       out.add(_DetailLine(label: label, amount: amountText, oddsText: oddsText));
     }
     return out;

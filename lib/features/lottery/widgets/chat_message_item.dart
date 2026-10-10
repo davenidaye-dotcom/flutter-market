@@ -19,9 +19,15 @@ String _displaySender(String raw) {
 }
 
 class ChatMessageItem extends StatelessWidget {
-  const ChatMessageItem({super.key, required this.message});
+  const ChatMessageItem({
+    super.key,
+    required this.message,
+    this.gameName,
+  });
 
   final ChatMessageModel message;
+  /// 开奖卡左下角游戏名；不传则显示「开奖结果」
+  final String? gameName;
 
   bool get _isRobotSystemLayout =>
       message.type == ChatMessageType.system ||
@@ -90,7 +96,7 @@ class ChatMessageItem extends StatelessWidget {
 
   Widget _buildRobotSystemBody() {
     if (message.type == ChatMessageType.resultCard) {
-      return _ResultCard(message: message);
+      return _ResultCard(message: message, gameName: gameName);
     }
     if (message.type == ChatMessageType.system) {
       return _SystemNotice(content: message.content, issueNo: message.issueNo);
@@ -265,9 +271,10 @@ class _SystemNotice extends StatelessWidget {
 }
 
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.message});
+  const _ResultCard({required this.message, this.gameName});
 
   final ChatMessageModel message;
+  final String? gameName;
 
   @override
   Widget build(BuildContext context) {
@@ -284,79 +291,300 @@ class _ResultCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final title = (gameName != null && gameName!.trim().isNotEmpty)
+        ? gameName!.trim()
+        : '开奖结果';
+    final podium = ranks.length >= 3
+        ? <int>[ranks[0], ranks[1], ranks[2]]
+        : ranks;
+    final gy = ranks.length >= 2 ? ranks[0] + ranks[1] : null;
+    final gyLabel = gy == null
+        ? ''
+        : '冠亚和 $gy ${gy >= 12 ? '大' : '小'} ${gy.isOdd ? '单' : '双'}';
+    final dtLabel = _dragonTigerLine(ranks);
+
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-        ),
         borderRadius: BorderRadius.circular(10.r),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.12),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF1B2740), Color(0xFF0E1524)],
+        ),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            '开奖结果',
-            style: TextStyle(
-              color: Colors.white70,
-              fontSize: 13.sp,
-              fontWeight: FontWeight.w500,
+          Padding(
+            padding: EdgeInsets.fromLTRB(10.w, 10.h, 10.w, 6.h),
+            child: Row(
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 13.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                if (ranks.isNotEmpty)
+                  Expanded(
+                    child: SizedBox(
+                      height: 20.h,
+                      child: LotteryBallRow(
+                        numbers: ranks,
+                        expandSlots: true,
+                        gap: 2.w,
+                        digitFontSize: 10.sp,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
-          if (issue != null && issue.isNotEmpty) ...[
-            SizedBox(height: 8.h),
-            Text(
-              '第$issue期',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 19.sp,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-              ),
+          if (podium.isNotEmpty)
+            Padding(
+              padding: EdgeInsets.fromLTRB(8.w, 4.h, 8.w, 8.h),
+              child: _PodiumCars(numbers: podium),
             ),
-          ],
-          if (ranks.isNotEmpty) ...[
-            SizedBox(height: 10.h),
-            // 与下注页顶栏开奖球：同一套框宽 / 字号（按顶栏 middle 列宽算）
-            Builder(
-              builder: (context) {
-                final topMiddleW = MediaQuery.sizeOf(context).width -
-                    HistoryDrawLayout.hPad() * 2 -
-                    HistoryDrawLayout.issueW() -
-                    HistoryDrawLayout.issueGap() -
-                    HistoryDrawLayout.gyW() -
-                    HistoryDrawLayout.dtW();
-                return SizedBox(
-                  width: topMiddleW,
-                  height: HistoryDrawLayout.rowHeight(),
-                  child: LotteryBallRow(
-                    numbers: ranks,
-                    expandSlots: true,
-                    gap: HistoryDrawLayout.ballGap(),
-                    digitFontSize: HistoryDrawLayout.ballDigitSize(),
+          Container(
+            color: Colors.black.withValues(alpha: 0.55),
+            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 7.h),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    issue != null && issue.isNotEmpty ? '期号 No.$issue' : title,
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                );
-              },
+                ),
+                if (gyLabel.isNotEmpty)
+                  Text(
+                    gyLabel,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                if (dtLabel.isNotEmpty) ...[
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: Text(
+                      dtLabel,
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 10.sp,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.right,
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ] else if (message.content.isNotEmpty) ...[
-            SizedBox(height: 8.h),
-            Text(
-              message.content,
-              style: TextStyle(color: Colors.white, fontSize: 14.sp, height: 1.35),
-            ),
-          ],
+          ),
         ],
       ),
     );
   }
+
+  /// 1-5 名 vs 10-6 名龙虎串。
+  static String _dragonTigerLine(List<int> ranks) {
+    if (ranks.length < 10) return '';
+    final buf = StringBuffer('1-5龙虎 ');
+    for (var i = 0; i < 5; i++) {
+      buf.write(ranks[i] > ranks[9 - i] ? '龙' : '虎');
+    }
+    return buf.toString();
+  }
+}
+
+/// 前三名领奖台：银 / 金 / 铜，车身色跟号色走。
+class _PodiumCars extends StatelessWidget {
+  const _PodiumCars({required this.numbers});
+
+  final List<int> numbers;
+
+  @override
+  Widget build(BuildContext context) {
+    final first = numbers.isNotEmpty ? numbers[0] : 0;
+    final second = numbers.length > 1 ? numbers[1] : 0;
+    final third = numbers.length > 2 ? numbers[2] : 0;
+    return SizedBox(
+      height: 118.h,
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: CustomPaint(
+              size: Size(double.infinity, 36.h),
+              painter: _PodiumBasePainter(),
+            ),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: _PodiumSlot(
+                  place: 2,
+                  number: second,
+                  cupColor: const Color(0xFFC0C0C0),
+                  height: 88.h,
+                ),
+              ),
+              Expanded(
+                child: _PodiumSlot(
+                  place: 1,
+                  number: first,
+                  cupColor: const Color(0xFFFFC107),
+                  height: 108.h,
+                ),
+              ),
+              Expanded(
+                child: _PodiumSlot(
+                  place: 3,
+                  number: third,
+                  cupColor: const Color(0xFFCD7F32),
+                  height: 78.h,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PodiumSlot extends StatelessWidget {
+  const _PodiumSlot({
+    required this.place,
+    required this.number,
+    required this.cupColor,
+    required this.height,
+  });
+
+  final int place;
+  final int number;
+  final Color cupColor;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    if (number <= 0) return SizedBox(height: height);
+    final carColor = AppColors.ballColors[number] ?? AppColors.navBlue;
+    return SizedBox(
+      height: height,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          Icon(Icons.emoji_events, color: cupColor, size: place == 1 ? 28.sp : 22.sp),
+          Text(
+            '$number',
+            style: TextStyle(
+              color: cupColor,
+              fontSize: place == 1 ? 16.sp : 13.sp,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: 2.h),
+          _RaceCarChip(number: number, color: carColor, wide: place == 1),
+          SizedBox(height: place == 1 ? 18.h : (place == 2 ? 12.h : 8.h)),
+        ],
+      ),
+    );
+  }
+}
+
+class _RaceCarChip extends StatelessWidget {
+  const _RaceCarChip({
+    required this.number,
+    required this.color,
+    this.wide = false,
+  });
+
+  final int number;
+  final Color color;
+  final bool wide;
+
+  @override
+  Widget build(BuildContext context) {
+    final w = wide ? 56.w : 48.w;
+    final h = wide ? 28.h : 24.h;
+    return Container(
+      width: w,
+      height: h,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color.lerp(color, Colors.white, 0.22)!,
+            color,
+            Color.lerp(color, Colors.black, 0.18)!,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(6.r),
+        border: Border.all(color: Colors.white24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        '$number',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: wide ? 14.sp : 12.sp,
+          fontWeight: FontWeight.w800,
+          shadows: const [
+            Shadow(color: Colors.black54, blurRadius: 2, offset: Offset(0, 1)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PodiumBasePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = const Color(0xFF2A3548);
+    final path = Path()
+      ..moveTo(0, size.height * 0.55)
+      ..lineTo(size.width * 0.33, size.height * 0.35)
+      ..lineTo(size.width * 0.5, size.height * 0.15)
+      ..lineTo(size.width * 0.67, size.height * 0.4)
+      ..lineTo(size.width, size.height * 0.55)
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+    canvas.drawPath(path, paint);
+    final edge = Paint()
+      ..color = const Color(0xFF3D4A63)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1;
+    canvas.drawPath(path, edge);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

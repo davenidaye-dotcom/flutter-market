@@ -166,7 +166,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     for (final row in raw.whereType<Map>()) {
       final code = '${row['playCode'] ?? ''}'.trim();
       if (code.isEmpty) continue;
-      out[code] = displayNumber(row['odds']);
+      out[code] = displayNumber(row['odds'], maxDecimals: 4);
     }
     return out;
   }
@@ -490,7 +490,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
           (e) => BetConfirmLine(
             playCode: '${e['playCode'] ?? ''}'.trim(),
             label: '${e['label'] ?? e['playName'] ?? e['playCode'] ?? ''}'.trim(),
-            oddsText: displayNumber(e['odds']),
+            oddsText: displayNumber(e['odds'], maxDecimals: 4),
             amount: num.tryParse('${e['amount']}') ?? 0,
           ),
         )

@@ -151,7 +151,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
             oddsMax: ceiling,
             oddsMin: floor,
             periodLimit: _num(shown['periodLimit']),
-            controller: TextEditingController(text: displayNumber(odds)),
+            controller: TextEditingController(text: displayNumber(odds, maxDecimals: 4)),
           ),
         );
       }
@@ -224,7 +224,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
 
   void _setRowOdds(_OddsRow row, double value) {
     row.odds = _clampOdds(row, value);
-    row.controller.text = displayNumber(row.odds);
+    row.controller.text = displayNumber(row.odds, maxDecimals: 4);
   }
 
   void _adjustAll(double delta) {
@@ -257,7 +257,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
       final max = _rangeMax(row);
       if ((min != null && odds < min) || (max != null && odds > max)) {
         AppToast.error(
-          '${row.playName} 飞单赔率须在 ${displayNumber(min)}～${displayNumber(max)}',
+          '${row.playName} 飞单赔率须在 ${displayNumber(min, maxDecimals: 4)}～${displayNumber(max, maxDecimals: 4)}',
         );
         return;
       }
@@ -295,7 +295,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
 
   String _roomText(double? value) {
     if (value == null) return '—';
-    return displayNumber(value);
+    return displayNumber(value, maxDecimals: 4);
   }
 
   String _limitText(double? value) {
@@ -307,7 +307,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
     final min = _rangeMin(row);
     final max = _rangeMax(row);
     if (min == null || max == null) return '';
-    return '${displayNumber(min)}～${displayNumber(max)}';
+    return '${displayNumber(min, maxDecimals: 4)}～${displayNumber(max, maxDecimals: 4)}';
   }
 
   /// (代理会员赔率 − 当前飞单赔率) / 盘口上限。输入变化时重算。

@@ -1398,7 +1398,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                 (e) => BetConfirmLine(
                   playCode: '${e['playCode'] ?? ''}'.trim(),
                   label: '${e['label'] ?? e['playName'] ?? e['playCode'] ?? ''}'.trim(),
-                  oddsText: displayNumber(e['odds']),
+                  oddsText: displayNumber(e['odds'], maxDecimals: 4),
                   amount: num.tryParse('${e['amount']}') ?? 0,
                 ),
               )
@@ -1843,9 +1843,16 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     itemBuilder: (_, i) {
                                       final m =
                                           messages[messages.length - 1 - i];
+                                      final gameName = ref
+                                              .read(roomLotteryLiveProvider(
+                                                  widget.roomId))
+                                              .gameById(activeGameId)
+                                              ?.name ??
+                                          '';
                                       return ChatMessageItem(
                                         key: ValueKey(stableChatItemKey(m)),
                                         message: m,
+                                        gameName: gameName,
                                       );
                                     },
                                   );

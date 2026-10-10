@@ -182,10 +182,9 @@ List<Map<String, dynamic>> hostRowsOf(dynamic data) {
 }
 
 /// Format numeric API fields for host UI display.
-/// 去掉小数尾零，不再按 fraction 补 0。fraction 仅保留给旧调用。
-String hostNumStr(dynamic value, {int fraction = 0}) {
-  if (fraction < 0) return displayNumber(value);
-  return displayNumber(value);
+/// 直接截断到 [fraction] 位（不四舍五入），再去掉尾零。fraction < 0 不截断。
+String hostNumStr(dynamic value, {int fraction = 2}) {
+  return displayNumber(value, maxDecimals: fraction);
 }
 
 /// 盈亏：盈利 `+` 绿色，亏损 `-` 红色，零为中性色无符号。

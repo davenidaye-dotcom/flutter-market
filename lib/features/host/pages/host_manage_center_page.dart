@@ -223,7 +223,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                           Row(
                             children: [
                               _stat('余额', _n('balance')),
-                              _stat('飞单', _n('flyOrderAmount')),
+                              _stat('飞单余额', _n('flyOrderBalance')),
                               _stat('飞单流水', _n('flyOrderTurnover')),
                             ],
                           ),

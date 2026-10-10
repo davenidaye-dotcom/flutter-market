@@ -129,8 +129,8 @@ class MemberBetDateBar extends StatelessWidget {
 
 String memberBetMoney(dynamic v, {int fraction = 2, bool trimZero = false}) {
   if (v == null) return '0';
-  if (fraction < 0 && !trimZero) return displayNumber(v);
-  return displayNumber(v);
+  if (fraction < 0 && !trimZero) return displayNumber(v, maxDecimals: -1);
+  return displayNumber(v, maxDecimals: fraction);
 }
 
 Color memberBetPnlColor(dynamic v) {

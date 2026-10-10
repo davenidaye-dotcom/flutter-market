@@ -151,7 +151,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             name: m.name,
             rangeText: '${shown['rangeText'] ?? ''}',
             gameType: '${shown['gameType'] ?? _gameType}',
-            oddsCtrl: TextEditingController(text: displayNumber(shown['odds'])),
+            oddsCtrl: TextEditingController(text: displayNumber(shown['odds'], maxDecimals: 4)),
             maxBetCtrl: TextEditingController(text: displayNumber(shown['maxBet'] ?? 50000)),
             periodLimitCtrl: TextEditingController(
               text: displayNumber(shown['periodLimit'] ?? shown['userPeriodLimit'] ?? 0),
@@ -180,7 +180,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
         final cur = double.tryParse(r.oddsCtrl.text.trim()) ?? 0;
         var next = double.parse((cur + delta).toStringAsFixed(3));
         if (next < 0) next = 0;
-        r.oddsCtrl.text = displayNumber(next);
+        r.oddsCtrl.text = displayNumber(next, maxDecimals: 4);
       }
     });
   }

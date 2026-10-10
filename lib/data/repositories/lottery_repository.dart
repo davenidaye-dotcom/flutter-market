@@ -29,7 +29,7 @@ class LotteryRepository {
     for (final raw in data.whereType<Map>()) {
       final code = '${raw['playCode'] ?? ''}'.trim();
       if (code.isEmpty) continue;
-      out[code] = displayNumber(raw['odds']);
+      out[code] = displayNumber(raw['odds'], maxDecimals: 4);
     }
     return out;
   }

@@ -27,18 +27,18 @@ abstract final class AppColors {
   static const sidebarActive = Color(0xFF4A698A);
   static const sidebarInactive = Color(0xFFF0F0F0);
 
-  /// 开奖号码方框色，对齐 ar198 号码盘截图采样。
+  /// 开奖号码方框色：相对原采样略降饱和/亮度，历史表与聊天更耐看。
   static const ballColors = <int, Color>{
-    1: Color(0xFFE3DB08),
-    2: Color(0xFF0491DA),
-    3: Color(0xFF494949),
-    4: Color(0xFFFA7505),
-    5: Color(0xFF1AE0E3),
-    6: Color(0xFF5334F9),
-    7: Color(0xFFBEBEBE),
-    8: Color(0xFFF82805),
-    9: Color(0xFF750A04),
-    10: Color(0xFF0BBA08),
+    1: Color(0xFFC4BC2E),
+    2: Color(0xFF2A8FBF),
+    3: Color(0xFF555555),
+    4: Color(0xFFD97A28),
+    5: Color(0xFF3BB8BA),
+    6: Color(0xFF6B5AD0),
+    7: Color(0xFFB0B0B0),
+    8: Color(0xFFD94A3A),
+    9: Color(0xFF8A2A22),
+    10: Color(0xFF2FA02E),
   };
 
   /// 开奖球号统一白字（彩种列表 / 下注页对齐）。
