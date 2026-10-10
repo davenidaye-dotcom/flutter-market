@@ -60,7 +60,7 @@ class AgentAccountChildPage extends StatelessWidget {
     final typeLabel = agentAccountTypeLabel(row);
     final status = agentAccountStatusLabel(row['status']?.toString());
     final username = '${row['username'] ?? ''}';
-    final showShare = agentRowIsAgent(row);
+    final showShare = !agentRowIsDelegate(row);
     final showOdds = !agentRowIsDelegate(row);
     final titleType = agentRowIsMember(row)
         ? '代理会员'
@@ -114,7 +114,7 @@ class AgentAccountChildPage extends StatelessWidget {
                         _nav(
                           context,
                           label: '占成',
-                          hint: '拿 / 占',
+                          hint: '占成 / 上限',
                           onTap: id == null
                               ? null
                               : () => _open(

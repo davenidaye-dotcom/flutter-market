@@ -16,6 +16,7 @@ abstract final class LotteryResultTheme {
   static const assetBg = 'assets/lottery/draw_podium/bg.png';
   static const assetBadgeGold = 'assets/lottery/draw_podium/badge_gold.png';
   static const assetBadgeSilver = 'assets/lottery/draw_podium/badge_silver.png';
+  static const assetBadgeBronze = 'assets/lottery/draw_podium/badge_bronze.png';
 
   static String carSide(int number) =>
       'assets/lottery/draw_podium/car_side_$number.png';
@@ -220,7 +221,7 @@ class LotteryDrawPodiumScene extends StatelessWidget {
     final second = numbers.length > 1 ? numbers[1] : 0;
     final third = numbers.length > 2 ? numbers[2] : 0;
     return SizedBox(
-      height: 198.h,
+      height: 140.h,
       width: double.infinity,
       child: Stack(
         fit: StackFit.expand,
@@ -233,72 +234,79 @@ class LotteryDrawPodiumScene extends StatelessWidget {
               errorBuilder: (_, _, _) => const ColoredBox(color: Color(0xFF0E1524)),
             ),
           ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(2.w, 2.h, 2.w, 0),
-            child: Column(
+          Positioned(
+            left: 2.w,
+            right: 2.w,
+            bottom: 0,
+            height: 90.h,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                SizedBox(
-                  height: 76.h,
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: _RankBadge(
-                          asset: LotteryResultTheme.assetBadgeSilver,
-                          number: second,
-                          height: 58.h,
-                        ),
-                      ),
-                      Expanded(
-                        child: _RankBadge(
-                          asset: LotteryResultTheme.assetBadgeGold,
-                          number: first,
-                          height: 74.h,
-                        ),
-                      ),
-                      const Expanded(child: SizedBox.shrink()),
-                    ],
+                Expanded(
+                  child: _RankedCar(
+                    asset: LotteryResultTheme.carSide(second),
+                    number: second,
+                    aspect: 756 / 217,
+                    fx: 0.432,
+                    fy: 0.624,
+                    numW: 0.16,
+                    numH: 0.30,
                   ),
                 ),
                 Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Expanded(
-                        child: _RankedCar(
-                          asset: LotteryResultTheme.carSide(second),
-                          number: second,
-                          aspect: 756 / 217,
-                          fx: 0.432,
-                          fy: 0.624,
-                          numW: 0.16,
-                          numH: 0.30,
-                        ),
-                      ),
-                      Expanded(
-                        child: _RankedCar(
-                          asset: LotteryResultTheme.carFront(first),
-                          number: first,
-                          aspect: 474 / 277,
-                          fx: 0.504,
-                          fy: 0.694,
-                          numW: 0.24,
-                          numH: 0.13,
-                        ),
-                      ),
-                      Expanded(
-                        child: _RankedCar(
-                          asset: LotteryResultTheme.carSide(third),
-                          number: third,
-                          aspect: 756 / 217,
-                          fx: 0.432,
-                          fy: 0.624,
-                          numW: 0.16,
-                          numH: 0.30,
-                          flip: true,
-                        ),
-                      ),
-                    ],
+                  child: _RankedCar(
+                    asset: LotteryResultTheme.carFront(first),
+                    number: first,
+                    aspect: 474 / 277,
+                    fx: 0.504,
+                    fy: 0.694,
+                    numW: 0.24,
+                    numH: 0.13,
+                  ),
+                ),
+                Expanded(
+                  child: _RankedCar(
+                    asset: LotteryResultTheme.carSide(third),
+                    number: third,
+                    aspect: 756 / 217,
+                    fx: 0.432,
+                    fy: 0.624,
+                    numW: 0.16,
+                    numH: 0.30,
+                    flip: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            left: 2.w,
+            right: 2.w,
+            top: 0,
+            height: 52.h,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Expanded(
+                  child: _RankBadge(
+                    asset: LotteryResultTheme.assetBadgeSilver,
+                    number: second,
+                    height: 42.h,
+                  ),
+                ),
+                Expanded(
+                  child: _RankBadge(
+                    asset: LotteryResultTheme.assetBadgeGold,
+                    number: first,
+                    height: 52.h,
+                  ),
+                ),
+                Expanded(
+                  child: _RankBadge(
+                    asset: LotteryResultTheme.assetBadgeBronze,
+                    number: third,
+                    height: 42.h,
+                    title: '季军',
                   ),
                 ),
               ],
@@ -315,11 +323,13 @@ class _RankBadge extends StatelessWidget {
     required this.asset,
     required this.number,
     required this.height,
+    this.title,
   });
 
   final String asset;
   final int number;
   final double height;
+  final String? title;
 
   @override
   Widget build(BuildContext context) {
@@ -334,6 +344,29 @@ class _RankBadge extends StatelessWidget {
             fit: StackFit.expand,
             children: [
               Image.asset(asset, fit: BoxFit.fill),
+              if (title != null)
+                Align(
+                  alignment: const Alignment(0, -0.78),
+                  child: FractionallySizedBox(
+                    widthFactor: 0.56,
+                    heightFactor: 0.22,
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      child: Text(
+                        title!,
+                        style: const TextStyle(
+                          color: Color(0xFFF3D2AE),
+                          fontSize: 40,
+                          fontWeight: FontWeight.w900,
+                          height: 1,
+                          shadows: [
+                            Shadow(color: Color(0xCC000000), blurRadius: 2),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               Align(
                 alignment: const Alignment(0, 0.16),
                 child: FractionallySizedBox(

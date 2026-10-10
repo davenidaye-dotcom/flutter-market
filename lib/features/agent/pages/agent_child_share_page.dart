@@ -7,8 +7,8 @@ import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
 
-/// 占成设置：表格样式 — 游戏 / 占成权限 / 下级权限 / 本级占成
-/// 下级权限 + 本级占成 = 占成权限（parentCap）；保存为 take=parentCap、self=本级、childMax=下级。
+/// 占成：直属上级占这个账号多少。占成上限：分给它、供其再往下分配的最大比例。
+/// 两者之和不超过该上级的可分配上限。代理会员只设占成。
 class AgentChildSharePage extends ConsumerStatefulWidget {
   const AgentChildSharePage({
     super.key,
@@ -27,8 +27,11 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
   bool _loading = true;
   bool _saving = false;
   List<Map<String, dynamic>> _rows = [];
-  /// gameType → 本级占成（selfShare）
+  bool _member = false;
+  /// gameType → 占成（上级占这个账号）
   final Map<String, int> _own = {};
+  /// gameType → 占成上限（分给这个账号再往下分）
+  final Map<String, int> _child = {};
 
   static const _names = {'JS_SC': '极速赛车', 'AZXY10': '澳洲幸运10'};
 
@@ -53,24 +56,26 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     try {
       final rows = await ref.read(agentRepositoryProvider).getChildShare(widget.accountId);
       if (!mounted) return;
-      if (rows.isEmpty || rows.first['memberNoShare'] == true) {
-        AppToast.success('代理会员不占成');
-        Navigator.of(context).pop();
-        return;
-      }
       final live = rows.where((r) => agentLiveGameTypes.contains(_gt(r))).toList();
       final use = live.isEmpty ? rows : live;
+      final member = use.isNotEmpty && _isMemberRow(use.first);
       _own.clear();
+      _child.clear();
       for (final r in use) {
         final gt = _gt(r);
         final cap = _num(r['parentCap']);
         var occupy = _num(r['selfShare']);
-        if (occupy > cap) occupy = cap;
+        var child = member ? 0 : _num(r['childMaxShare']);
         if (occupy < 0) occupy = 0;
+        if (child < 0) child = 0;
+        if (occupy > cap) occupy = cap;
+        if (occupy + child > cap) child = cap - occupy;
         _own[gt] = occupy;
+        _child[gt] = child;
       }
       setState(() {
         _rows = use;
+        _member = member;
         _loading = false;
       });
     } catch (e) {
@@ -80,26 +85,34 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     }
   }
 
+  bool _isMemberRow(Map<String, dynamic> r) {
+    final kind = '${r['scene'] ?? r['relKind'] ?? ''}'.toUpperCase();
+    return kind == 'MEMBER';
+  }
+
   int _capOf(Map<String, dynamic> r) => _num(r['parentCap']);
 
   int _ownOf(Map<String, dynamic> r) => _own[_gt(r)] ?? 0;
 
-  int _childOf(Map<String, dynamic> r) {
-    final cap = _capOf(r);
-    return (cap - _ownOf(r)).clamp(0, cap);
-  }
+  int _childOf(Map<String, dynamic> r) => _member ? 0 : (_child[_gt(r)] ?? 0);
 
   void _setOwn(Map<String, dynamic> r, int value) {
     final gt = _gt(r);
     final cap = _capOf(r);
-    setState(() => _own[gt] = value.clamp(0, cap));
+    var occupy = value.clamp(0, cap);
+    var child = _member ? 0 : _childOf(r);
+    if (occupy + child > cap) child = cap - occupy;
+    setState(() {
+      _own[gt] = occupy;
+      _child[gt] = child;
+    });
   }
 
   void _setChild(Map<String, dynamic> r, int value) {
     final gt = _gt(r);
     final cap = _capOf(r);
-    final child = value.clamp(0, cap);
-    setState(() => _own[gt] = (cap - child).clamp(0, cap));
+    final room = (cap - _ownOf(r)).clamp(0, cap);
+    setState(() => _child[gt] = value.clamp(0, room));
   }
 
   List<int> _options(int max) {
@@ -119,12 +132,11 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
       final payload = <Map<String, dynamic>>[];
       for (final r in _rows) {
         final gt = _gt(r);
-        final cap = _capOf(r);
         final occupy = _own[gt] ?? 0;
-        final childMax = (cap - occupy).clamp(0, 100);
+        final childMax = _member ? 0 : (_child[gt] ?? 0);
         payload.add({
           'gameType': gt,
-          'takeShare': cap,
+          'takeShare': occupy + childMax,
           'selfShare': occupy,
           'childMaxShare': childMax,
         });
@@ -220,6 +232,13 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
                         '占成设置',
                         style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
                       ),
+                      SizedBox(height: 4.h),
+                      Text(
+                        _member
+                            ? '占成是直属上级占这个会员多少，不能超过该上级的可分配上限。'
+                            : '占成是直属上级占这个账号多少；占成上限是分给它再往下分配的最大比例。两者之和不能超过该上级的可分配上限。',
+                        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary, height: 1.4),
+                      ),
                       SizedBox(height: 8.h),
                       _table(),
                     ],
@@ -264,9 +283,9 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
       child: Row(
         children: [
           _cell('游戏', flex: 3, header: true, align: TextAlign.left),
-          _cell('占成权限', flex: 2, header: true),
-          _cell('下级权限', flex: 2, header: true),
-          _cell('本级占成', flex: 2, header: true),
+          _cell('可分配上限', flex: 2, header: true),
+          _cell('占成', flex: 2, header: true),
+          if (!_member) _cell('占成上限', flex: 2, header: true),
         ],
       ),
     );
@@ -286,26 +305,28 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
           Expanded(
             flex: 2,
             child: _dropdownBox(
-              '$child',
+              '$own',
               onTap: () async {
-                final v = await _pickValue('下级权限', child, cap);
-                if (v != null) _setChild(r, v);
+                final v = await _pickValue('占成', own, cap);
+                if (v != null) _setOwn(r, v);
               },
             ),
           ),
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: EdgeInsets.only(left: 4.w),
-              child: _dropdownBox(
-                '$own',
-                onTap: () async {
-                  final v = await _pickValue('本级占成', own, cap);
-                  if (v != null) _setOwn(r, v);
-                },
+          if (!_member)
+            Expanded(
+              flex: 2,
+              child: Padding(
+                padding: EdgeInsets.only(left: 4.w),
+                child: _dropdownBox(
+                  '$child',
+                  onTap: () async {
+                    final room = (cap - own).clamp(0, cap);
+                    final v = await _pickValue('占成上限', child, room);
+                    if (v != null) _setChild(r, v);
+                  },
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

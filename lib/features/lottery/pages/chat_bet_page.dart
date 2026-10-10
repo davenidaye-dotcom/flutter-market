@@ -1260,7 +1260,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       });
       if (done != true || !mounted) return;
       AppToast.success('$label申请已提交');
-      pushLocalPage(context, const ApplyRecordsPage());
     } catch (e) {
       AppToast.error(e.toString());
     } finally {

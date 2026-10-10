@@ -303,8 +303,8 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
 
   Future<void> _openShare(Map<String, dynamic> row) async {
     final id = agentRowAccountId(row);
-    if (id == null || !agentRowIsAgent(row)) {
-      AppToast.error('仅代理可设置占成');
+    if (id == null || agentRowIsDelegate(row)) {
+      AppToast.error('子账号不能设置占成');
       return;
     }
     final changed = await Navigator.of(context).push<bool>(
@@ -399,7 +399,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     final id = agentRowAccountId(r);
     final nick = '${r['displayName'] ?? ''}'.trim();
     final showNick = nick.isNotEmpty && nick != username;
-    final canShare = isAgent;
+    final canShare = !agentRowIsDelegate(r);
     final canOdds = !agentRowIsDelegate(r);
     final canChildren = isAgent;
 
