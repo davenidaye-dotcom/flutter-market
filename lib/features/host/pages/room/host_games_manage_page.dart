@@ -136,10 +136,9 @@ class _HostGamesManagePageState extends ConsumerState<HostGamesManagePage> {
 }
 
 bool _asEnabledFlag(dynamic v) {
-  // 缺省视为开启（与历史 `!= false` 一致）；显式 0/false 才关闭
-  if (v == null) return true;
+  // 显式 true/1 才开启；缺省与 0/false 都视为关闭（上新彩种默认关）
   if (v == true || v == 1) return true;
-  if (v == false || v == 0) return false;
+  if (v == false || v == 0 || v == null) return false;
   final s = '$v'.trim().toLowerCase();
   return s == 'true' || s == '1';
 }

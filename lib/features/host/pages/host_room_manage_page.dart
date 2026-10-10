@@ -80,7 +80,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                   (g['gameType'] ?? g['type'] ?? '').toString(),
                   (g['gameName'] ?? g['typeName'] ?? g['gameType'] ?? g['type'] ?? '')
                       .toString(),
-                  g['enabled'] != false,
+                  _asGameEnabled(g['enabled']),
                 ))
             .where((e) => e.$1.isNotEmpty || e.$2.isNotEmpty)
             .toList();
@@ -414,4 +414,12 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       ),
     );
   }
+}
+
+bool _asGameEnabled(dynamic v) {
+  if (v == true || v == 1) return true;
+  if (v == false || v == 0) return false;
+  if (v == null) return false;
+  final s = '$v'.trim().toLowerCase();
+  return s == 'true' || s == '1';
 }
