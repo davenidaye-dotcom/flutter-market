@@ -44,8 +44,8 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   static const _fallbackGames = <Map<String, String>>[
     {'type': 'JS_SC', 'typeName': '极速赛车'},
     {'type': 'AZXY10', 'typeName': '澳洲幸运10'},
-    {'type': 'TW_BG_Q', 'typeName': '台湾宾果赛车(前)'},
-    {'type': 'TW_BG_H', 'typeName': '台湾宾果赛车(后)'},
+    {'type': 'TW_BG_Q', 'typeName': '宾果赛车(前)'},
+    {'type': 'TW_BG_H', 'typeName': '宾果赛车(后)'},
   ];
 
   String get _gameLabel => _gameIndex == 0

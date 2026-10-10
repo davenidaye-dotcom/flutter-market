@@ -125,7 +125,7 @@ class LotteryGameModel {
     ),
     LotteryGameModel(
       id: 'TW_BG_Q',
-      name: '台湾宾果赛车(前)',
+      name: '宾果赛车(前)',
       currentIssue: '115057415',
       previousIssue: '115057414',
       countdownSeconds: 240,
@@ -133,7 +133,7 @@ class LotteryGameModel {
     ),
     LotteryGameModel(
       id: 'TW_BG_H',
-      name: '台湾宾果赛车(后)',
+      name: '宾果赛车(后)',
       currentIssue: '115057415',
       previousIssue: '115057414',
       countdownSeconds: 240,

@@ -9,8 +9,8 @@ class GameSeries {
   static const Map<String, String> gameNames = {
     'JS_SC': '极速赛车',
     'AZXY10': '澳洲幸运10',
-    'TW_BG_Q': '台湾宾果赛车(前)',
-    'TW_BG_H': '台湾宾果赛车(后)',
+    'TW_BG_Q': '宾果赛车(前)',
+    'TW_BG_H': '宾果赛车(后)',
   };
 
   static bool isPk10(String? gameType) {
