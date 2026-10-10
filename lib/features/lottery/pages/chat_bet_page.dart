@@ -2476,13 +2476,19 @@ class _GameStatusBar extends StatelessWidget {
                           GestureDetector(
                             onTap: onBetSlip,
                             behavior: HitTestBehavior.opaque,
-                            child: _pillBtn('注单', active: topPanel == _TopPanel.betSlip),
+                            child: _pillBtn(
+                              '注单',
+                              active: topPanel == _TopPanel.betSlip,
+                            ),
                           ),
                           SizedBox(width: 6.w),
                           GestureDetector(
                             onTap: onLongDragon,
                             behavior: HitTestBehavior.opaque,
-                            child: _pillBtn('长龙', active: topPanel == _TopPanel.longDragon),
+                            child: _pillBtn(
+                              '长龙',
+                              active: topPanel == _TopPanel.longDragon,
+                            ),
                           ),
                         ],
                       );
@@ -2556,7 +2562,9 @@ class _GameStatusBar extends StatelessWidget {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
       decoration: BoxDecoration(
-        color: active ? AppColors.navBlue : AppColors.navBlue.withValues(alpha: 0.18),
+        color: active
+            ? AppColors.navBlue
+            : AppColors.navBlue.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(12.r),
       ),
       child: Text(

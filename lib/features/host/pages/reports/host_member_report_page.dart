@@ -58,15 +58,22 @@ class _HostMemberReportPageState extends ConsumerState<HostMemberReportPage>
       final start = DateRangeFilter.format(this.start);
       final end = DateRangeFilter.format(this.end);
       final id = widget.accountId;
+      if (widget.kind == 'updown') {
+        final rows = await repo.getUpDownApplications(
+          startDate: start,
+          endDate: end,
+          accountId: id,
+        );
+        if (!mounted) return;
+        setState(() {
+          _rows = rows;
+          _summary = _upDownSummary(rows);
+          _loading = false;
+        });
+        return;
+      }
       late final Map<String, dynamic> data;
       switch (widget.kind) {
-        case 'updown':
-          data = await repo.getCreditRecords(
-            startDate: start,
-            endDate: end,
-            accountId: id,
-            direction: 'ALL',
-          );
         case 'bets':
           data = await repo.getManageBets(
             startDate: start,
@@ -104,6 +111,22 @@ class _HostMemberReportPageState extends ConsumerState<HostMemberReportPage>
       setState(() => _loading = false);
       AppToast.error(e.toString());
     }
+  }
+
+  String _upDownSummary(List<Map<String, dynamic>> rows) {
+    double approved(String type) {
+      var sum = 0.0;
+      for (final row in rows) {
+        if ('${row['changeType']}'.toUpperCase() != type) continue;
+        if ('${row['status']}'.toUpperCase() != 'APPROVED') continue;
+        final n = row['amount'];
+        final v = n is num ? n.toDouble() : double.tryParse('$n') ?? 0;
+        sum += v.abs();
+      }
+      return sum;
+    }
+
+    return '总上分 ${hostNumStr(approved('UP'), fraction: 2)}  总下分 ${hostNumStr(approved('DOWN'), fraction: 2)}';
   }
 
   String _summaryText(Map<String, dynamic> s) {
@@ -300,7 +323,10 @@ class _RecordCard extends StatelessWidget {
           .join('、');
       add('玩法', names);
     }
-    if (_text('changeType').isNotEmpty && _text('status').isNotEmpty) {
+    final change = _text('changeType').toUpperCase();
+    if ((change == 'UP' || change == 'DOWN') && _text('status').isNotEmpty) {
+      add('状态', applyStatusLabel(_text('status')));
+    } else if (change.isNotEmpty && _text('status').isNotEmpty) {
       add('状态', betStatusLabel(_text('status')));
     }
     return out;

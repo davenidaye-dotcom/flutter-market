@@ -325,8 +325,8 @@ class OwnerRepository {
   // --- manage ---
   Future<bool> getBgmEnabled() async {
     final data = await _client.get('/owner/profile/bgm');
-    if (data is! Map) return true;
-    return data['enabled'] != false;
+    if (data is! Map) return false;
+    return data['enabled'] == true;
   }
 
   Future<void> updateBgm(bool enabled) async {
@@ -344,6 +344,7 @@ class OwnerRepository {
     String? startDate,
     String? endDate,
     String? status,
+    String? accountId,
     int pageNum = 1,
     int pageSize = 20,
   }) async {
@@ -354,11 +355,43 @@ class OwnerRepository {
         if (startDate != null) 'startDate': startDate,
         if (endDate != null) 'endDate': endDate,
         if (status != null) 'status': status,
+        if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
         'pageNum': pageNum,
         'pageSize': pageSize,
       },
     );
     return _asMap(data);
+  }
+
+  /// 玩家申请的上分、下分。不含进房、下注、派彩。
+  Future<List<Map<String, dynamic>>> getUpDownApplications({
+    String? startDate,
+    String? endDate,
+    String? accountId,
+    int pageSize = 100,
+  }) async {
+    final results = await Future.wait([
+      getApplications(
+        'up',
+        startDate: startDate,
+        endDate: endDate,
+        accountId: accountId,
+        pageSize: pageSize,
+      ),
+      getApplications(
+        'down',
+        startDate: startDate,
+        endDate: endDate,
+        accountId: accountId,
+        pageSize: pageSize,
+      ),
+    ]);
+    final rows = <Map<String, dynamic>>[
+      for (final raw in _applicationRows(results[0])) _asUpDownRow(raw, 'UP'),
+      for (final raw in _applicationRows(results[1])) _asUpDownRow(raw, 'DOWN'),
+    ];
+    rows.sort((a, b) => '${b['createdAt']}'.compareTo('${a['createdAt']}'));
+    return rows;
   }
 
   Future<void> approveApplication(String applicationId, {String? remark}) async {
@@ -653,6 +686,11 @@ class OwnerRepository {
   }
 
   // --- CS sessions ---
+  Future<Map<String, dynamic>> getCsUnread() async {
+    final data = await _client.get('/owner/cs/unread');
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> getCsSessions({
     String? keyword,
     int pageNum = 1,
@@ -937,4 +975,26 @@ List<Map<String, dynamic>> _asMapList(dynamic data) {
       .whereType<Map>()
       .map((e) => Map<String, dynamic>.from(e))
       .toList();
+}
+
+List<Map<String, dynamic>> _applicationRows(Map<String, dynamic> page) {
+  final raw = page['rows'];
+  if (raw is! List) return const [];
+  return raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
+}
+
+/// 申请金额在库里是正数。下分展示为负数，卡片才能标红。
+Map<String, dynamic> _asUpDownRow(Map<String, dynamic> raw, String type) {
+  final amount = raw['amount'];
+  final n = amount is num ? amount.toDouble() : double.tryParse('$amount') ?? 0;
+  final signed = type == 'DOWN' ? -n.abs() : n.abs();
+  return {
+    ...raw,
+    'changeType': type,
+    'amount': signed,
+    'nickname': raw['applicantName'] ?? raw['nickname'],
+    'username': raw['applicantUsername'] ?? raw['username'],
+    'accountId': raw['applicantAccountId'] ?? raw['accountId'],
+    'remark': raw['remark'] ?? '',
+  };
 }

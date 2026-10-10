@@ -38,7 +38,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     with AutomaticKeepAliveClientMixin {
   Map<String, dynamic> _dash = {};
   bool _loading = true;
-  bool _bgMusic = true;
+  bool _bgMusic = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -54,12 +54,6 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     await BgmPrompt.loadLocal();
     if (!mounted) return;
     setState(() => _bgMusic = BgmPrompt.enabled);
-    try {
-      final on = await ref.read(ownerRepositoryProvider).getBgmEnabled();
-      await BgmPrompt.setEnabled(on);
-      if (!mounted) return;
-      setState(() => _bgMusic = on);
-    } catch (_) {}
   }
 
   Future<void> _setBgm(bool value) async {

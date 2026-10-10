@@ -6,8 +6,10 @@ import 'package:go_router/go_router.dart';
 import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/host_bottom_nav.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../../room/cs_unread.dart';
 import '../providers/host_apply_notice_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
 import '../widgets/host_apply_notice_dialog.dart';
@@ -43,12 +45,22 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       if (!mounted) return;
       unawaited(live.ensureDrawHistoryPreloaded());
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
+      unawaited(_refreshCsUnread());
     });
-    // 待审角标定时刷新
+    // 待审角标、客服未读定时刷新
     _badgeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
+      unawaited(_refreshCsUnread());
     });
+  }
+
+  Future<void> _refreshCsUnread() async {
+    try {
+      final data = await ref.read(ownerRepositoryProvider).getCsUnread();
+      if (!mounted) return;
+      ref.read(csUnreadCountProvider.notifier).applyMap(data);
+    } catch (_) {}
   }
 
   @override
@@ -103,6 +115,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
   @override
   Widget build(BuildContext context) {
     final badge = ref.watch(hostPendingAuditProvider).total;
+    final csUnread = ref.watch(csUnreadCountProvider);
     ref.listen<HostApplyNotice?>(hostApplyNoticeProvider, (prev, next) {
       if (next == null) return;
       unawaited(_maybeShowApplyDialog(next));
@@ -112,6 +125,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       bottomNavigationBar: HostBottomNavBar(
         currentIndex: _navIndex,
         auditBadge: badge,
+        csBadge: csUnread,
         onTap: _onNavTap,
       ),
     );

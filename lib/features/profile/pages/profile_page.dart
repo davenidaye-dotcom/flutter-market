@@ -35,7 +35,7 @@ class ProfilePage extends ConsumerStatefulWidget {
 
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with AutomaticKeepAliveClientMixin {
-  bool _bgMusic = true;
+  bool _bgMusic = false;
 
   @override
   bool get wantKeepAlive => true;
@@ -50,12 +50,6 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
     await BgmPrompt.loadLocal();
     if (!mounted) return;
     setState(() => _bgMusic = BgmPrompt.enabled);
-    try {
-      final on = await ref.read(memberRepositoryProvider).getBgmEnabled();
-      await BgmPrompt.setEnabled(on);
-      if (!mounted) return;
-      setState(() => _bgMusic = on);
-    } catch (_) {}
   }
 
   Future<void> _setBgm(bool value) async {

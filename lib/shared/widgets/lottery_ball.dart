@@ -19,12 +19,15 @@ class LotteryBall extends StatelessWidget {
     this.placeholder = false,
     /// 数字相对球径比例，默认 0.48；历史表可加大
     this.fontScale = 0.48,
+    this.palette,
   });
 
   final int number;
   final double? size;
   final bool placeholder;
   final double fontScale;
+  /// 不传时用历史表的 [AppColors.ballColors]。
+  final Map<int, Color>? palette;
 
   @override
   Widget build(BuildContext context) {
@@ -46,7 +49,10 @@ class LotteryBall extends StatelessWidget {
         ),
       );
     }
-    final color = AppColors.ballColors[number] ?? AppColors.textSecondary;
+    final color = (palette ?? AppColors.ballColors)[number] ?? AppColors.textSecondary;
+    final digit = palette != null && color.computeLuminance() > 0.42
+        ? const Color(0xFF1A1A1A)
+        : AppColors.ballDigitColor(number);
     return Container(
       width: s,
       height: s,
@@ -60,7 +66,7 @@ class LotteryBall extends StatelessWidget {
       child: Text(
         '$number',
         style: TextStyle(
-          color: AppColors.ballDigitColor(number),
+          color: digit,
           fontSize: s * fontScale,
           height: 1,
           fontWeight: FontWeight.bold,
@@ -83,6 +89,7 @@ class LotteryBallRow extends StatelessWidget {
     this.fontScale = 0.48,
     /// 指定后数字用这个绝对字号，不随方框变大。
     this.digitFontSize,
+    this.palette,
     @Deprecated('勿再加大吃掉间隔，保留参数仅为兼容调用')
     this.boxBoost = 0,
   });
@@ -94,6 +101,7 @@ class LotteryBallRow extends StatelessWidget {
   final bool expandSlots;
   final double fontScale;
   final double? digitFontSize;
+  final Map<int, Color>? palette;
   final double boxBoost;
 
   @override
@@ -123,6 +131,7 @@ class LotteryBallRow extends StatelessWidget {
                     size: size,
                     placeholder: placeholder || i >= numbers.length,
                     fontScale: scale,
+                    palette: palette,
                   ),
                 ),
               ),
@@ -146,6 +155,7 @@ class LotteryBallRow extends StatelessWidget {
               size: ballSize,
               placeholder: placeholder || i >= numbers.length,
               fontScale: fontScale,
+              palette: palette,
             ),
           ),
         ),

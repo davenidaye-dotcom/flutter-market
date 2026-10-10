@@ -1,5 +1,5 @@
 /// 对齐后端 ChatPlayText / BetService.preview 的号码展示口径。
-/// TM-n → 冠军/亚军/第n名 n（展示映射）；POS-r-n → 冠军/亚军/第r名 n。
+/// TM-n → 冠军 n；POS-r-n → 冠军/亚军/第r名 n。
 String playDisplayLabel(String? playCode, {String? fallbackName}) {
   final p = (playCode ?? '').trim().toUpperCase();
   if (p.isEmpty) {
@@ -22,10 +22,9 @@ String _groupName(String p, String? fallbackName) {
       if (rank != null) return _rankTitle(rank);
     }
   }
-  // TM-n：展示按号码映射名次标题（结算仍是冠军位特码）。
+  // TM-n：特码始终是冠军位。
   if (p.startsWith('TM-')) {
-    final n = int.tryParse(p.substring(3));
-    if (n != null) return _rankTitle(n);
+    return '冠军';
   }
   if (p == 'LM-BIG' ||
       p == 'LM-SMALL' ||

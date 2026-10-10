@@ -25,8 +25,8 @@ class MemberRepository {
 
   Future<bool> getBgmEnabled() async {
     final data = await _client.get('/member/profile');
-    if (data is! Map) return true;
-    return data['bgmEnabled'] != false;
+    if (data is! Map) return false;
+    return data['bgmEnabled'] == true;
   }
 
   Future<void> updateBgm(bool enabled) async {
@@ -40,6 +40,11 @@ class MemberRepository {
 
   Future<Map<String, dynamic>> claimRedpack(String redpackId) async {
     final data = await _client.post('/member/redpacks/$redpackId/claim');
+    return _asMap(data);
+  }
+
+  Future<Map<String, dynamic>> getCsUnread() async {
+    final data = await _client.get('/member/cs/unread');
     return _asMap(data);
   }
 

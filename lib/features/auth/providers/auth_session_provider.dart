@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/audio/bgm_prompt.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/repositories/providers.dart';
+import '../../room/cs_unread.dart';
 import '../../../core/network/session_store.dart';
 
 class AuthSession {
@@ -46,6 +48,10 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
       }
     }
     state = AuthSession(user: user);
+    await BgmPrompt.resetForLogin(
+      host: user.isHostSide,
+      player: user.role == AppRole.player,
+    );
     return user;
   }
 
@@ -69,11 +75,13 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
 
   Future<void> logout() async {
     await _ref.read(authRepositoryProvider).logout();
+    _ref.read(csUnreadCountProvider.notifier).clear();
     state = const AuthSession();
   }
 
   /// 服务端已注销时只清本地会话，不再请求退出接口。
   void dropLocal() {
+    _ref.read(csUnreadCountProvider.notifier).clear();
     state = const AuthSession();
   }
 }

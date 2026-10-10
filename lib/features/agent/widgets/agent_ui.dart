@@ -79,7 +79,7 @@ String agentAccountTypeLabel(Map<String, dynamic> row) {
       if (agentName != null && agentName.endsWith('级代理')) return agentName;
       return '代理';
     case 'AGENT_DELEGATE':
-      return '协管';
+      return '子账号';
   }
   final name = row['accountTypeName']?.toString();
   if (name == '会员') return '代理会员';

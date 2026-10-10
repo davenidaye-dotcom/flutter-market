@@ -236,17 +236,19 @@ class _BetConfirmSheetState extends State<_BetConfirmSheet> {
                 Text('期号 $issue', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
               ],
               SizedBox(height: 10.h),
-              if (_loading)
+              if (_loading) ...[
                 Padding(
                   padding: EdgeInsets.symmetric(vertical: 28.h),
                   child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                )
-              else if (_error != null)
+                ),
+                _cancelButton(),
+              ] else if (_error != null) ...[
                 Padding(
                   padding: EdgeInsets.symmetric(vertical: 20.h),
                   child: Text(_error!, style: TextStyle(fontSize: 13.sp, color: AppColors.danger)),
-                )
-              else ...[
+                ),
+                _cancelButton(),
+              ] else ...[
                 _headerRow(),
                 Flexible(
                   child: ListView.separated(
@@ -321,6 +323,16 @@ class _BetConfirmSheetState extends State<_BetConfirmSheet> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _cancelButton() {
+    return OutlinedButton(
+      onPressed: () => Navigator.of(context).pop(),
+      style: OutlinedButton.styleFrom(
+        padding: EdgeInsets.symmetric(vertical: 10.h),
+      ),
+      child: const Text('取消'),
     );
   }
 

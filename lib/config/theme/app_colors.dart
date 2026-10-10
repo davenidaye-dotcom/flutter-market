@@ -27,23 +27,37 @@ abstract final class AppColors {
   static const sidebarActive = Color(0xFF4A698A);
   static const sidebarInactive = Color(0xFFF0F0F0);
 
-  /// 开奖号码方框色：相对原采样略降饱和/亮度，历史表与聊天更耐看。
+  /// 开奖号码方框色：深海军。只压数字色块，面板底色不动。
   static const ballColors = <int, Color>{
-    1: Color(0xFFC4BC2E),
-    2: Color(0xFF2A8FBF),
-    3: Color(0xFF555555),
-    4: Color(0xFFD97A28),
-    5: Color(0xFF3BB8BA),
-    6: Color(0xFF6B5AD0),
-    7: Color(0xFFB0B0B0),
-    8: Color(0xFFD94A3A),
-    9: Color(0xFF8A2A22),
-    10: Color(0xFF2FA02E),
+    1: Color(0xFF9A8C20),
+    2: Color(0xFF226E9C),
+    3: Color(0xFF46525C),
+    4: Color(0xFFB0601C),
+    5: Color(0xFF22888A),
+    6: Color(0xFF5244B0),
+    7: Color(0xFF7A8690),
+    8: Color(0xFFB0382C),
+    9: Color(0xFF6E241C),
+    10: Color(0xFF247C22),
   };
 
-  /// 开奖球号统一白字（彩种列表 / 下注页对齐）。
+  /// 开奖卡顶行和分色车共用的亮色。历史表仍用 [ballColors]。
+  static const resultBallColors = <int, Color>{
+    1: Color(0xFFE6C200),
+    2: Color(0xFF1E6FE0),
+    3: Color(0xFF4E4E4E),
+    4: Color(0xFFF07800),
+    5: Color(0xFF00C4CC),
+    6: Color(0xFF3048D6),
+    7: Color(0xFFB0B0B0),
+    8: Color(0xFFE53935),
+    9: Color(0xFF8E201C),
+    10: Color(0xFF2EAE34),
+  };
+
+  /// 开奖球号。深色块上用浅字。
   static Color ballDigitColor(int number) {
-    return const Color(0xFFFFFFFF);
+    return const Color(0xFFF4F7FA);
   }
 
   /// 球框轻阴影 + 边缘，贴近截图立体感（不改框尺寸）。
@@ -59,15 +73,15 @@ abstract final class AppColors {
     return Color.lerp(fill, const Color(0xFF000000), 0.18)!;
   }
 
-  /// 轻微垂直渐变，模拟截图里的按钮高光。
+  /// 色块以选定颜色为准，只留很浅的明暗，避免白高光把框抬亮。
   static LinearGradient ballGradient(Color fill) {
     return LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
-        Color.lerp(fill, const Color(0xFFFFFFFF), 0.14)!,
+        Color.lerp(fill, const Color(0xFFFFFFFF), 0.04)!,
         fill,
-        Color.lerp(fill, const Color(0xFF000000), 0.10)!,
+        Color.lerp(fill, const Color(0xFF000000), 0.06)!,
       ],
       stops: const [0.0, 0.48, 1.0],
     );

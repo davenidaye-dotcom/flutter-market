@@ -65,6 +65,10 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
       return;
     }
     _ingest(csPushRow(push));
+    // 人就在客服页：房主这条回复算已读，底栏数字清掉
+    if (push.direction == 'OUT') {
+      unawaited(_load(silent: true));
+    }
   }
 
   void _ingest(Map<String, dynamic> row) {

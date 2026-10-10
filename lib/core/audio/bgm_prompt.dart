@@ -8,7 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../data/repositories/member_repository.dart';
 import '../../data/repositories/owner_repository.dart';
 
-/// 封盘、开奖各一声。开关跟账号走，关了就不再响。
+/// 封盘、开奖各一声。每次登录默认关闭，本局打开后下次登录仍关闭。
 class BgmPrompt {
   BgmPrompt._();
 
@@ -19,7 +19,7 @@ class BgmPrompt {
   static final AudioPlayer _player = AudioPlayer();
   static final Queue<String> _queue = Queue<String>();
   static final LinkedHashSet<String> _played = LinkedHashSet<String>();
-  static bool enabled = true;
+  static bool enabled = false;
   static bool _ready = false;
   static bool _playing = false;
   static bool _hooked = false;
@@ -28,7 +28,7 @@ class BgmPrompt {
   static Future<void> loadLocal() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      enabled = prefs.getBool(_prefKey) ?? true;
+      enabled = prefs.getBool(_prefKey) ?? false;
     } catch (_) {}
   }
 
@@ -47,20 +47,23 @@ class BgmPrompt {
     }
   }
 
-  static Future<void> refreshPlayer() => _refresh(host: false);
+  static Future<void> refreshPlayer() => loadLocal();
 
-  static Future<void> refreshHost() => _refresh(host: true);
+  static Future<void> refreshHost() => loadLocal();
 
-  static Future<void> _refresh({required bool host}) async {
-    await loadLocal();
+  /// 登录成功后强制关闭。不读服务端旧开关，避免上次打开的状态被带回来。
+  static Future<void> resetForLogin({required bool host, required bool player}) async {
+    await setEnabled(false);
+    if (!host && !player) return;
     try {
-      final on = host
-          ? await OwnerRepository().getBgmEnabled()
-          : await MemberRepository().getBgmEnabled();
-      await setEnabled(on);
+      if (host) {
+        await OwnerRepository().updateBgm(false);
+      } else {
+        await MemberRepository().updateBgm(false);
+      }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('BgmPrompt.refresh failed: $e');
+        debugPrint('BgmPrompt.resetForLogin failed: $e');
       }
     }
   }

@@ -376,6 +376,10 @@ class _ChatViewState extends ConsumerState<_ChatView> {
       return;
     }
     _ingest(csPushRow(push));
+    // 正在看这个会话：玩家新消息直接标已读，底栏改成剩余未读
+    if (push.direction == 'IN') {
+      unawaited(_loadMessages(silent: true));
+    }
   }
 
   void _scrollToEnd() {

@@ -7,8 +7,10 @@ import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
+import '../cs_unread.dart';
 
 /// 用户端房间 Shell（IndexedStack 保活各 Tab，切回彩种大厅不重载）
 /// 分支：0 彩种 / 1 客服 / 2 钱包 / 3 介绍 / 4 个人
@@ -27,6 +29,8 @@ class RoomShellPage extends ConsumerStatefulWidget {
 }
 
 class _RoomShellPageState extends ConsumerState<RoomShellPage> {
+  Timer? _csTimer;
+
   @override
   void initState() {
     super.initState();
@@ -37,7 +41,26 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
       await live.ensureLoaded();
       if (!mounted) return;
       unawaited(live.ensureDrawHistoryPreloaded());
+      unawaited(_refreshCsUnread());
     });
+    _csTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      unawaited(_refreshCsUnread());
+    });
+  }
+
+  @override
+  void dispose() {
+    _csTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshCsUnread() async {
+    try {
+      final data = await ref.read(memberRepositoryProvider).getCsUnread();
+      if (!mounted) return;
+      ref.read(csUnreadCountProvider.notifier).applyMap(data);
+    } catch (_) {}
   }
 
   /// 底栏 index：-1 彩种大厅；0~3 对应客服/钱包/介绍/个人
@@ -55,10 +78,13 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
 
   @override
   Widget build(BuildContext context) {
+    final unread = ref.watch(csUnreadCountProvider);
     return AppPageScaffold(
       body: widget.navigationShell,
       bottomNavigationBar: UserBottomNavBar(
         currentIndex: _navIndex,
+        // 正在看客服时数字让给对话本身，离开这一栏再显示未读
+        csBadge: _navIndex == 0 ? 0 : unread,
         onTap: _onNavTap,
       ),
     );

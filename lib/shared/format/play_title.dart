@@ -6,8 +6,7 @@ String rankBetTitle(Map<dynamic, dynamic> row) {
   final tail = amount.isEmpty ? '' : ' $amount';
 
   if (code.startsWith('TM-')) {
-    final n = int.tryParse(code.substring(3)) ?? 0;
-    return '${_rankTitle(n)} [${code.substring(3)}]$tail';
+    return '冠军 [${code.substring(3)}]$tail';
   }
   if (code.startsWith('POS-')) {
     final parts = code.split('-');

@@ -107,8 +107,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
       });
       if (done != true || !mounted) return;
       AppToast.success('$label申请已提交');
-      pushShellCover(context, const ApplyRecordsPage());
-      await _load();
+      await _load(fromPull: true);
     } catch (e) {
       AppToast.error(e.toString());
     } finally {

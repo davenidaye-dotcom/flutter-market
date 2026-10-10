@@ -27,7 +27,7 @@ class _LetouAppState extends ConsumerState<LetouApp> {
   void initState() {
     super.initState();
     // 首帧后撤 splash，不依赖 LoginPage 是否挂载
-    unawaited(BgmPrompt.loadLocal());
+    unawaited(BgmPrompt.setEnabled(false));
     SessionKick.handler = () {
       unawaited(SessionStore.instance.clear());
       ref.read(authSessionProvider.notifier).dropLocal();
@@ -72,7 +72,16 @@ class _LetouAppState extends ConsumerState<LetouApp> {
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
           ],
-          builder: EasyLoading.init(),
+          // 系统「字体大小」不再放大界面。当前设计字号即上限。
+          // 包在 EasyLoading 外，页面、弹窗、Toast 共用这一份 MediaQuery。
+          builder: (context, child) {
+            return MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.noScaling,
+              ),
+              child: EasyLoading.init()(context, child),
+            );
+          },
         );
       },
     );

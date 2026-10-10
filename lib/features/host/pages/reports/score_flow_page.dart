@@ -9,7 +9,7 @@ import '../../../wallet/utils/draw_snapshot_utils.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
-/// Credit records — GET /owner/manage/credits/records
+/// 玩家申请的上分、下分。不含进房、下注、派彩。
 class ScoreFlowPage extends ConsumerStatefulWidget {
   const ScoreFlowPage({super.key, required this.roomId});
   final String roomId;
@@ -36,18 +36,14 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(ownerRepositoryProvider).getCreditRecords(
+      final rows = await ref.read(ownerRepositoryProvider).getUpDownApplications(
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
-            pageSize: 50,
           );
       if (!mounted) return;
-      final summary = data['summary'];
       setState(() {
-        _rows = hostRowsOf(data);
-        _summary = summary is Map
-            ? _summaryText(Map<String, dynamic>.from(summary))
-            : '';
+        _rows = rows;
+        _summary = _summaryText(rows);
         _loading = false;
       });
     } catch (e) {
@@ -57,14 +53,20 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
     }
   }
 
-  String _summaryText(Map<String, dynamic> s) {
-    const order = ['totalUp', 'totalDown'];
-    final parts = <String>[];
-    for (final key in order) {
-      if (s[key] == null) continue;
-      parts.add('${ledgerChangeLabel(key)} ${hostNumStr(s[key], fraction: 2)}');
+  String _summaryText(List<Map<String, dynamic>> rows) {
+    double approved(String type) {
+      var sum = 0.0;
+      for (final row in rows) {
+        if ('${row['changeType']}'.toUpperCase() != type) continue;
+        if ('${row['status']}'.toUpperCase() != 'APPROVED') continue;
+        final n = row['amount'];
+        final v = n is num ? n.toDouble() : double.tryParse('$n') ?? 0;
+        sum += v.abs();
+      }
+      return sum;
     }
-    return parts.join('  ');
+
+    return '总上分 ${hostNumStr(approved('UP'), fraction: 2)}  总下分 ${hostNumStr(approved('DOWN'), fraction: 2)}';
   }
 
   @override
@@ -109,11 +111,12 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
                         separatorBuilder: (_, _) => SizedBox(height: 8.h),
                         itemBuilder: (_, i) {
                           final r = _rows[i];
-                          final type = '${r['changeType'] ?? r['type'] ?? ''}';
-                          final who = '${r['username'] ?? r['displayName'] ?? r['nickname'] ?? r['user'] ?? ''}'.trim();
+                          final type = '${r['changeType'] ?? ''}';
+                          final who = '${r['nickname'] ?? r['username'] ?? ''}'.trim();
                           final label = type.isEmpty ? '' : ledgerChangeLabel(type);
                           final title = [if (who.isNotEmpty) who, if (label.isNotEmpty) label].join(' ');
-                          final amount = hostNumStr(r['amount'] ?? r['points'] ?? '', fraction: 2);
+                          final status = '${r['status'] ?? ''}'.trim();
+                          final signed = HostSignedPnl.of(r['amount']);
                           return HostWhiteCard(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,7 +127,11 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
                                 ),
                                 SizedBox(height: 4.h),
                                 Text(
-                                  '$amount  ${r['createdAt'] ?? r['createTime'] ?? ''}',
+                                  [
+                                    if (status.isNotEmpty) applyStatusLabel(status),
+                                    signed.text,
+                                    '${r['createdAt'] ?? ''}',
+                                  ].where((s) => s.trim().isNotEmpty).join('  '),
                                   style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                                 ),
                               ],

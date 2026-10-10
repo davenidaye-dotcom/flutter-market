@@ -65,7 +65,7 @@ class AgentAccountChildPage extends StatelessWidget {
     final titleType = agentRowIsMember(row)
         ? '代理会员'
         : agentRowIsDelegate(row)
-            ? '协管'
+            ? '子账号'
             : typeLabel;
 
     return AgentPageFrame(

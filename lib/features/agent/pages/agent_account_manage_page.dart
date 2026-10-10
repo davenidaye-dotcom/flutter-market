@@ -168,7 +168,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     const accountTypeLabels = {
       'AGENT_MEMBER': '代理会员',
       'AGENT': '代理',
-      'AGENT_DELEGATE': '协管',
+      'AGENT_DELEGATE': '子账号',
     };
     final ok = await showEmulatorSafeDialog<bool>(
       context: context,
@@ -342,7 +342,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     _drillInto(row, childType: 'ALL');
   }
 
-  /// 徽章：几级代理 / 代理会员 / 协管
+  /// 徽章：几级代理 / 代理会员 / 子账号
   String _typeBadgeLabel(Map<String, dynamic> row) => agentAccountTypeLabel(row);
 
   Widget _focusBar() {

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
+import 'red_count_badge.dart';
 
 class UserBottomNavItem {
   const UserBottomNavItem({
@@ -18,11 +19,14 @@ class UserBottomNavBar extends StatelessWidget {
     super.key,
     required this.currentIndex,
     required this.onTap,
+    this.csBadge = 0,
   });
 
   /// -1 = 无选中（彩种大厅）
   final int currentIndex;
   final ValueChanged<int> onTap;
+  /// 在线客服未读
+  final int csBadge;
 
   static const items = [
     UserBottomNavItem(icon: Icons.support_agent, label: '在线客服'),
@@ -62,7 +66,10 @@ class UserBottomNavBar extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(item.icon, color: iconColor, size: 24.sp),
+                      BadgedIcon(
+                        count: i == 0 ? csBadge : 0,
+                        child: Icon(item.icon, color: iconColor, size: 24.sp),
+                      ),
                       SizedBox(height: 2.h),
                       Text(
                         item.label,

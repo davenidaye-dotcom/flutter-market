@@ -16,12 +16,15 @@ class HostBottomNavBar extends StatelessWidget {
     required this.currentIndex,
     required this.onTap,
     this.auditBadge = 0,
+    this.csBadge = 0,
   });
 
   final int currentIndex;
   final ValueChanged<int> onTap;
   /// 待审核总数：个人中心 + 审核列表两个 Tab 都显示
   final int auditBadge;
+  /// 在线客服未读
+  final int csBadge;
 
   static const items = [
     HostBottomNavItem(icon: Icons.support_agent, label: '在线客服'),
@@ -49,7 +52,9 @@ class HostBottomNavBar extends StatelessWidget {
               final item = items[i];
               final active = currentIndex == i;
               final color = active ? const Color(0xFF2F7FD1) : const Color(0xFF3A8AD8);
-              final showBadge = auditBadge > 0 && (i == 2 || i == 3);
+              final badge = i == 0
+                  ? csBadge
+                  : ((i == 2 || i == 3) ? auditBadge : 0);
               return Expanded(
                 child: InkWell(
                   onTap: () => onTap(i),
@@ -57,7 +62,7 @@ class HostBottomNavBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       BadgedIcon(
-                        count: showBadge ? auditBadge : 0,
+                        count: badge,
                         child: Icon(item.icon, color: color, size: 24.sp),
                       ),
                       SizedBox(height: 2.h),

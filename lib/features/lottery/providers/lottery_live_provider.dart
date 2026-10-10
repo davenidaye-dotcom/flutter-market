@@ -15,6 +15,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../host/providers/host_apply_notice_provider.dart';
+import '../../room/cs_unread.dart';
 import '../engine/lottery_period_engine.dart';
 import '../services/chat_push_cache.dart';
 import '../utils/bet_receipt_format.dart';
@@ -1262,6 +1263,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    if (type == 'UNREAD_CS') {
+      _onCsUnread(payload);
+      return;
+    }
+
     // 资金变动：user 频道，无 gameType。上分/下分/回水/结算入账后刷新顶栏。
     if (type == 'WALLET_DELTA') {
       _onWalletDelta(payload);
@@ -1588,6 +1594,19 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         pair: _pairOf(payload),
       ),
     );
+  }
+
+  void _onCsUnread(Map<String, dynamic> payload) {
+    final audience = (payload['audience'] ?? '').toString().toUpperCase();
+    final topic = (payload['topic'] ?? '').toString();
+    final forOwner = audience == 'OWNER' || (audience.isEmpty && !topic.startsWith('user:'));
+    final forMember = audience == 'MEMBER';
+    if (_wsIsHost) {
+      if (!forOwner) return;
+    } else if (!forMember) {
+      return;
+    }
+    _ref.read(csUnreadCountProvider.notifier).applyMap(payload);
   }
 
   void _emitCs(CsChatPush push) {

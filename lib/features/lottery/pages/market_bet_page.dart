@@ -282,7 +282,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       ),
     );
     if (confirmed == null || !mounted) return;
-    submitCommand = confirmed.command;
+    // 气泡仍用原指令；确认框只带回改后 items。
     items = confirmed.items;
     _submitLocked = true;
     _submitting.value = true;
