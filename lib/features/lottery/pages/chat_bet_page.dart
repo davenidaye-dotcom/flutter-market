@@ -8,6 +8,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/network/session_store.dart';
 import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/chat_message_model.dart';
@@ -1455,11 +1456,21 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       AppToast.success('下注成功');
     } catch (e) {
       _dropOptimisticBet(localId);
-      AppToast.error(e.toString());
+      AppToast.error(_betFailToast(e));
     } finally {
       _submitLocked = false;
       if (mounted) _betBusy.value = false;
     }
+  }
+
+  /// 飞单代理额度不足 ≠ 玩家积分不足，Toast 与机器人卡对齐。
+  String _betFailToast(Object e) {
+    final msg = e is ApiException ? e.message : e.toString();
+    if (msg.contains('代理会员可用额度不足') ||
+        msg.contains('FLIGHT_CREDIT_INSUFFICIENT')) {
+      return '飞单失败：代理会员可用额度不足（非玩家积分）';
+    }
+    return msg;
   }
 
   String? _guessBetAmountText(String command) {
