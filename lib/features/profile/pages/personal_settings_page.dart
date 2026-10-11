@@ -22,15 +22,24 @@ class PersonalSettingsPage extends ConsumerWidget {
     final ok = await showEmulatorSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('\u4fee\u6539\u6635\u79f0', style: TextStyle(fontSize: 16.sp)),
+        title: Text('修改昵称', style: TextStyle(fontSize: 16.sp)),
         content: EmulatorSafeTextField(
           controller: ctrl,
+          autofocus: true,
           maxLength: 32,
-          decoration: const InputDecoration(hintText: 'nickname'),
+          // 中文输入：用默认文本键盘，并打开联想（关联想时部分 IME 会卡英文）
+          keyboardType: TextInputType.text,
+          textInputAction: TextInputAction.done,
+          enableSuggestions: true,
+          autocorrect: false,
+          decoration: const InputDecoration(
+            hintText: '请输入昵称',
+            counterText: '',
+          ),
         ),
         actions: [
-          TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('Cancel')),
-          TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('OK')),
+          TextButton(onPressed: safeDialogPop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: safeDialogPop(ctx, true), child: const Text('确定')),
         ],
       ),
     );

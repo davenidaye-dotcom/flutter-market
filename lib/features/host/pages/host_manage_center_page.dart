@@ -16,6 +16,7 @@ import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../../profile/app_release.dart';
 import '../data/host_mock.dart';
+import '../providers/host_dash_dirty_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
 import '../widgets/host_ui.dart';
 import 'fly/fly_hub_page.dart';
@@ -39,6 +40,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
   Map<String, dynamic> _dash = {};
   bool _loading = true;
   bool _bgMusic = false;
+  Timer? _dashDirtyTimer;
 
   @override
   bool get wantKeepAlive => true;
@@ -48,6 +50,21 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     super.initState();
     Future.microtask(_loadDash);
     Future.microtask(_loadBgm);
+  }
+
+  @override
+  void dispose() {
+    _dashDirtyTimer?.cancel();
+    super.dispose();
+  }
+
+  /// WS 脏信号：防抖 400ms 重拉，与「今日统计」同源。
+  void _scheduleDashRefresh() {
+    _dashDirtyTimer?.cancel();
+    _dashDirtyTimer = Timer(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      unawaited(_loadDash());
+    });
   }
 
   Future<void> _loadBgm() async {
@@ -72,7 +89,17 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
 
   Future<void> _loadDash() async {
     try {
-      final data = await ref.read(ownerRepositoryProvider).getDashboard();
+      final repo = ref.read(ownerRepositoryProvider);
+      final data = Map<String, dynamic>.from(await repo.getDashboard());
+      // 飞单余额与飞单管理页同源（credit.available），避免两处不一致
+      try {
+        final credit = await repo.getFeipanCredit();
+        if (credit['available'] != null) {
+          data['flyOrderBalance'] = credit['available'];
+        }
+      } catch (_) {
+        // 未绑定等：保留 dashboard 值
+      }
       if (!mounted) return;
       setState(() {
         _dash = data;
@@ -84,6 +111,11 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
       setState(() => _loading = false);
       AppToast.error(e.toString());
     }
+  }
+
+  Future<void> _openFlyHub() async {
+    await pushHostPage(context, FlyHubPage(roomId: widget.roomId));
+    if (mounted) await _loadDash();
   }
 
   Future<void> _sendRedpack() async {
@@ -150,6 +182,11 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
   Widget build(BuildContext context) {
     super.build(context);
     final roomId = widget.roomId;
+    // ShellBranchGate 仅当前 Tab 挂载本页；离开 Tab 即 dispose，无需额外可见性判断。
+    ref.listen<int>(hostDashDirtyProvider(roomId), (prev, next) {
+      if (prev == next) return;
+      _scheduleDashRefresh();
+    });
     final pending = ref.watch(hostPendingAuditProvider);
     return AppPageScaffold(
       body: GradientBackground(
@@ -296,7 +333,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                             ),
                           ),
                           _div(),
-                          _menu('\u98de\u76d8\u52a9\u624b', () => pushHostPage(context, FlyHubPage(roomId: roomId))),
+                          _menu('飞盘助手', _openFlyHub),
                           _div(),
                           _menu('\u53d1\u7ea2\u5305', _sendRedpack),
                           _div(),

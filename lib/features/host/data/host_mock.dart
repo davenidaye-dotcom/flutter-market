@@ -86,7 +86,7 @@ class _Audit {
 typedef HostAuditItem = _Audit;
 
 /// Map owner application row to [HostAuditItem].
-/// 不用 remark（如 chat-下分）覆盖金额摘要。
+/// 不用 remark（如 房间-下分）覆盖金额摘要。
 HostAuditItem hostAuditFromMap(Map<String, dynamic> m, AuditType type) {
   final amount = m['amount'];
   final points = m['points'] ?? m['balance'];

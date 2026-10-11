@@ -164,7 +164,7 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                                 amount: r['amount'] ?? r['points'],
                                 toneKey: changeType,
                                 fields: fields,
-                                remark: '${r['remark'] ?? ''}',
+                                remark: ledgerRemarkLabel('${r['remark'] ?? ''}'),
                                 time:
                                     '${r['createdAt'] ?? r['createTime'] ?? ''}',
                                 ranks: ranks,

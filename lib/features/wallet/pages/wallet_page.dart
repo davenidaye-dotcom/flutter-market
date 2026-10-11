@@ -100,7 +100,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
         await ref.read(walletRepositoryProvider).submitApplication(
               applyType: applyType,
               amount: amount,
-              remark: 'wallet-$label',
+              remark: '钱包-$label',
               requestId: requestId,
             );
         return true;

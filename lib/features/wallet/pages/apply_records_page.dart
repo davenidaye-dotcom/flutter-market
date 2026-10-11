@@ -122,7 +122,7 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                                 ],
                                 time:
                                     '${r['createdAt'] ?? r['createTime'] ?? ''}',
-                                remark: '${r['remark'] ?? ''}',
+                                remark: ledgerRemarkLabel('${r['remark'] ?? ''}'),
                                 onShareToCs: appId.isEmpty
                                     ? null
                                     : () => shareToCustomerService(

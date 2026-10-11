@@ -27,38 +27,46 @@ abstract final class AppColors {
   static const sidebarActive = Color(0xFF4A698A);
   static const sidebarInactive = Color(0xFFF0F0F0);
 
-  /// 开奖号码方框色：深海军。只压数字色块，面板底色不动。
+  /// 开奖号码方框色：截图色轻暗方案 A（×0.88）。历史表 / 开奖卡统一。
   static const ballColors = <int, Color>{
-    1: Color(0xFF9A8C20),
-    2: Color(0xFF226E9C),
-    3: Color(0xFF46525C),
-    4: Color(0xFFB0601C),
-    5: Color(0xFF22888A),
-    6: Color(0xFF5244B0),
-    7: Color(0xFF7A8690),
-    8: Color(0xFFB0382C),
-    9: Color(0xFF6E241C),
-    10: Color(0xFF247C22),
+    1: Color(0xFFDEDE00),
+    2: Color(0xFF007FDE),
+    3: Color(0xFF3F3F3F),
+    4: Color(0xFFDE6400),
+    5: Color(0xFF6ADEDE),
+    6: Color(0xFF452ADE),
+    7: Color(0xFFC9C9C9),
+    8: Color(0xFFDE2000),
+    9: Color(0xFF6A0B00),
+    10: Color(0xFF05A400),
   };
 
-  /// 开奖卡顶行和分色车共用的亮色。历史表仍用 [ballColors]。
+  /// 开奖卡顶行和分色车：与 [ballColors] 同色板。
   static const resultBallColors = <int, Color>{
-    1: Color(0xFFE6C200),
-    2: Color(0xFF1E6FE0),
-    3: Color(0xFF4E4E4E),
-    4: Color(0xFFF07800),
-    5: Color(0xFF00C4CC),
-    6: Color(0xFF3048D6),
-    7: Color(0xFFB0B0B0),
-    8: Color(0xFFE53935),
-    9: Color(0xFF8E201C),
-    10: Color(0xFF2EAE34),
+    1: Color(0xFFDEDE00),
+    2: Color(0xFF007FDE),
+    3: Color(0xFF3F3F3F),
+    4: Color(0xFFDE6400),
+    5: Color(0xFF6ADEDE),
+    6: Color(0xFF452ADE),
+    7: Color(0xFFC9C9C9),
+    8: Color(0xFFDE2000),
+    9: Color(0xFF6A0B00),
+    10: Color(0xFF05A400),
   };
 
-  /// 开奖球号。深色块上用浅字。
+  /// 开奖球号：统一纯白（含浅色底 1/5/7）。
   static Color ballDigitColor(int number) {
-    return const Color(0xFFF4F7FA);
+    return const Color(0xFFFFFFFF);
   }
+
+  /// 数字轻黑描边（四向短阴影模拟描边，不糊边）。
+  static List<Shadow> get ballDigitShadows => const [
+        Shadow(color: Color(0xB3000000), blurRadius: 0, offset: Offset(-0.6, 0)),
+        Shadow(color: Color(0xB3000000), blurRadius: 0, offset: Offset(0.6, 0)),
+        Shadow(color: Color(0xB3000000), blurRadius: 0, offset: Offset(0, -0.6)),
+        Shadow(color: Color(0xB3000000), blurRadius: 0, offset: Offset(0, 0.6)),
+      ];
 
   /// 球框轻阴影 + 边缘，贴近截图立体感（不改框尺寸）。
   static List<BoxShadow> get ballBoxShadows => [

@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
 
-/// 开奖球视觉规范：间隔 / 圆角对齐 FlipCountdown compact（margin 0.5.w×2、radius 2.r）。
+/// 开奖球视觉规范：S22 对照截图 — gap 2.w、圆角 2.r。
 abstract final class LotteryBallStyle {
-  static double gap() => 1.w;
+  static double gap() => 2.w;
   static double radius() => 2.r;
 }
 
@@ -50,9 +50,7 @@ class LotteryBall extends StatelessWidget {
       );
     }
     final color = (palette ?? AppColors.ballColors)[number] ?? AppColors.textSecondary;
-    final digit = palette != null && color.computeLuminance() > 0.42
-        ? const Color(0xFF1A1A1A)
-        : AppColors.ballDigitColor(number);
+    final digit = AppColors.ballDigitColor(number);
     return Container(
       width: s,
       height: s,
@@ -69,7 +67,8 @@ class LotteryBall extends StatelessWidget {
           color: digit,
           fontSize: s * fontScale,
           height: 1,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w500,
+          shadows: AppColors.ballDigitShadows,
         ),
       ),
     );
@@ -116,6 +115,10 @@ class LotteryBallRow extends StatelessWidget {
           final maxH = constraints.maxHeight;
           if (maxH.isFinite && maxH > 0 && maxH < size) {
             size = maxH;
+          }
+          // 传入 ballSize 时作为上限（如历史表选 22），避免列变宽后球被撑满。
+          if (ballSize != null && ballSize! > 0 && size > ballSize!) {
+            size = ballSize!;
           }
           size = math.max(1, size);
           final scale = digitFontSize != null && digitFontSize! > 0

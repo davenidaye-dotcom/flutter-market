@@ -8,20 +8,33 @@ class SessionStore {
   static const _kToken = 'flyroom_access_token';
   static const _kRoomId = 'flyroom_room_id';
   static const _kRoomCode = 'flyroom_room_code';
+  static const _kRoomName = 'flyroom_room_name';
+  static const _kOwnerNickname = 'flyroom_owner_nickname';
   static const _kBetConfirm = 'flyroom_bet_confirm';
 
   String? accessToken;
   String? roomId;
   String? roomCode;
+  String? roomName;
+  String? ownerNickname;
   bool betConfirm = false;
 
   bool get hasToken => accessToken != null && accessToken!.isNotEmpty;
+
+  /// 大厅顶栏：房主昵称 → 房间名。
+  String get hallTitle {
+    final nick = ownerNickname?.trim() ?? '';
+    if (nick.isNotEmpty) return nick;
+    return roomName?.trim() ?? '';
+  }
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     accessToken = prefs.getString(_kToken);
     roomId = prefs.getString(_kRoomId);
     roomCode = prefs.getString(_kRoomCode);
+    roomName = prefs.getString(_kRoomName);
+    ownerNickname = prefs.getString(_kOwnerNickname);
     betConfirm = prefs.getBool(_kBetConfirm) ?? false;
   }
 
@@ -35,9 +48,17 @@ class SessionStore {
     }
   }
 
-  Future<void> setRoom({String? roomId, String? roomCode, bool? betConfirm}) async {
+  Future<void> setRoom({
+    String? roomId,
+    String? roomCode,
+    String? roomName,
+    String? ownerNickname,
+    bool? betConfirm,
+  }) async {
     this.roomId = roomId;
     this.roomCode = roomCode;
+    if (roomName != null) this.roomName = roomName;
+    if (ownerNickname != null) this.ownerNickname = ownerNickname;
     if (betConfirm != null) this.betConfirm = betConfirm;
     final prefs = await SharedPreferences.getInstance();
     if (roomId == null || roomId.isEmpty) {
@@ -50,6 +71,18 @@ class SessionStore {
     } else {
       await prefs.setString(_kRoomCode, roomCode);
     }
+    final name = this.roomName?.trim() ?? '';
+    if (name.isEmpty) {
+      await prefs.remove(_kRoomName);
+    } else {
+      await prefs.setString(_kRoomName, name);
+    }
+    final nick = this.ownerNickname?.trim() ?? '';
+    if (nick.isEmpty) {
+      await prefs.remove(_kOwnerNickname);
+    } else {
+      await prefs.setString(_kOwnerNickname, nick);
+    }
     if (betConfirm != null) {
       await prefs.setBool(_kBetConfirm, betConfirm);
     }
@@ -59,11 +92,15 @@ class SessionStore {
     accessToken = null;
     roomId = null;
     roomCode = null;
+    roomName = null;
+    ownerNickname = null;
     betConfirm = false;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kToken);
     await prefs.remove(_kRoomId);
     await prefs.remove(_kRoomCode);
+    await prefs.remove(_kRoomName);
+    await prefs.remove(_kOwnerNickname);
     await prefs.remove(_kBetConfirm);
   }
 }

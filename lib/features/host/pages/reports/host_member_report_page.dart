@@ -336,7 +336,7 @@ class _RecordCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final signed = HostSignedPnl.of(_headlineAmount);
     final ranks = parseDrawRanks(pickDrawRanks(row));
-    final remark = _text('remark');
+    final remark = ledgerRemarkLabel(_text('remark'));
     final time = _fmtTime(_first(['createdAt', 'settledAt', 'claimedAt']));
     final fields = _fields;
 

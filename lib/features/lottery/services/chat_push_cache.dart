@@ -462,7 +462,7 @@ class ChatPushCache {
     if (keys.contains(logicalKey)) {
       if (_isSealDedupeKey(logicalKey) &&
           _replaceStoredContent(roomId, logicalKey, normalized)) {
-        _timelineCache.remove('$roomId:$gameId');
+        _invalidateGameCache(roomId, gameId);
         return true;
       }
       // key 已有：只补 live 体给 timeline，返回 false 避免每秒重推闪屏
@@ -474,7 +474,7 @@ class ChatPushCache {
           ),
         );
         _trimLiveRoom(roomId, gameId);
-        _timelineCache.remove('$roomId:$gameId');
+        _invalidateGameCache(roomId, gameId);
       }
       return false;
     }
@@ -486,7 +486,7 @@ class ChatPushCache {
       ),
     );
     _trimLiveRoom(roomId, gameId);
-    _timelineCache.remove('$roomId:$gameId');
+    _invalidateGameCache(roomId, gameId);
     return true;
   }
 
@@ -505,7 +505,7 @@ class ChatPushCache {
     if (live != null) {
       live.removeWhere((e) => e.push.gameId == gameId);
     }
-    _timelineCache.remove('$roomId:$gameId');
+    _invalidateGameCache(roomId, gameId);
   }
 
   List<ChatMessageModel> liveForGame(String roomId, String gameId) {
@@ -757,7 +757,8 @@ class ChatPushCache {
   }
 
   void _invalidateGameCache(String roomId, String gameId) {
-    _timelineCache.remove('$roomId:$gameId');
+    final prefix = '$roomId:$gameId';
+    _timelineCache.removeWhere((k, _) => k == prefix || k.startsWith('$prefix:'));
     _historyRowsCache.removeWhere((k, _) => k.startsWith('$roomId:$gameId:'));
   }
 
@@ -767,7 +768,8 @@ class ChatPushCache {
     String gameId,
     ChatMessageModel message,
   ) {
-    final cacheKey = '$roomId:$gameId';
+    // 与 timelineForGame 默认 syntheticSeals=true 的缓存键一致。
+    final cacheKey = '$roomId:$gameId:syn=true';
     final cached = _timelineCache[cacheKey];
     if (cached == null) return false;
     if (cached.any((m) => m.id == message.id)) return true;
@@ -883,20 +885,20 @@ class ChatPushCache {
   List<ChatMessageModel> freshTimelineForGame(
     String roomId,
     String gameId, {
-    bool syntheticSeals = false,
+    bool syntheticSeals = true,
   }) {
-    _timelineCache.remove('$roomId:$gameId');
+    _invalidateGameCache(roomId, gameId);
     return timelineForGame(roomId, gameId, syntheticSeals: syntheticSeals);
   }
 
   /// 封盘 + 开奖合并后的聊天时间线（旧→新）。
-  /// 封盘文案只用已入库的后端消息，不在本地补写。
+  /// [syntheticSeals]：历史开奖缺封盘推送时补预警/封盘线快照。
   List<ChatMessageModel> timelineForGame(
     String roomId,
     String gameId, {
-    bool syntheticSeals = false,
+    bool syntheticSeals = true,
   }) {
-    final cacheKey = '$roomId:$gameId';
+    final cacheKey = '$roomId:$gameId:syn=$syntheticSeals';
     final cached = _timelineCache[cacheKey];
     if (cached != null) return cached;
 
@@ -913,9 +915,9 @@ class ChatPushCache {
   Future<List<ChatMessageModel>> timelineForGameAsync(
     String roomId,
     String gameId, {
-    bool syntheticSeals = false,
+    bool syntheticSeals = true,
   }) async {
-    final cacheKey = '$roomId:$gameId';
+    final cacheKey = '$roomId:$gameId:syn=$syntheticSeals';
     _timelineCache.remove(cacheKey);
     var messages = messagesForGameTimeline(roomId, gameId);
     if (messages.length > 40) {

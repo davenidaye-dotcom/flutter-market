@@ -6,6 +6,8 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../core/network/session_store.dart';
+import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
@@ -235,6 +237,7 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
             Column(
               children: [
                 _HallHeader(
+                  roomCode: widget.roomId,
                   onBack: isHost
                       ? () async {
                           dismissAllShellCovers();
@@ -305,22 +308,85 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
   }
 }
 
-class _HallHeader extends StatelessWidget {
-  const _HallHeader({required this.onBack});
+class _HallHeader extends ConsumerStatefulWidget {
+  const _HallHeader({required this.roomCode, required this.onBack});
 
+  final String roomCode;
   final VoidCallback onBack;
 
   @override
+  ConsumerState<_HallHeader> createState() => _HallHeaderState();
+}
+
+class _HallHeaderState extends ConsumerState<_HallHeader> {
+  String _title = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveTitle();
+  }
+
+  Future<void> _resolveTitle() async {
+    final isHost = ref.read(authSessionProvider.select((s) => s.isHostSide));
+    if (isHost) {
+      final nick =
+          (ref.read(authSessionProvider).user?.nickname ?? '').trim();
+      if (!mounted) return;
+      setState(() => _title = nick);
+      return;
+    }
+
+    var title = SessionStore.instance.hallTitle;
+    if (title.isEmpty) {
+      try {
+        final room = await ref
+            .read(roomRepositoryProvider)
+            .verifyRoom(widget.roomCode);
+        title = room.hallTitle;
+        if (title.isNotEmpty) {
+          await SessionStore.instance.setRoom(
+            roomId: SessionStore.instance.roomId,
+            roomCode: SessionStore.instance.roomCode ?? widget.roomCode,
+            roomName: room.name,
+            ownerNickname: room.ownerNickname ?? '',
+          );
+        }
+      } catch (_) {
+        // 保持空 → 回退品牌名
+      }
+    }
+    if (!mounted) return;
+    setState(() => _title = title);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // 房主改昵称后顶栏同步
+    final hostNick = ref.watch(
+      authSessionProvider.select((s) {
+        if (!s.isHostSide) return null;
+        return (s.user?.nickname ?? '').trim();
+      }),
+    );
+    final title = (hostNick != null && hostNick.isNotEmpty) ? hostNick : _title;
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
       child: Row(
         children: [
           IconButton(
             icon: Icon(Icons.arrow_back_ios, size: 18.sp, color: Colors.white),
-            onPressed: onBack,
+            onPressed: widget.onBack,
           ),
-          const Expanded(child: Center(child: AppLogoHeader())),
+          Expanded(
+            child: Center(
+              child: AppLogoHeader(
+                title: title,
+                titleColor: Colors.white,
+              ),
+            ),
+          ),
           Text('已连接', style: TextStyle(fontSize: 12.sp, color: Colors.white)),
           SizedBox(width: 12.w),
         ],

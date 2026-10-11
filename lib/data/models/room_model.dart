@@ -2,6 +2,7 @@ class RoomModel {
   const RoomModel({
     required this.id,
     required this.name,
+    this.ownerNickname,
     this.thumbnailUrl,
     this.numericId,
     this.enterMode,
@@ -15,6 +16,8 @@ class RoomModel {
   /// Room code used in routes (e.g. 679010)
   final String id;
   final String name;
+  /// 房主昵称（大厅顶栏；缺省时可回退 [name]）
+  final String? ownerNickname;
   final String? thumbnailUrl;
 
   /// Backend numeric roomId for X-Room-Id / query
@@ -47,6 +50,8 @@ class RoomModel {
   factory RoomModel.fromJson(Map<String, dynamic> json) => RoomModel(
         id: json['roomCode']?.toString() ?? json['id']?.toString() ?? '',
         name: json['roomName'] as String? ?? json['name'] as String? ?? '',
+        ownerNickname: json['ownerNickname']?.toString() ??
+            json['owner_nickname']?.toString(),
         thumbnailUrl: json['coverUrl'] as String? ?? json['thumbnailUrl'] as String?,
         numericId: json['roomId']?.toString(),
         enterMode: json['enterMode']?.toString() ?? json['enter_mode']?.toString(),
@@ -59,6 +64,14 @@ class RoomModel {
         betConfirm: json['betConfirm'] == true || json['betConfirm'] == 1,
         playMode: json['playMode']?.toString() ?? 'REAL',
       );
+
+  /// 大厅顶栏优先房主昵称，其次房间名。
+  String get hallTitle {
+    final nick = ownerNickname?.trim() ?? '';
+    if (nick.isNotEmpty) return nick;
+    final n = name.trim();
+    return n;
+  }
 }
 
 class RoomHistoryModel extends RoomModel {

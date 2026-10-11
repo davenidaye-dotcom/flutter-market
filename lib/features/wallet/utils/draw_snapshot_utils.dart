@@ -104,6 +104,24 @@ String betStatusLabel(String status) {
   }
 }
 
+/// 账变/申请备注展示：旧英文入口与字段改成中文。
+String ledgerRemarkLabel(String? raw) {
+  var s = (raw ?? '').trim();
+  if (s.isEmpty) return '';
+  if (s.startsWith('chat-')) {
+    s = '房间-${s.substring(5)}';
+  } else if (s.startsWith('聊天-')) {
+    s = '房间-${s.substring(3)}';
+  } else if (s.startsWith('wallet-')) {
+    s = '钱包-${s.substring(7)}';
+  }
+  s = s.replaceAllMapped(
+    RegExp(r'items\s*=\s*(\d+)', caseSensitive: false),
+    (m) => '笔数=${m.group(1)}',
+  );
+  return s;
+}
+
 /// 上下分申请状态
 String applyStatusLabel(String status) {
   switch (status.toUpperCase()) {

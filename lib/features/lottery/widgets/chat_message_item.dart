@@ -17,21 +17,40 @@ String _displaySender(String raw) {
   return s;
 }
 
+bool _isSealLineSystemContent(String content) {
+  return content.contains('封盘线') || content.contains('停止战斗');
+}
+
+bool _isSealWarnSystemContent(String content) {
+  if (_isSealLineSystemContent(content)) return false;
+  return content.contains('距离封盘') || content.contains('不能再投注');
+}
+
 class ChatMessageItem extends StatelessWidget {
   const ChatMessageItem({
     super.key,
     required this.message,
     this.gameName,
+    this.roomId,
+    this.gameId,
   });
 
   final ChatMessageModel message;
   /// 开奖卡左下角游戏名；不传则显示「开奖结果」
   final String? gameName;
+  /// 兼容旧调用，封盘文案已改回纯文字气泡，不再使用。
+  final String? roomId;
+  final String? gameId;
 
   bool get _isRobotSystemLayout =>
       message.type == ChatMessageType.system ||
       message.type == ChatMessageType.resultCard ||
       message.isAdmin;
+
+  bool get _isSealTextNotice =>
+      message.type == ChatMessageType.system &&
+      (_isSealWarnSystemContent(message.content) ||
+          _isSealLineSystemContent(message.content));
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +69,7 @@ class ChatMessageItem extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          CircleAvatar(
+            CircleAvatar(
               radius: 18.r,
               backgroundColor: _isRobotName(message.sender)
                   ? const Color(0xFF7E57C2)
@@ -70,18 +89,26 @@ class ChatMessageItem extends StatelessWidget {
                     message.time.trim().isEmpty
                         ? _displaySender(message.sender)
                         : '${_displaySender(message.sender)}  ${message.time}',
-                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                    style: TextStyle(
+                        fontSize: 12.sp, color: AppColors.textSecondary),
                   ),
                   SizedBox(height: 4.h),
-                  Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.all(10.w),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8.r),
+                  // 封盘预警/封盘线：原版浅橙条（含第N期，无图片壳）
+                  if (_isSealTextNotice)
+                    _SystemNotice(
+                      content: message.content,
+                      issueNo: message.issueNo,
+                    )
+                  else
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(10.w),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8.r),
+                      ),
+                      child: _buildRobotSystemBody(),
                     ),
-                    child: _buildRobotSystemBody(),
-                  ),
                 ],
               ),
             ),

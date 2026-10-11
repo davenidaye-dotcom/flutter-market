@@ -29,6 +29,8 @@ class RoomRepository {
     return RoomModel(
       id: map['roomCode']?.toString() ?? roomCode,
       name: map['roomName']?.toString() ?? '',
+      ownerNickname: map['ownerNickname']?.toString() ??
+          map['owner_nickname']?.toString(),
       thumbnailUrl: map['coverUrl']?.toString(),
       numericId: map['roomId']?.toString(),
       enterMode: map['enterMode']?.toString() ?? map['enter_mode']?.toString(),
@@ -55,14 +57,21 @@ class RoomRepository {
     final map = Map<String, dynamic>.from(data);
     final code = map['roomCode']?.toString() ?? roomCode;
     final roomId = map['roomId']?.toString();
+    final roomName = map['roomName']?.toString() ?? '';
+    final ownerNickname = map['ownerNickname']?.toString() ??
+        map['owner_nickname']?.toString() ??
+        '';
     await SessionStore.instance.setRoom(
       roomId: roomId,
       roomCode: code,
+      roomName: roomName,
+      ownerNickname: ownerNickname,
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
     );
     return RoomModel(
       id: code,
-      name: map['roomName']?.toString() ?? '',
+      name: roomName,
+      ownerNickname: ownerNickname,
       thumbnailUrl: map['coverUrl']?.toString(),
       numericId: roomId,
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,

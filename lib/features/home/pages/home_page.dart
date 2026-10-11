@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -18,6 +17,7 @@ import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
+import '../../../shared/widgets/room_code_six_input.dart';
 import '../../../shared/widgets/safe_text_controller.dart';
 import '../../../shared/widgets/trial_account_tag.dart';
 import '../../../shared/widgets/user_avatar.dart';
@@ -500,50 +500,11 @@ class _ProfileCardState extends State<_ProfileCard> {
               SizedBox(height: 20.h),
               Text('房间号', style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary)),
               SizedBox(height: 12.h),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(28.r),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.04),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: EmulatorSafeTextField(
-                  controller: _roomCodeCtrl,
-                  keyboardType: TextInputType.number,
-                  textInputAction: TextInputAction.done,
-                  maxLength: 6,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 22.sp,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 6,
-                    color: AppColors.textPrimary,
-                  ),
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                  ],
-                  decoration: InputDecoration(
-                    counterText: '',
-                    hintText: '请输入6位房间号',
-                    hintStyle: TextStyle(
-                      fontSize: 14.sp,
-                      color: AppColors.textHint,
-                      letterSpacing: 0,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    border: InputBorder.none,
-                    isDense: true,
-                  ),
-                  onSubmitted: (v) {
-                    if (v.length == 6) widget.onEnterRoom(v);
-                  },
-                ),
+              RoomCodeSixInput(
+                controller: _roomCodeCtrl,
+                onSubmitted: (v) {
+                  if (v.length == 6) widget.onEnterRoom(v);
+                },
               ),
               SizedBox(height: 8.h),
             ],

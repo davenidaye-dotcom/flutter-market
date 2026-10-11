@@ -359,7 +359,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     return buildChatTimeline(
       [...timeline, ...extras],
       gameId: _gameId,
-      syntheticSeals: false,
+      // 历史开奖缺封盘推送时补预警/封盘线，保证时间线完整。
+      syntheticSeals: true,
     );
   }
 
@@ -883,7 +884,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         draft: command,
       ),
     );
-    AppToast.info('已填入上一笔：$command');
   }
 
   void _hydrateMessagesFromCacheIfReady() {
@@ -1255,7 +1255,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         await ref.read(walletRepositoryProvider).submitApplication(
               applyType: applyType,
               amount: amount,
-              remark: 'chat-$label',
+              remark: '房间-$label',
               requestId: requestId,
             );
         return true;
@@ -1880,6 +1880,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                           activeGameId,
                                           rawName,
                                         ),
+                                        roomId: widget.roomId,
+                                        gameId: activeGameId,
                                       );
                                     },
                                   );
@@ -2556,6 +2558,7 @@ class _GameStatusBar extends StatelessWidget {
                         roomId: roomId,
                         gameId: gameId,
                         expandSlots: true,
+                        ballSize: HistoryDrawLayout.ballSize(),
                         digitFontSize: HistoryDrawLayout.ballDigitSize(),
                         gap: HistoryDrawLayout.ballGap(),
                       ),

@@ -19,15 +19,15 @@ class HistoryDrawRow {
 }
 
 /// 顶栏期号、开奖球、历史表头、下拉数据行共用同一套列宽。
+/// 方块规格：S22（22.w）· gap 2.w · 截图色 · 常驻 1-5龙虎列。
 abstract final class HistoryDrawLayout {
-  static double hPad() => 8.w;
-  /// 4 位期号居中，和「期数」同一列。
-  static double issueW() => 40.w;
-  static double issueGap() => 2.w;
-  static double gyW() => 46.w;
-  static double dtW() => 58.w;
+  static double hPad() => 4.w;
+  static double issueW() => 34.w;
+  static double issueGap() => 1.w;
+  static double gyW() => 42.w;
+  static double dtW() => 54.w;
   static double trailingW() => gyW() + dtW();
-  static double ballSize() => 20.w;
+  static double ballSize() => 22.w;
 
   static TextStyle issueStyle() => TextStyle(
         fontSize: 13.sp,
@@ -43,31 +43,26 @@ abstract final class HistoryDrawLayout {
         fontWeight: FontWeight.w600,
       );
 
-  /// 历史表开奖球内数字相对原来 18 边长的比例。
-  static double ballFontScale() => 0.72;
+  static double ballFontScale() => 0.55;
 
-  /// 开奖数字的绝对字号。顶栏和历史表共用，另加 1.sp。
-  static double ballDigitSize() => ballSize() * ballFontScale() + 1.sp;
+  static double ballDigitSize() => ballSize() * ballFontScale();
 
-  /// 球间距：对齐 FlipCountdown compact（0.5.w×2）。
   static double ballGap() => LotteryBallStyle.gap();
 
-  /// 球圆角：对齐 FlipCountdown compact。
   static double ballRadius() => LotteryBallStyle.radius();
 
-  /// 不再加大方框（会吃掉间隔）；保留兼容。
   @Deprecated('Use ballGap; boost removed to keep spacing')
   static double ballBoxBoost() => 0;
 
   static const int visibleRows = 10;
-  static double rowHeight() => 27.h;
+  static double rowHeight() => 28.h;
   static double rowGap() => 1.h;
   static double headerHeight() => 28.h;
   static double listPadTop() => 1.h;
   static double listPadBottom() => 1.h;
 }
 
-/// 期号 | 十个等宽槽 | 冠亚和 | 龙虎。顶栏和下拉必须用这一行，禁止各自算宽。
+/// 期号 | 十个等宽槽 | 冠亚和 | 1-5龙虎。
 class Pk10AlignRow extends StatelessWidget {
   const Pk10AlignRow({
     super.key,
@@ -118,9 +113,7 @@ class HistoryDrawPanel extends StatelessWidget {
     this.refreshController,
   });
 
-  /// 首屏默认拉取条数；面板固定露出 [HistoryDrawLayout.visibleRows] 期，其余靠上拉。
   static const int pageSize = 20;
-  /// 内存上限，避免无限堆积。
   static const int maxCachedRows = 300;
   @Deprecated('Use pageSize')
   static const int maxRows = pageSize;
@@ -139,7 +132,6 @@ class HistoryDrawPanel extends StatelessWidget {
   final bool error;
   final VoidCallback? onRetry;
   final Future<void> Function()? onRefresh;
-  /// 返回 false 表示没有更多期数。
   final Future<bool> Function()? onLoadMore;
   final EasyRefreshController? refreshController;
 
@@ -153,7 +145,6 @@ class HistoryDrawPanel extends StatelessWidget {
         height: panelHeight(context),
         decoration: const BoxDecoration(
           color: Colors.white,
-          // 只向下投影，顶边与状态栏无缝贴合
           boxShadow: [
             BoxShadow(
               color: Color(0x24000000),
@@ -241,7 +232,11 @@ class _Header extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: pad),
       color: const Color(0xFFF5F5F5),
       child: Pk10AlignRow(
-        issue: Text('期数', style: HistoryDrawLayout.headerStyle(), textAlign: TextAlign.center),
+        issue: Text(
+          '期数',
+          style: HistoryDrawLayout.headerStyle(),
+          textAlign: TextAlign.center,
+        ),
         middle: Row(
           children: [
             for (final label in _cn)
@@ -252,8 +247,18 @@ class _Header extends StatelessWidget {
               ),
           ],
         ),
-        gy: Text('冠亚和', style: HistoryDrawLayout.headerStyle(), textAlign: TextAlign.center),
-        dt: Text('1-5龙虎', style: HistoryDrawLayout.headerStyle(), textAlign: TextAlign.center),
+        gy: Text(
+          '冠亚和',
+          style: HistoryDrawLayout.headerStyle(),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+        ),
+        dt: Text(
+          '1-5龙虎',
+          style: HistoryDrawLayout.headerStyle(),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+        ),
       ),
     );
   }
@@ -272,7 +277,6 @@ class _DataRow extends StatelessWidget {
   }
 
   static Color _sideColor(String ch) {
-    // 大/双/龙 红色；小/单/虎 蓝色
     if (ch == '大' || ch == '双' || ch == '龙') return AppColors.danger;
     if (ch == '小' || ch == '单' || ch == '虎') return _yinBlue;
     return const Color(0xFF5A5A5A);
@@ -320,8 +324,10 @@ class _DataRow extends StatelessWidget {
         middle: LotteryBallRow(
           numbers: row.numbers,
           expandSlots: true,
+          ballSize: HistoryDrawLayout.ballSize(),
           gap: HistoryDrawLayout.ballGap(),
           digitFontSize: HistoryDrawLayout.ballDigitSize(),
+          fontScale: HistoryDrawLayout.ballFontScale(),
         ),
         gy: Text.rich(
           TextSpan(
@@ -342,7 +348,7 @@ class _DataRow extends StatelessWidget {
           maxLines: 1,
         ),
         dt: Text.rich(
-          _coloredChars(dt, fontSize: 11.sp, weight: FontWeight.w500),
+          _coloredChars(dt, fontSize: 9.sp, weight: FontWeight.w500),
           textAlign: TextAlign.center,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,

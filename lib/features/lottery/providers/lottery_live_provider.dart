@@ -15,6 +15,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../host/providers/host_apply_notice_provider.dart';
+import '../../host/providers/host_dash_dirty_provider.dart';
 import '../../room/cs_unread.dart';
 import '../engine/lottery_period_engine.dart';
 import '../services/chat_push_cache.dart';
@@ -540,7 +541,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return ChatPushCache.instance.timelineForGame(
       roomId,
       gameId,
-      syntheticSeals: false,
+      syntheticSeals: true,
     );
   }
 
@@ -548,7 +549,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return ChatPushCache.instance.freshTimelineForGame(
       roomId,
       gameId,
-      syntheticSeals: false,
+      syntheticSeals: true,
     );
   }
 
@@ -556,7 +557,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return ChatPushCache.instance.timelineForGameAsync(
       roomId,
       gameId,
-      syntheticSeals: false,
+      syntheticSeals: true,
     );
   }
 
@@ -596,7 +597,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (gameId.isEmpty) return false;
     // 有任意已推送消息即暖；缺期开奖卡不再强制回补聊天
     return ChatPushCache.instance
-        .timelineForGame(roomId, gameId, syntheticSeals: false)
+        .timelineForGame(roomId, gameId, syntheticSeals: true)
         .isNotEmpty;
   }
 
@@ -1280,6 +1281,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    // 管理中心看板脏标记（飞单余额/流水等）：仅通知页面防抖重拉。
+    if (type == 'OWNER_DASH_DIRTY') {
+      _markOwnerDashDirty(payload);
+      return;
+    }
+
     final gameType = _gameTypeFromEvent(event, payload);
     if (gameType == null || gameType.isEmpty) {
       if (type == 'RESYNC') {
@@ -1684,6 +1691,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (!_wsIsHost && !_ref.read(authSessionProvider).isHostSide) {
       return;
     }
+    _bumpHostDashDirty();
     final balRaw = payload['balance'] ?? payload['available'] ?? payload['points'];
     final turnRaw = payload['turnover'];
     final wlRaw = payload['playerWinLoss'] ?? payload['winLoss'];
@@ -1702,6 +1710,20 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       winLoss: hasWinLoss ? _toNum(wlRaw) : null,
       rebate: hasRebate ? _toNum(rbRaw) : null,
     );
+  }
+
+  void _markOwnerDashDirty(Map<String, dynamic> payload) {
+    final rid = '${payload['roomId'] ?? ''}'.trim();
+    if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
+    if (!_wsIsHost && !_ref.read(authSessionProvider).isHostSide) {
+      return;
+    }
+    _bumpHostDashDirty();
+  }
+
+  void _bumpHostDashDirty() {
+    final n = _ref.read(hostDashDirtyProvider(roomId));
+    _ref.read(hostDashDirtyProvider(roomId).notifier).state = n + 1;
   }
 
   Map<String, dynamic> _wsPayload(Map<String, dynamic> event) {

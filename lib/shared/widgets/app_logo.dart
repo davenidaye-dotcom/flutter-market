@@ -2,14 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
 
-/// 乐投 Logo + 品牌名
+/// Logo + 标题（默认「乐投」；大厅可传房主昵称）
 class AppLogoHeader extends StatelessWidget {
-  const AppLogoHeader({super.key, this.showTitle = true});
+  const AppLogoHeader({
+    super.key,
+    this.showTitle = true,
+    this.title,
+    this.titleColor,
+  });
 
   final bool showTitle;
+  /// 为空时显示「乐投」
+  final String? title;
+  final Color? titleColor;
 
   @override
   Widget build(BuildContext context) {
+    final label = (title ?? '').trim().isEmpty ? '乐投' : title!.trim();
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -26,12 +35,17 @@ class AppLogoHeader extends StatelessWidget {
         ),
         if (showTitle) ...[
           SizedBox(width: 8.w),
-          Text(
-            '乐投',
-            style: TextStyle(
-              fontSize: 22.sp,
-              fontWeight: FontWeight.bold,
-              color: AppColors.primaryDark,
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: 160.w),
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 20.sp,
+                fontWeight: FontWeight.bold,
+                color: titleColor ?? AppColors.primaryDark,
+              ),
             ),
           ),
         ],

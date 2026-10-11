@@ -411,7 +411,7 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
                   borderRadius: BorderRadius.circular(14.r),
                 ),
                 child: Text(
-                  '余额 $balance',
+                  '飞单余额 $balance',
                   style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
                 ),
               ),

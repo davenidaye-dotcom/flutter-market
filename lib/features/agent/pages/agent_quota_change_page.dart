@@ -34,6 +34,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
   int _totalPages = 0;
   int _total = 0;
   bool _loading = false;
+  bool _panelOpen = true;
   late DateTime _start;
   late DateTime _end;
   List<DateRangeQuickItem> _dayQuick = const [];
@@ -214,58 +215,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
         children: [
           if (isChild) AgentBackTitle(title: title),
           SizedBox(height: 8.h),
-          AgentSurface(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: AgentMetric(label: '给下级上分', value: _summary['creditToSubUp'], alignStart: true)),
-                    Expanded(child: AgentMetric(label: '给下级下分', value: _summary['creditToSubDown'], alignStart: true)),
-                  ],
-                ),
-                SizedBox(height: 12.h),
-                Row(
-                  children: [
-                    Expanded(child: AgentMetric(label: '上级上分', value: _summary['creditFromParentUp'], alignStart: true)),
-                    Expanded(child: AgentMetric(label: '上级下分', value: _summary['creditFromParentDown'], alignStart: true)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 8.h),
-          AgentSurface(
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: _dateField(_start, () => _pickDate(isStart: true))),
-                    SizedBox(width: 8.w),
-                    Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
-                  ],
-                ),
-                SizedBox(height: 10.h),
-                Row(
-                  children: [
-                    Expanded(child: _typeField()),
-                    SizedBox(width: 8.w),
-                    for (var i = 0; i < _dayQuick.length; i++) ...[
-                      if (i > 0) SizedBox(width: 6.w),
-                      _quickChip(i),
-                    ],
-                    SizedBox(width: 8.w),
-                    AgentTealButton(
-                      label: '查询',
-                      onTap: () {
-                        _page = 1;
-                        _load();
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+          _queryPanel(),
           SizedBox(height: 8.h),
           Expanded(child: _changeList()),
           AgentPaginationBar(
@@ -287,6 +237,134 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _queryPanel() {
+    final quickLabel =
+        (_quick >= 0 && _quick < _dayQuick.length) ? _dayQuick[_quick].label : '';
+    return AgentSurface(
+      child: Column(
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _panelOpen = !_panelOpen),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _panelOpen
+                        ? '查询条件'
+                        : [
+                            if (quickLabel.isNotEmpty) quickLabel,
+                            '${_fmt(_start)} ~ ${_fmt(_end)}',
+                            _types[_typeIndex],
+                          ].join('  '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF222222),
+                    ),
+                  ),
+                ),
+                Text(
+                  _panelOpen ? '收起' : '展开',
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    color: AppColors.navBlue,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_panelOpen) ...[
+            SizedBox(height: 12.h),
+            _summaryBlock(),
+            SizedBox(height: 12.h),
+            _filterBlock(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryBlock() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: AgentMetric(
+                label: '给下级上分',
+                value: _summary['creditToSubUp'],
+                alignStart: true,
+              ),
+            ),
+            Expanded(
+              child: AgentMetric(
+                label: '给下级下分',
+                value: _summary['creditToSubDown'],
+                alignStart: true,
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 12.h),
+        Row(
+          children: [
+            Expanded(
+              child: AgentMetric(
+                label: '上级上分',
+                value: _summary['creditFromParentUp'],
+                alignStart: true,
+              ),
+            ),
+            Expanded(
+              child: AgentMetric(
+                label: '上级下分',
+                value: _summary['creditFromParentDown'],
+                alignStart: true,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _filterBlock() {
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(child: _dateField(_start, () => _pickDate(isStart: true))),
+            SizedBox(width: 8.w),
+            Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
+          ],
+        ),
+        SizedBox(height: 10.h),
+        Row(
+          children: [
+            Expanded(child: _typeField()),
+            SizedBox(width: 8.w),
+            for (var i = 0; i < _dayQuick.length; i++) ...[
+              if (i > 0) SizedBox(width: 6.w),
+              _quickChip(i),
+            ],
+            SizedBox(width: 8.w),
+            AgentTealButton(
+              label: '查询',
+              onTap: () {
+                _page = 1;
+                _load();
+              },
+            ),
+          ],
+        ),
+      ],
     );
   }
 
