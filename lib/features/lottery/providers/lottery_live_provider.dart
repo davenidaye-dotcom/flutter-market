@@ -990,8 +990,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       // 必须 syncCatalog：关则移除、开则加回（merge 不会删）
       _engine.syncCatalog(games, now);
       for (final g in games) {
-        final cd = _engine.countdownFor(g.id, now);
-        if (cd <= 0 && g.countdownSeconds > 0) {
+        // 本地「开奖中」时一律用服务端期态补丁（含 openAt heal），避免只认 countdown>0 漏修
+        if (_engine.isDrawingPhase(g.id, now)) {
           _engine.patchGame(g, now);
         }
       }
@@ -1073,10 +1073,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _recoverStuckDrawingIfNeeded(gameId);
   }
 
-  /// 球号已出但仍停在「开奖中」：WS 换期包可能 seconds=0，立刻 HTTP 补倒计时。
+  /// 停在「开奖中」：立刻 HTTP 补期态（不要求已有上期球号，部分房间会空球卡住）。
   void _recoverStuckDrawingIfNeeded(String gameId) {
     final g = _engine.displayGame(gameId, DateTime.now());
-    if (!g.isDrawing || g.previousResults.isEmpty) return;
+    if (!g.isDrawing) return;
     _scheduleRefreshGamesFromServer(immediate: true);
   }
 
@@ -1902,12 +1902,17 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _drawWatchdog = null;
       return;
     }
-    _drawWatchdog ??= Timer(const Duration(seconds: 1), () {
-      _drawWatchdog = null;
-      if (!mounted) return;
-      if (state.games.any((g) => _gameNeedsRecovery(g.id))) {
-        _scheduleRefreshGamesFromServer(immediate: true);
+    // 周期性补拉：部分房间漏 SNAPSHOT 时只靠一次 1s 不够
+    _drawWatchdog ??= Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) {
+        _cancelDrawWatchdog();
+        return;
       }
+      if (!state.games.any((g) => _gameNeedsRecovery(g.id))) {
+        _cancelDrawWatchdog();
+        return;
+      }
+      _scheduleRefreshGamesFromServer(immediate: true);
     });
   }
 

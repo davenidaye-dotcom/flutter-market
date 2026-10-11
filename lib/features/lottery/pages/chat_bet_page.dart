@@ -2449,7 +2449,7 @@ class _StatusIssueColumn extends StatelessWidget {
         label.isEmpty ? '--' : label,
         textAlign: TextAlign.center,
         maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+        softWrap: false,
         style: HistoryDrawLayout.issueStyle(),
       ),
     );

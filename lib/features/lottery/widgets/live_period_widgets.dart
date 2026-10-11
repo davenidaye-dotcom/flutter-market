@@ -66,7 +66,7 @@ class LiveLatestDrawIssueText extends ConsumerWidget {
       style: style,
       textAlign: textAlign,
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
+      softWrap: false,
     );
   }
 }

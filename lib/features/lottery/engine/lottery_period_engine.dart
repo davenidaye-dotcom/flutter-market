@@ -377,7 +377,11 @@ final class LotteryPeriodEngine {
       previousResults: nextResults,
       sealSeconds: patch.sealSeconds ?? slot.model.sealSeconds,
     );
-    if (pinned) return;
+    if (pinned) {
+      // 封盘后钉死时仍要接受服务端「同期 openAt 被拉回未来」（换期/heal），否则一直开奖中
+      _maybeUnstickDrawing(slot, patch.openAtEpochMs, now);
+      return;
+    }
     _applyEpochs(
       slot,
       openAtMs: patch.openAtEpochMs,

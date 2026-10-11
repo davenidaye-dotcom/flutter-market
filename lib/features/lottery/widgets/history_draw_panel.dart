@@ -22,7 +22,8 @@ class HistoryDrawRow {
 /// 方块规格：S22（22.w）· gap 2.w · 截图色 · 常驻 1-5龙虎列。
 abstract final class HistoryDrawLayout {
   static double hPad() => 4.w;
-  static double issueW() => 34.w;
+  /// 后 4 位期号完整显示（避免 34.w + ellipsis 变成 56…）
+  static double issueW() => 48.w;
   static double issueGap() => 1.w;
   static double gyW() => 42.w;
   static double dtW() => 54.w;
