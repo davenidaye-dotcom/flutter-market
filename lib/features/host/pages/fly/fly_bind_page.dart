@@ -90,8 +90,8 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
       await _bind(
         username: username,
         password: password,
-        newPassword: neu.$1,
-        confirmPassword: neu.$2,
+        newPassword: neu,
+        confirmPassword: neu,
       );
       return;
     }
@@ -99,9 +99,8 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
     await _bind(username: username, password: password);
   }
 
-  Future<(String, String)?> _askNewPassword() async {
+  Future<String?> _askNewPassword() async {
     final newCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
     final ok = await showEmulatorSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -119,12 +118,6 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
               obscureText: true,
               decoration: const InputDecoration(hintText: '新密码（6–64 位）'),
             ),
-            SizedBox(height: 8.h),
-            EmulatorSafeTextField(
-              controller: confirmCtrl,
-              obscureText: true,
-              decoration: const InputDecoration(hintText: '确认新密码'),
-            ),
           ],
         ),
         actions: [
@@ -134,19 +127,13 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
       ),
     );
     final n = newCtrl.text;
-    final c = confirmCtrl.text;
     newCtrl.dispose();
-    confirmCtrl.dispose();
     if (ok != true) return null;
     if (n.length < 6 || n.length > 64) {
       AppToast.info('新密码需为6-64位');
       return null;
     }
-    if (n != c) {
-      AppToast.info('两次新密码不一致');
-      return null;
-    }
-    return (n, c);
+    return n;
   }
 
   Future<void> _bind({

@@ -71,11 +71,11 @@ String agentAccountStatusLabel(String? status) {
   }
 }
 
-/// 账户类型 → 中文。代理会员按账户类型显示，不沿用后端旧文案「会员」。
+/// 账户类型 → 中文。AGENT_MEMBER 展示为「会员」。
 String agentAccountTypeLabel(Map<String, dynamic> row) {
   switch (row['accountType']?.toString()) {
     case 'AGENT_MEMBER':
-      return '代理会员';
+      return '会员';
     case 'AGENT':
       final level = row['agentLevel'];
       if (level is num && level > 0) return '${level.toInt()}级代理';
@@ -86,7 +86,7 @@ String agentAccountTypeLabel(Map<String, dynamic> row) {
       return '子账号';
   }
   final name = row['accountTypeName']?.toString();
-  if (name == '会员') return '代理会员';
+  if (name == '代理会员' || name == '会员') return '会员';
   if (name != null && name.isNotEmpty && !_looksLikeEnum(name)) return name;
   return row['accountType']?.toString() ?? '—';
 }
@@ -615,7 +615,7 @@ class AgentTealButton extends StatelessWidget {
   }
 }
 
-/// 报表快捷日期：选中蓝灰，未选中绿
+/// 报表快捷日期：选中蓝，未选中绿（对齐竞品报表）
 class AgentReportQuickBtn extends StatelessWidget {
   const AgentReportQuickBtn({
     super.key,
@@ -635,7 +635,7 @@ class AgentReportQuickBtn extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 6.h),
         decoration: BoxDecoration(
-          color: active ? const Color(0xFF5D708C) : const Color(0xFF66A15B),
+          color: active ? const Color(0xFF4A90D9) : const Color(0xFF66A15B),
           borderRadius: BorderRadius.circular(8.r),
         ),
         child: Text(label, style: TextStyle(fontSize: 12.sp, color: Colors.white)),

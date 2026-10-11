@@ -221,35 +221,31 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   Widget build(BuildContext context) {
     final inTickets = _ticketMemberId != null;
     return AgentPageFrame(
-        title: inTickets ? '注单明细' : '报表查询',
-        titleOnBar: true,
-        onRefresh: () => _load(fromPull: true),
-        child: ColoredBox(
-          color: const Color(0xFFF4F7FB),
-          child: Column(children: [
-            Expanded(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 8.h),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (_drill.isNotEmpty || inTickets) ...[
-                      _crumbBar(),
-                      SizedBox(height: 8.h),
-                    ],
-                    _queryPanel(inTickets),
-                    SizedBox(height: 10.h),
-                    Expanded(child: _resultList(inTickets)),
-                  ],
-                ),
+      // 去掉「报表查询」「注单明细」标题条
+      title: '',
+      onRefresh: () => _load(fromPull: true),
+      child: ColoredBox(
+        color: const Color(0xFFF2F2F2),
+        child: Column(
+          children: [
+            if (_drill.isNotEmpty || inTickets)
+              Padding(
+                padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 0),
+                child: _crumbBar(),
               ),
+            Padding(
+              padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 0),
+              child: _queryPanel(),
             ),
-          ]),
+            Expanded(child: _scrollBody(inTickets)),
+          ],
         ),
+      ),
     );
   }
 
-  Widget _queryPanel(bool inTickets) {
+  /// 仅查询条件可展开/收起；总览与明细不在此面板内
+  Widget _queryPanel() {
     final quickLabel = (_quick >= 0 && _quick < _quickItems.length) ? _quickItems[_quick].label : '';
     return _surface(
       child: Column(
@@ -270,7 +266,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: 13.sp,
+                      fontSize: 14.sp,
                       fontWeight: FontWeight.w600,
                       color: const Color(0xFF222222),
                     ),
@@ -278,19 +274,88 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                 ),
                 Text(
                   _panelOpen ? '收起' : '展开',
-                  style: TextStyle(fontSize: 13.sp, color: AppColors.navBlue, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 13.sp, color: const Color(0xFF4A90D9), fontWeight: FontWeight.w600),
                 ),
               ],
             ),
           ),
           if (_panelOpen) ...[
-            SizedBox(height: 12.h),
-            _filterFields(),
             SizedBox(height: 10.h),
-            if (!inTickets) _summaryCard() else _ticketSummaryBar(),
+            _filterFields(),
           ],
         ],
       ),
+    );
+  }
+
+  /// 总览 + 明细同一滚动区域
+  Widget _scrollBody(bool inTickets) {
+    return AppPullRefresh(
+      onRefresh: () => _load(fromPull: true),
+      child: _loading && _rows.isEmpty && _summary.isEmpty
+          ? ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 80),
+                AppPageLoading(),
+              ],
+            )
+          : _error != null && _rows.isEmpty && _summary.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    SizedBox(height: 80.h),
+                    Center(
+                      child: GestureDetector(
+                        onTap: _load,
+                        child: Text(
+                          '加载失败，点击重试',
+                          style: TextStyle(fontSize: 14.sp, color: AppColors.danger),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.fromLTRB(8.w, 6.h, 8.w, 16.h),
+                  children: [
+                    if (inTickets) ...[
+                      _ticketSummaryBar(),
+                      if (_rows.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(top: 48.h),
+                          child: Center(
+                            child: Text(
+                              '暂无数据',
+                              style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                            ),
+                          ),
+                        )
+                      else
+                        for (final row in _rows) ...[
+                          SizedBox(height: 6.h),
+                          _ticketCard(row),
+                        ],
+                    ] else ...[
+                      // 总览 + 明细上下连成一体，同一 ListView 滑动
+                      if (_summary.isNotEmpty) _summaryBlock(),
+                      if (_rows.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.only(top: 48.h),
+                          child: Center(
+                            child: Text(
+                              '暂无数据',
+                              style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                            ),
+                          ),
+                        )
+                      else
+                        for (var i = 0; i < _rows.length; i++)
+                          _memberBlock(_rows[i], showTopBorder: _summary.isEmpty && i == 0),
+                    ],
+                  ],
+                ),
     );
   }
 
@@ -325,11 +390,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             onTap: _load,
             child: Container(
               height: 40.h,
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              width: 56.w,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: const Color(0xFF4E9BA3),
-                borderRadius: BorderRadius.circular(10.r),
+                color: const Color(0xFF4A90D9),
+                borderRadius: BorderRadius.circular(4.r),
               ),
               child: Text(
                 '查询',
@@ -419,29 +484,37 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     );
   }
 
-  Widget _summaryCard() {
+  static const _cRed = Color(0xFFE53935);
+  static const _cGreen = Color(0xFF2E7D32);
+  static const _cOrange = Color(0xFFE65100);
+  static const _cBlack = Color(0xFF222222);
+  static const _summaryBg = Color(0xFFD4E8F8);
+
+  Widget _summaryBlock() {
     if (_summary.isEmpty) return const SizedBox.shrink();
     final pnl = _summary['pnl'] ??
         ((num.tryParse('${_summary['winLoss'] ?? 0}') ?? 0) +
             (num.tryParse('${_summary['rebate'] ?? 0}') ?? 0));
-    return _surface(
-      color: const Color(0xFFD6EBFF),
-      child: _fourGrid([
-        ('下注金额', _summary['betAmount'], false),
-        ('输赢', _summary['winLoss'], true),
-        ('退水', _summary['rebate'], true),
-        ('盈亏', pnl, true),
-        ('下级交货', _summary['downVolume'], false),
-        ('应收下线', _summary['receivable'], true),
-        ('占成', _ratioText(_summary['shareRatio'] ?? 0), false),
-        ('实占金额', _summary['shareAmount'], false),
-        ('实占结果', _summary['sharePnl'], true),
-        ('实占退水', _summary['rebateNet'], true),
-        ('赚水', _summary['earnWater'] ?? _summary['rebateGot'], true),
-        ('盈亏结果', _summary['resultPnl'] ?? _summary['combinedPnl'], true),
-        ('上缴货量', _summary['uplinkVolume'], false),
-        ('上级交收', _summary['uplinkSettlement'], true),
-      ]),
+    final count = _summary['orderCount'] ?? _summary['betCount'] ?? _rows.length;
+    return _reportBlock(
+      bg: _summaryBg,
+      cells: [
+        _cell('总计', null, _cRed, raw: '($count)'),
+        _cell('下注金额', _summary['betAmount'], _cRed),
+        _cell('输赢', _summary['winLoss'], _cRed),
+        _cell('退水', _summary['rebate'], _cRed),
+        _cell('盈亏', pnl, _cRed),
+        _cell('下级交货', _summary['downVolume'], _cGreen),
+        _cell('应收下线', _summary['receivable'], _cGreen),
+        _cell('占成', null, _cOrange, raw: _ratioText(_summary['shareRatio'] ?? 0)),
+        _cell('实占金额', _summary['shareAmount'], _cOrange),
+        _cell('实占结果', _summary['sharePnl'], _cOrange),
+        _cell('实占退水', _summary['rebateNet'], _cOrange),
+        _cell('赚水', _summary['earnWater'] ?? _summary['rebateGot'], _cOrange),
+        _cell('盈亏结果', _summary['resultPnl'] ?? _summary['combinedPnl'], _cOrange),
+        _cell('上缴货量', _summary['uplinkVolume'], _cBlack),
+        _cell('上级交收', _summary['uplinkSettlement'], _cBlack),
+      ],
     );
   }
 
@@ -455,181 +528,134 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     );
   }
 
-  Widget _resultList(bool inTickets) {
-    return AppPullRefresh(
-      onRefresh: () => _load(fromPull: true),
-      child: _loading && _rows.isEmpty
-          ? ListView(
-              physics: const AlwaysScrollableScrollPhysics(),
-              children: const [
-                SizedBox(height: 80),
-                AppPageLoading(),
-              ],
-            )
-          : _error != null && _rows.isEmpty
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    SizedBox(height: 80.h),
-                    Center(
-                      child: GestureDetector(
-                        onTap: _load,
-                        child: Text(
-                          '加载失败，点击重试',
-                          style: TextStyle(fontSize: 14.sp, color: AppColors.danger),
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              : _rows.isEmpty
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        SizedBox(height: 80.h),
-                        Center(
-                          child: Text(
-                            '暂无数据',
-                            style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
-                          ),
-                        ),
-                      ],
-                    )
-                  : ListView.separated(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      itemCount: _rows.length,
-                      separatorBuilder: (_, _) => SizedBox(height: 8.h),
-                      itemBuilder: (_, i) => inTickets ? _ticketCard(_rows[i]) : _memberCard(_rows[i]),
-                    ),
-    );
-  }
-
-  Widget _memberCard(Map<String, dynamic> row) {
-    final name = '${row['displayName'] ?? row['username'] ?? row['accountId'] ?? '—'}';
-    final level = '${row['levelName'] ?? row['level'] ?? '—'}';
+  Widget _memberBlock(Map<String, dynamic> row, {bool showTopBorder = false}) {
+    final user = '${row['username'] ?? ''}'.trim();
+    final display = '${row['displayName'] ?? ''}'.trim();
+    final lv = row['agentLevel'];
+    final head = [
+      user.isNotEmpty ? user : (display.isNotEmpty ? display : '${row['accountId'] ?? '—'}'),
+      if (display.isNotEmpty && display != user) '($display)',
+      if (lv != null) '($lv)',
+    ].join(' ');
     final canTap = row['drillable'] == true ||
         '${row['level'] ?? ''}'.toUpperCase().contains('MEMBER') ||
         row['accountId'] != null;
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        borderRadius: BorderRadius.circular(12.r),
         onTap: canTap ? () => _openDrill(row) : null,
-        child: _surface(
-          color: Colors.white,
-          padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 15.sp,
-                        fontWeight: FontWeight.w700,
-                        color: canTap ? AppColors.navBlue : const Color(0xFF222222),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Text(level, style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
-                  SizedBox(width: 8.w),
-                  Text('占成 ${_ratioText(row['ownShareRatio'] ?? row['shareRatio'])}', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
-                  SizedBox(width: 8.w),
-                  Flexible(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerRight,
-                      child: Text(
-                        '余额 ${row['balance'] == null ? '—' : displayNumber(row['balance'])}',
-                        maxLines: 1,
-                        softWrap: false,
-                        style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 8.h),
-              _fourGrid([
-                ('下注金额', row['betAmount'], false),
-                ('输赢', row['memberWin'] ?? row['memberWinLoss'], true),
-                ('退水', row['memberRebate'], true),
-                ('盈亏', row['memberResult'], true),
-                ('下级交货', row['downVolume'], false),
-                ('应收下线', row['receivable'], true),
-                ('占成', _ratioText(row['shareRatio']), false),
-                ('实占金额', row['shareAmount'], false),
-                ('实占结果', row['shareResult'] ?? row['sharePnl'], true),
-                ('实占退水', row['shareRebate'], true),
-                ('赚水', row['earnWater'] ?? row['rebateIncome'], true),
-                ('盈亏结果', row['selfPnl'], true),
-                ('上缴货量', row['uplinkVolume'], false),
-                ('上级交收', row['uplinkSettlement'], true),
-              ]),
-            ],
-          ),
+        child: _reportBlock(
+          bg: Colors.white,
+          showTopBorder: showTopBorder,
+          cells: [
+            _cell(head, null, _cRed, raw: ''),
+            _cell('下注金额', row['betAmount'], _cRed),
+            _cell('输赢', row['memberWin'] ?? row['memberWinLoss'], _cRed),
+            _cell('退水', row['memberRebate'], _cRed),
+            _cell('盈亏', row['memberResult'], _cRed),
+            _cell('下级交货', row['downVolume'], _cGreen),
+            _cell('应收下线', row['receivable'], _cGreen),
+            _cell('占成', null, _cOrange, raw: _ratioText(row['shareRatio'])),
+            _cell('实占金额', row['shareAmount'], _cOrange),
+            _cell('实占结果', row['shareResult'] ?? row['sharePnl'], _cOrange),
+            _cell('实占退水', row['shareRebate'], _cOrange),
+            _cell('赚水', row['earnWater'] ?? row['rebateIncome'], _cOrange),
+            _cell('盈亏结果', row['selfPnl'], _cOrange),
+            _cell('上缴货量', row['uplinkVolume'], _cBlack),
+            _cell('上级交收', row['uplinkSettlement'], _cBlack),
+          ],
         ),
       ),
     );
   }
 
-  Widget _fourGrid(List<(String, dynamic, bool)> cells) {
-    return Column(
-      children: [
-        for (var i = 0; i < cells.length; i += 4) ...[
-          if (i > 0) SizedBox(height: 6.h),
-          Row(
-            children: [
-              for (var j = 0; j < 4; j++) ...[
-                if (j > 0) SizedBox(width: 6.w),
-                Expanded(
-                  child: i + j < cells.length
-                      ? _pair(cells[i + j].$1, cells[i + j].$2, signed: cells[i + j].$3)
-                      : const SizedBox.shrink(),
-                ),
+  ({String label, dynamic value, Color labelColor, String? raw}) _cell(
+    String label,
+    dynamic value,
+    Color labelColor, {
+    String? raw,
+  }) =>
+      (label: label, value: value, labelColor: labelColor, raw: raw);
+
+  Widget _reportBlock({
+    required Color bg,
+    required List<({String label, dynamic value, Color labelColor, String? raw})> cells,
+    bool showTopBorder = true,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(6.w, 10.h, 6.w, 10.h),
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border(
+          top: showTopBorder ? const BorderSide(color: Color(0xFFB0BEC5), width: 0.5) : BorderSide.none,
+          left: const BorderSide(color: Color(0xFFB0BEC5), width: 0.5),
+          right: const BorderSide(color: Color(0xFFB0BEC5), width: 0.5),
+          bottom: const BorderSide(color: Color(0xFFB0BEC5), width: 0.5),
+        ),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < cells.length; i += 4) ...[
+            if (i > 0) SizedBox(height: 10.h),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var j = 0; j < 4; j++) ...[
+                  if (j > 0) SizedBox(width: 2.w),
+                  Expanded(
+                    child: i + j < cells.length
+                        ? _metric(cells[i + j])
+                        : const SizedBox.shrink(),
+                  ),
+                ],
               ],
-            ],
-          ),
+            ),
+          ],
         ],
-      ],
+      ),
     );
   }
 
-  Widget _pair(String label, dynamic value, {bool signed = false}) {
-    final text = value == null ? '—' : displayNumber(value);
-    final n = num.tryParse(text) ?? 0;
-    final color = !signed
-        ? AgentChrome.ink
-        : n > 0
-            ? AgentChrome.pnlUp
-            : n < 0
-                ? AppColors.danger
-                : AgentChrome.ink;
+  /// 对齐参考图：标签/数字都是 Regular（不加粗），列内居中，上下留空
+  Widget _metric(({String label, dynamic value, Color labelColor, String? raw}) c) {
+    final text = c.raw ?? (c.value == null ? '—' : displayNumber(c.value));
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
-          label,
-          maxLines: 1,
-          softWrap: false,
+          c.label,
+          maxLines: 2,
+          softWrap: true,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: 15.sp, color: AppColors.textSecondary),
-        ),
-        SizedBox(height: 2.h),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            text,
-            maxLines: 1,
-            softWrap: false,
-            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: color),
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontSize: 12.sp,
+            height: 1.25,
+            color: c.labelColor,
+            fontWeight: FontWeight.w400,
           ),
         ),
+        SizedBox(height: 4.h),
+        // raw == '' 时占位，保证与同行数字基线对齐
+        text.isEmpty
+            ? SizedBox(height: 14.sp * 1.2)
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Text(
+                  text,
+                  maxLines: 1,
+                  softWrap: false,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    height: 1.2,
+                    fontWeight: FontWeight.w400,
+                    color: _cBlack,
+                  ),
+                ),
+              ),
       ],
     );
   }

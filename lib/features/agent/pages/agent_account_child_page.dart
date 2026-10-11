@@ -63,7 +63,7 @@ class AgentAccountChildPage extends StatelessWidget {
     final showShare = !agentRowIsDelegate(row);
     final showOdds = !agentRowIsDelegate(row);
     final titleType = agentRowIsMember(row)
-        ? '代理会员'
+        ? '会员'
         : agentRowIsDelegate(row)
             ? '子账号'
             : typeLabel;

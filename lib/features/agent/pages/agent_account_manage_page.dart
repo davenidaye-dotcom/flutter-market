@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
@@ -14,6 +13,7 @@ import 'agent_child_logs_page.dart';
 import 'agent_child_odds_page.dart';
 import 'agent_child_settings_page.dart';
 import 'agent_child_share_page.dart';
+import 'agent_create_account_page.dart';
 import 'agent_quota_change_page.dart';
 
 /// 账户管理：直属列表、卡片内功能按钮、下钻查看下级
@@ -126,135 +126,18 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     _load();
   }
 
-  Widget _createField(String label, TextEditingController ctrl, {bool obscure = false}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 10.h),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
-          SizedBox(height: 4.h),
-          Container(
-            height: 40.h,
-            padding: EdgeInsets.symmetric(horizontal: 10.w),
-            decoration: BoxDecoration(
-              color: AgentChrome.fieldBg,
-              borderRadius: BorderRadius.circular(8.r),
-              border: Border.all(color: AgentChrome.cardBorder),
-            ),
-            alignment: Alignment.centerLeft,
-            child: EmulatorSafeTextField(
-              controller: ctrl,
-              obscureText: obscure,
-              style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
-              decoration: const InputDecoration(
-                border: InputBorder.none,
-                isCollapsed: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showCreate() async {
-    final userCtrl = TextEditingController();
-    final passCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    final nameCtrl = TextEditingController();
-    var type = 'AGENT_MEMBER';
-    const accountTypeLabels = {
-      'AGENT_MEMBER': '代理会员',
-      'AGENT': '代理',
-      'AGENT_DELEGATE': '子账号',
-    };
-    final ok = await showEmulatorSafeDialog<bool>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocal) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
-          titlePadding: EdgeInsets.fromLTRB(18.w, 16.h, 18.w, 0),
-          contentPadding: EdgeInsets.fromLTRB(18.w, 12.h, 18.w, 0),
-          actionsPadding: EdgeInsets.fromLTRB(18.w, 4.h, 18.w, 14.h),
-          title: Text(
-            '新增账户',
-            style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AgentChrome.ink),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _createField('用户名', userCtrl),
-                _createField('密码', passCtrl, obscure: true),
-                _createField('确认密码', confirmCtrl, obscure: true),
-                _createField('显示名称', nameCtrl),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('账户类型', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
-                ),
-                SizedBox(height: 4.h),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10.w),
-                  decoration: BoxDecoration(
-                    color: AgentChrome.fieldBg,
-                    borderRadius: BorderRadius.circular(8.r),
-                    border: Border.all(color: AgentChrome.cardBorder),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: type,
-                      isExpanded: true,
-                      items: [
-                        for (final e in accountTypeLabels.entries)
-                          DropdownMenuItem(value: e.key, child: Text(e.value)),
-                      ],
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setLocal(() => type = v);
-                      },
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('确定')),
-          ],
+    final created = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => AgentCreateAccountPage(
+          roomId: widget.roomId,
+          parentAgentId: _parentAgentId,
         ),
       ),
     );
-    final username = userCtrl.text.trim();
-    final password = passCtrl.text;
-    final confirmPassword = confirmCtrl.text;
-    final displayName = nameCtrl.text.trim();
-    userCtrl.dispose();
-    passCtrl.dispose();
-    confirmCtrl.dispose();
-    nameCtrl.dispose();
-    if (ok != true) return;
-    if (username.isEmpty || password.isEmpty) {
-      AppToast.error('请填写用户名和密码');
-      return;
-    }
-    try {
-      await ref.read(agentRepositoryProvider).createAccount(
-            username: username,
-            password: password,
-            confirmPassword: confirmPassword,
-            type: type,
-            displayName: displayName.isEmpty ? null : displayName,
-            parentAgentId: _parentAgentId,
-          );
-      AppToast.success('创建成功');
+    if (created == true && mounted) {
       _page = 1;
       await _load();
-    } catch (e) {
-      AppToast.error(e.toString());
     }
   }
 
@@ -342,7 +225,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     _drillInto(row, childType: 'ALL');
   }
 
-  /// 徽章：几级代理 / 代理会员 / 子账号
+  /// 徽章：几级代理 / 会员 / 子账号
   String _typeBadgeLabel(Map<String, dynamic> row) => agentAccountTypeLabel(row);
 
   Widget _focusBar() {
