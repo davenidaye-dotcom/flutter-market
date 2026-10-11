@@ -27,7 +27,7 @@ abstract final class HistoryDrawLayout {
   static double gyW() => 46.w;
   static double dtW() => 58.w;
   static double trailingW() => gyW() + dtW();
-  static double ballSize() => 18.w;
+  static double ballSize() => 20.w;
 
   static TextStyle issueStyle() => TextStyle(
         fontSize: 13.sp,
@@ -60,7 +60,7 @@ abstract final class HistoryDrawLayout {
   static double ballBoxBoost() => 0;
 
   static const int visibleRows = 10;
-  static double rowHeight() => 24.h;
+  static double rowHeight() => 27.h;
   static double rowGap() => 1.h;
   static double headerHeight() => 28.h;
   static double listPadTop() => 1.h;
@@ -327,7 +327,7 @@ class _DataRow extends StatelessWidget {
           TextSpan(
             children: [
               TextSpan(
-                text: '$sum',
+                text: '$sum'.padLeft(2, '0'),
                 style: TextStyle(
                   fontSize: 11.sp,
                   height: 1.1,

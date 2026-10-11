@@ -128,5 +128,5 @@ const mockLongDragonRows = [
   LongDragonRow(position: '冠军', result: '单', streak: 4, resultColor: Color(0xFFE53935)),
   LongDragonRow(position: '亚军', result: '小', streak: 3, resultColor: Color(0xFF1E88E5)),
   LongDragonRow(position: '冠亚和', result: '双', streak: 6, resultColor: Color(0xFFE53935)),
-  LongDragonRow(position: '冠军龙虎', result: '龙', streak: 3, resultColor: Color(0xFFE53935)),
+  LongDragonRow(position: '冠军', result: '龙', streak: 3, resultColor: Color(0xFFE53935)),
 ];

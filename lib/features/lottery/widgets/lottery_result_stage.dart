@@ -122,13 +122,15 @@ class LotteryResultBallsHeader extends StatelessWidget {
 String lotteryGyLabel(List<int> ranks) {
   if (ranks.length < 2) return '';
   final gy = ranks[0] + ranks[1];
-  return '冠亚和 $gy ${gy >= 12 ? '大' : '小'} ${gy.isOdd ? '单' : '双'}';
+  final n = '$gy'.padLeft(2, '0');
+  return '冠亚和 $n ${gy >= 12 ? '大' : '小'} ${gy.isOdd ? '单' : '双'}';
 }
 
 String lotteryGyBody(List<int> ranks) {
   if (ranks.length < 2) return '';
   final gy = ranks[0] + ranks[1];
-  return '$gy ${gy >= 12 ? '大' : '小'} ${gy.isOdd ? '单' : '双'}';
+  final n = '$gy'.padLeft(2, '0');
+  return '$n ${gy >= 12 ? '大' : '小'} ${gy.isOdd ? '单' : '双'}';
 }
 
 /// 1-5 名 vs 10-6 名龙虎串（含前缀）。

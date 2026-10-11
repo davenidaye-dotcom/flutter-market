@@ -153,7 +153,8 @@ class LiveLatestDrawSumText extends ConsumerWidget {
     var sumText = '';
     if (ranks.length >= 2) {
       final sum = ranks[0] + ranks[1];
-      final body = '$sum${sum >= 12 ? '大' : '小'}${sum % 2 == 0 ? '双' : '单'}';
+      final sumLabel = '$sum'.padLeft(2, '0');
+      final body = '$sumLabel${sum >= 12 ? '大' : '小'}${sum % 2 == 0 ? '双' : '单'}';
       sumText = prefix.trim().isEmpty ? body : ' $body';
     }
     return Text(
