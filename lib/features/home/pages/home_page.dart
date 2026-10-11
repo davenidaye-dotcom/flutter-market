@@ -133,7 +133,48 @@ class _HomePageState extends ConsumerState<HomePage> {
     return pwd;
   }
 
+  bool _canEnterWithoutApply(ApiException e) {
+    final m = e.message;
+    return m.contains('无需进房申请') ||
+        m.contains('可直接进房') ||
+        m.contains('已通过审核');
+  }
+
+  Future<void> _enterVerifiedRoom(RoomModel verified) async {
+    String? password;
+    if (verified.hasEnterPassword) {
+      password = await _askEnterPassword();
+      if (password == null) return;
+    }
+    await _doEnter(verified.roomCode, enterPassword: password);
+  }
+
   Future<void> _handleAuditRoom(String roomCode, String roomName) async {
+    // 后端才是准绳：已通过/已是成员时 enter 会成功，不要再弹申请
+    try {
+      await _doEnter(roomCode);
+      return;
+    } on ApiException catch (e) {
+      if (e.message.contains('密码')) {
+        final password = await _askEnterPassword();
+        if (password == null) return;
+        try {
+          await _doEnter(roomCode, enterPassword: password);
+        } catch (e2) {
+          AppToast.error(_errMsg(e2));
+        }
+        return;
+      }
+      final needApply = e.message.contains('审核') || e.message.contains('申请');
+      if (!needApply) {
+        AppToast.error(e.message);
+        return;
+      }
+    } catch (e) {
+      AppToast.error(_errMsg(e));
+      return;
+    }
+
     final memberRepo = ref.read(memberRepositoryProvider);
     try {
       final pending = await memberRepo.getPendingEnterApplication(roomCode);
@@ -194,8 +235,8 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (!mounted) return;
       AppToast.success('进房申请已提交，请等待房主审核');
     } on ApiException catch (e) {
-      // DIRECT 房误调申请时后端会拒绝 — 回退直接进房
-      if (e.message.contains('无需进房申请')) {
+      // 已通过审核 / 无需申请：直接进房
+      if (_canEnterWithoutApply(e)) {
         await _doEnter(roomCode);
         return;
       }
@@ -229,21 +270,20 @@ class _HomePageState extends ConsumerState<HomePage> {
       final verified = await ref.read(roomRepositoryProvider).verifyRoom(roomCode);
       if (!mounted) return;
 
-      if (verified.requiresEnterAudit) {
+      // 审核房：已通过/已是成员 → 直接进；否则才弹申请
+      if (verified.requiresEnterAudit && !verified.enterApproved) {
         await _handleAuditRoom(verified.roomCode, verified.name);
         return;
       }
 
-      String? password;
-      if (verified.hasEnterPassword) {
-        password = await _askEnterPassword();
-        if (password == null) return;
-      }
-
-      await _doEnter(verified.roomCode, enterPassword: password);
+      await _enterVerifiedRoom(verified);
     } on ApiException catch (e) {
       // 校验未返回 enterMode 时，enter 可能直接报需审核
       if (e.message.contains('审核') || e.message.contains('申请')) {
+        if (_canEnterWithoutApply(e)) {
+          await _doEnter(roomCode);
+          return;
+        }
         await _handleAuditRoom(roomCode, '');
         return;
       }

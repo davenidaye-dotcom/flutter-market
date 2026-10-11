@@ -86,6 +86,7 @@ class _Audit {
 typedef HostAuditItem = _Audit;
 
 /// Map owner application row to [HostAuditItem].
+/// 不用 remark（如 chat-下分）覆盖金额摘要。
 HostAuditItem hostAuditFromMap(Map<String, dynamic> m, AuditType type) {
   final amount = m['amount'];
   final points = m['points'] ?? m['balance'];
@@ -96,14 +97,11 @@ HostAuditItem hostAuditFromMap(Map<String, dynamic> m, AuditType type) {
   final id = (m['applicationId'] ?? m['id'] ?? '').toString();
   final time = (m['createdAt'] ?? m['applyTime'] ?? '').toString();
   final status = (m['status'] ?? 'PENDING').toString();
-  var summary = switch (type) {
-    AuditType.up => '申请上分 ${amt ?? ''}',
-    AuditType.down => '申请下分 ${amt ?? ''}',
-    AuditType.join => '申请加入房间',
+  final summary = switch (type) {
+    AuditType.up => '上分',
+    AuditType.down => '下分',
+    AuditType.join => '进房',
   };
-  if ((m['summary'] ?? m['remark'] ?? '').toString().isNotEmpty) {
-    summary = (m['summary'] ?? m['remark']).toString();
-  }
   return HostAuditItem(
     id,
     type,

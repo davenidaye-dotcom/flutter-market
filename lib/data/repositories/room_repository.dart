@@ -34,6 +34,7 @@ class RoomRepository {
       enterMode: map['enterMode']?.toString() ?? map['enter_mode']?.toString(),
       hasEnterPassword: map['hasEnterPassword'] == true ||
           map['needEnterPassword'] == true,
+      enterApproved: map['enterApproved'] == true || map['enterApproved'] == 1,
       status: map['status']?.toString(),
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
     );

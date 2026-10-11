@@ -239,30 +239,62 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
 
   Widget _card(HostAuditItem item) {
     final pending = item.status.toUpperCase() == 'PENDING';
+    final down = item.type == AuditType.down;
+    final join = item.type == AuditType.join;
+    final amtText = join
+        ? '进房'
+        : '${down ? '-' : '+'}${hostNumStr(item.amount, fraction: 2)}';
+    final meta = [
+      item.time,
+      item.summary,
+      if (item.points != null) '可用 ${hostNumStr(item.points, fraction: 2)}',
+    ].join(' · ');
     return Container(
       padding: EdgeInsets.all(12.w),
       decoration: BoxDecoration(
-        color: const Color(0xFFF7FBFF),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(10.r),
+        border: Border.all(color: const Color(0xFFE8EEF5)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                item.nickname,
-                style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.nickname,
+                      style: TextStyle(
+                        fontSize: 15.sp,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      meta,
+                      style: TextStyle(
+                        fontSize: 11.sp,
+                        color: AppColors.textHint,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              const Spacer(),
+              SizedBox(width: 8.w),
               Text(
-                item.time,
-                style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                amtText,
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w700,
+                  color: down ? AppColors.danger : AppColors.textPrimary,
+                ),
               ),
             ],
           ),
-          SizedBox(height: 6.h),
-          Text(item.summary, style: TextStyle(fontSize: 13.sp)),
           if (pending) ...[
             SizedBox(height: 10.h),
             Row(
@@ -284,6 +316,17 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                   ),
                 ),
               ],
+            ),
+          ] else ...[
+            SizedBox(height: 6.h),
+            Text(
+              item.status.toUpperCase() == 'APPROVED' ? '已通过' : '已拒绝',
+              style: TextStyle(
+                fontSize: 12.sp,
+                color: item.status.toUpperCase() == 'APPROVED'
+                    ? AppColors.success
+                    : AppColors.textHint,
+              ),
             ),
           ],
         ],

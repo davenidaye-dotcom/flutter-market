@@ -238,7 +238,7 @@ Future<void> pushShellCover(BuildContext context, Widget page) {
   return Future<void>.value();
 }
 
-/// 页面顶部标题栏（返回 + 居中标题）
+/// 页面顶部标题栏（返回 + 靠左标题，距返回 8）
 class PageAppBar extends StatelessWidget {
   const PageAppBar({
     super.key,
@@ -260,35 +260,23 @@ class PageAppBar extends StatelessWidget {
       padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
       child: SizedBox(
         height: 44.h,
-        child: Stack(
-          alignment: Alignment.center,
+        child: Row(
           children: [
-            Row(
-              children: [
-                SizedBox(
-                  width: 44.w,
-                  child: onBack == null
-                      ? null
-                      : IconButton(
-                          icon: Icon(Icons.arrow_back_ios, size: 18.sp, color: color),
-                          onPressed: onBack,
-                        ),
+            if (onBack != null)
+              SizedBox(
+                width: 44.w,
+                child: IconButton(
+                  icon: Icon(Icons.arrow_back_ios, size: 18.sp, color: color),
+                  onPressed: onBack,
                 ),
-                const Spacer(),
-                if (trailing != null)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: EdgeInsets.only(right: 4.w),
-                      child: trailing,
-                    ),
-                  ),
-              ],
-            ),
-            IgnorePointer(
+              )
+            else
+              SizedBox(width: 8.w),
+            SizedBox(width: 8.w),
+            Expanded(
               child: Text(
                 title,
-                textAlign: TextAlign.center,
+                textAlign: TextAlign.left,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -298,6 +286,11 @@ class PageAppBar extends StatelessWidget {
                 ),
               ),
             ),
+            if (trailing != null)
+              Padding(
+                padding: EdgeInsets.only(left: 8.w, right: 4.w),
+                child: trailing,
+              ),
           ],
         ),
       ),

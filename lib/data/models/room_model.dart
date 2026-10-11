@@ -6,6 +6,7 @@ class RoomModel {
     this.numericId,
     this.enterMode,
     this.hasEnterPassword = false,
+    this.enterApproved = false,
     this.status,
     this.betConfirm = false,
     this.playMode = 'REAL',
@@ -23,6 +24,9 @@ class RoomModel {
   final String? enterMode;
 
   final bool hasEnterPassword;
+
+  /// 当前玩家已通过进房审核（或已是成员），可直接进
+  final bool enterApproved;
   final String? status;
 
   /// 房主开启「下注确认」后，玩家下注前需二次确认
@@ -50,6 +54,7 @@ class RoomModel {
             json['needEnterPassword'] == true ||
             (json['enterPasswordHash'] != null &&
                 '${json['enterPasswordHash']}'.isNotEmpty),
+        enterApproved: json['enterApproved'] == true || json['enterApproved'] == 1,
         status: json['status']?.toString(),
         betConfirm: json['betConfirm'] == true || json['betConfirm'] == 1,
         playMode: json['playMode']?.toString() ?? 'REAL',
