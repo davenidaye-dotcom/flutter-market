@@ -15,6 +15,7 @@ import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/input_dialog.dart';
@@ -1744,7 +1745,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
             builder: (context, ref, _) {
               final gameName = ref.watch(
                 roomLotteryLiveProvider(widget.roomId).select(
-                  (s) => s.gameById(activeGameId)?.name ?? '',
+                  (s) => GameSeries.displayName(
+                    activeGameId,
+                    s.gameById(activeGameId)?.name ?? '',
+                  ),
                 ),
               );
               return _ChatHeader(
@@ -1863,7 +1867,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                     itemBuilder: (_, i) {
                                       final m =
                                           messages[messages.length - 1 - i];
-                                      final gameName = ref
+                                      final rawName = ref
                                               .read(roomLotteryLiveProvider(
                                                   widget.roomId))
                                               .gameById(activeGameId)
@@ -1872,7 +1876,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                                       return ChatMessageItem(
                                         key: ValueKey(stableChatItemKey(m)),
                                         message: m,
-                                        gameName: gameName,
+                                        gameName: GameSeries.displayName(
+                                          activeGameId,
+                                          rawName,
+                                        ),
                                       );
                                     },
                                   );
@@ -2265,36 +2272,33 @@ class _ChatHeader extends ConsumerWidget {
       ),
     );
     final isHost = ref.watch(authSessionProvider.select((s) => s.isHostSide));
+    // 右侧两列固宽左对齐（首字竖齐）；彩种名 Expanded，不够用 …
     final pointsLabel = isHost ? '玩家总积分' : '积分';
     final turnoverLabel = isHost ? '玩家总流水' : '流水';
     final winLossLabel = isHost ? '玩家总输赢' : '输赢';
     final rebateLabel = isHost ? '玩家总回水' : '回水';
-    // 房主四字标签更长，列加宽；彩种名可收缩，避免被顶出屏幕。
-    final leftW = isHost ? 108.w : 88.w;
-    final rightW = isHost ? 108.w : 72.w;
+    final statStyle = TextStyle(
+      fontSize: isHost ? 10.sp : 11.sp,
+      color: AppColors.textPrimary,
+      height: 1.2,
+    );
+    // 列宽盖住「玩家总积分:999999.99」/「积分:999999.99」，保证标签完整、首字对齐
+    final colW = isHost ? 118.w : 86.w;
     final title = GestureDetector(
       onTap: onTapTitle,
       behavior: HitTestBehavior.opaque,
       child: Padding(
-        padding: EdgeInsets.only(right: 8.w),
+        padding: EdgeInsets.only(right: 4.w),
         child: Row(
-          mainAxisSize: isHost ? MainAxisSize.max : MainAxisSize.min,
           children: [
-            if (isHost)
-              Flexible(
-                child: Text(
-                  gameName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
-                ),
-              )
-            else
-              Text(
+            Flexible(
+              child: Text(
                 gameName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
               ),
-            SizedBox(width: 2.w),
+            ),
             Icon(Icons.arrow_drop_down, size: 20.sp, color: AppColors.textPrimary),
           ],
         ),
@@ -2309,7 +2313,7 @@ class _ChatHeader extends ConsumerWidget {
       child: SafeArea(
         bottom: false,
         child: Padding(
-          padding: EdgeInsets.fromLTRB(4.w, 0, 12.w, 8.h),
+          padding: EdgeInsets.fromLTRB(4.w, 0, 8.w, 8.h),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -2317,27 +2321,25 @@ class _ChatHeader extends ConsumerWidget {
                 icon: Icon(Icons.arrow_back_ios, size: 18.sp),
                 onPressed: onBack,
               ),
-              if (isHost) Expanded(child: title) else title,
-              if (!isHost) const Spacer(),
+              Expanded(child: title),
               Padding(
-                padding: EdgeInsets.only(right: isHost ? 4.w : 28.w),
-                child: Column(
+                padding: EdgeInsets.only(right: isHost ? 0 : 24.w),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(width: leftW, child: _statText('$pointsLabel:${displayNumber(wallet.$1)}', compact: isHost)),
-                        SizedBox(width: rightW, child: _statText('$turnoverLabel:${displayNumber(wallet.$2)}', compact: isHost)),
-                      ],
+                    _statCol(
+                      width: colW,
+                      style: statStyle,
+                      top: '$pointsLabel:${displayNumber(wallet.$1)}',
+                      bottom: '$winLossLabel:${displayNumber(wallet.$3)}',
                     ),
-                    SizedBox(height: 2.h),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(width: leftW, child: _statText('$winLossLabel:${displayNumber(wallet.$3)}', compact: isHost)),
-                        SizedBox(width: rightW, child: _statText('$rebateLabel:${displayNumber(wallet.$4)}', compact: isHost)),
-                      ],
+                    SizedBox(width: 6.w),
+                    _statCol(
+                      width: colW,
+                      style: statStyle,
+                      top: '$turnoverLabel:${displayNumber(wallet.$2)}',
+                      bottom: '$rebateLabel:${displayNumber(wallet.$4)}',
                     ),
                   ],
                 ),
@@ -2349,16 +2351,36 @@ class _ChatHeader extends ConsumerWidget {
     );
   }
 
-  Widget _statText(String text, {bool compact = false}) {
-    return Text(
-      text,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      textAlign: TextAlign.left,
-      style: TextStyle(
-        fontSize: compact ? 10.sp : 11.sp,
-        color: AppColors.textPrimary,
-        height: 1.2,
+  /// 固定列宽 + 左对齐 → 列内两行第一个字竖向对齐。
+  Widget _statCol({
+    required double width,
+    required TextStyle style,
+    required String top,
+    required String bottom,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            top,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.clip,
+            textAlign: TextAlign.left,
+            style: style,
+          ),
+          SizedBox(height: 2.h),
+          Text(
+            bottom,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.clip,
+            textAlign: TextAlign.left,
+            style: style,
+          ),
+        ],
       ),
     );
   }
