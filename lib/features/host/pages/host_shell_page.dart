@@ -33,6 +33,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
   Timer? _badgeTimer;
   bool _dialogShowing = false;
   String? _dialogForId;
+  int _prevBranch = -1;
 
   @override
   void initState() {
@@ -47,7 +48,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
       unawaited(_refreshCsUnread());
     });
-    // 待审角标、客服未读定时刷新
+    // 待审角标、客服未读定时刷新（审核弹窗仅 WS APPLY_NOTICE）
     _badgeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
@@ -74,13 +75,18 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
     return i == 0 ? -1 : i - 1;
   }
 
+  void _bumpAuditListRefresh() {
+    ref.read(hostAuditListRefreshTickProvider.notifier).state++;
+  }
+
   void _onNavTap(int index) {
     final branch = index + 1;
     if (branch == widget.navigationShell.currentIndex) {
-      // 再点个人中心/审核：刷新角标
+      // 再点个人中心/审核：刷新角标；审核页再拉列表
       if (index == 2 || index == 3) {
         unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
       }
+      if (index == 3) _bumpAuditListRefresh();
       return;
     }
     widget.navigationShell.goBranch(branch);
@@ -114,6 +120,16 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
 
   @override
   Widget build(BuildContext context) {
+    final branch = widget.navigationShell.currentIndex;
+    // 进入审核 Tab（含从其它页 go 进来）→ 申请记录自动刷新
+    if (branch == 4 && _prevBranch != 4) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _bumpAuditListRefresh();
+      });
+    }
+    _prevBranch = branch;
+
     final badge = ref.watch(hostPendingAuditProvider).total;
     final csUnread = ref.watch(csUnreadCountProvider);
     ref.listen<HostApplyNotice?>(hostApplyNoticeProvider, (prev, next) {

@@ -13,6 +13,7 @@ class HostApplyNotice {
     this.amount,
     this.nickname = '',
     this.avatar,
+    this.remark = '',
   });
 
   final String applicationId;
@@ -22,18 +23,36 @@ class HostApplyNotice {
   final double? amount;
   final String nickname;
   final String? avatar;
+  /// 玩家申请备注（进房说明等）
+  final String remark;
 
   bool get isDown => applyType.toUpperCase() == 'DOWN';
 
-  AuditType get auditType =>
-      isDown ? AuditType.down : AuditType.up;
+  bool get isEnter => applyType.toUpperCase() == 'ENTER';
 
-  String get actionLabel => isDown ? '申请下分' : '申请上分';
+  AuditType get auditType {
+    final t = applyType.toUpperCase();
+    if (t == 'DOWN') return AuditType.down;
+    if (t == 'ENTER') return AuditType.join;
+    return AuditType.up;
+  }
+
+  String get actionLabel {
+    switch (applyType.toUpperCase()) {
+      case 'DOWN':
+        return '申请下分';
+      case 'ENTER':
+        return '申请进房';
+      default:
+        return '申请上分';
+    }
+  }
 
   HostApplyNotice copyWith({
     String? nickname,
     String? avatar,
     double? amount,
+    String? remark,
   }) {
     return HostApplyNotice(
       applicationId: applicationId,
@@ -42,6 +61,7 @@ class HostApplyNotice {
       amount: amount ?? this.amount,
       nickname: nickname ?? this.nickname,
       avatar: avatar ?? this.avatar,
+      remark: remark ?? this.remark,
     );
   }
 }
@@ -58,7 +78,7 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
   @override
   HostApplyNotice? build() => null;
 
-  /// 由 lottery WS 转发：仅 PENDING 上/下分入队弹窗。
+  /// 由 lottery WS 转发：PENDING 上/下分/进房入队弹窗。
   Future<void> onWsApplyNotice(Map<String, dynamic> payload) async {
     final status = (payload['status'] ?? '').toString().toUpperCase();
     final applyType = (payload['applyType'] ?? '').toString().toUpperCase();
@@ -77,22 +97,19 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
       return;
     }
 
-    // 进房等其它类型：只刷角标
-    if (applyType != 'UP' && applyType != 'DOWN') {
+    if (applyType != 'UP' && applyType != 'DOWN' && applyType != 'ENTER') {
       await ref.read(hostPendingAuditProvider.notifier).refresh();
       return;
     }
 
-    if (_seenIds.contains(applicationId) ||
-        state?.applicationId == applicationId ||
-        _queue.any((e) => e.applicationId == applicationId)) {
-      return;
-    }
+    if (_alreadyQueued(applicationId)) return;
 
     final amountRaw = payload['amount'];
-    final amount = amountRaw is num
-        ? amountRaw.toDouble()
-        : double.tryParse('$amountRaw');
+    final amount = applyType == 'ENTER'
+        ? null
+        : (amountRaw is num
+            ? amountRaw.toDouble()
+            : double.tryParse('$amountRaw'));
     final accountId =
         (payload['applicantAccountId'] ?? payload['accountId'] ?? '')
             .toString();
@@ -105,6 +122,7 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
     final wsAvatar = (payload['avatar'] ?? payload['avatarUrl'] ?? '')
         .toString()
         .trim();
+    final wsRemark = (payload['remark'] ?? '').toString().trim();
 
     var notice = HostApplyNotice(
       applicationId: applicationId,
@@ -113,39 +131,50 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
       amount: amount,
       nickname: wsNick,
       avatar: wsAvatar.isEmpty ? null : wsAvatar,
+      remark: wsRemark,
     );
-    // WS 已带齐昵称/头像则跳过二次拉取；否则补全
-    if (wsNick.isEmpty || wsAvatar.isEmpty) {
+    // WS 缺昵称/头像/备注时补全
+    if (wsNick.isEmpty || wsAvatar.isEmpty || (applyType == 'ENTER' && wsRemark.isEmpty)) {
       notice = await _enrich(notice);
     } else if (notice.nickname.isEmpty) {
       notice = notice.copyWith(nickname: '玩家');
     }
-    _seenIds.add(applicationId);
 
+    _enqueue(notice, bumpBadge: true);
+  }
+
+  bool _alreadyQueued(String applicationId) {
+    return _seenIds.contains(applicationId) ||
+        state?.applicationId == applicationId ||
+        _queue.any((e) => e.applicationId == applicationId);
+  }
+
+  void _enqueue(HostApplyNotice notice, {required bool bumpBadge}) {
+    if (_alreadyQueued(notice.applicationId)) return;
+    _seenIds.add(notice.applicationId);
     if (state == null) {
       state = notice;
     } else {
       _queue.add(notice);
     }
-
-    final badge = ref.read(hostPendingAuditProvider.notifier);
-    if (applyType == 'UP') {
-      badge.bump(AuditType.up);
-    } else {
-      badge.bump(AuditType.down);
+    if (bumpBadge) {
+      ref.read(hostPendingAuditProvider.notifier).bump(notice.auditType);
+      Future.microtask(() {
+        ref.read(hostPendingAuditProvider.notifier).refresh();
+      });
     }
-    Future.microtask(() {
-      ref.read(hostPendingAuditProvider.notifier).refresh();
-    });
   }
 
   Future<HostApplyNotice> _enrich(HostApplyNotice notice) async {
     try {
       final repo = ref.read(ownerRepositoryProvider);
-      final kind = notice.isDown ? 'down' : 'up';
+      final kind = notice.isEnter
+          ? 'enter'
+          : (notice.isDown ? 'down' : 'up');
       var nick = notice.nickname;
       var amount = notice.amount;
       String? avatar = notice.avatar;
+      var remark = notice.remark;
 
       try {
         final page = await repo.getApplications(
@@ -164,11 +193,15 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
                   '')
               .toString();
           if (n.isNotEmpty) nick = n;
-          final a = row['amount'];
-          if (a is num) {
-            amount = a.toDouble();
-          } else {
-            amount = double.tryParse('$a') ?? amount;
+          final r = (row['remark'] ?? '').toString().trim();
+          if (r.isNotEmpty) remark = r;
+          if (!notice.isEnter) {
+            final a = row['amount'];
+            if (a is num) {
+              amount = a.toDouble();
+            } else {
+              amount = double.tryParse('$a') ?? amount;
+            }
           }
           break;
         }
@@ -195,7 +228,12 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
             ? notice.applicantAccountId
             : '玩家';
       }
-      return notice.copyWith(nickname: nick, avatar: avatar, amount: amount);
+      return notice.copyWith(
+        nickname: nick,
+        avatar: avatar,
+        amount: amount,
+        remark: remark,
+      );
     } catch (_) {
       return notice.copyWith(
         nickname: notice.nickname.isEmpty ? '玩家' : notice.nickname,
@@ -212,9 +250,8 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
     }
   }
 
+  /// 点 X 取消：关掉当前弹窗，不审核；保留 seen，避免同单再弹。
   void dismissCurrent() {
-    final cur = state;
-    if (cur != null) _seenIds.remove(cur.applicationId);
     _advance();
   }
 

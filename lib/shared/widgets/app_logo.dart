@@ -7,11 +7,13 @@ class AppLogoHeader extends StatelessWidget {
   const AppLogoHeader({
     super.key,
     this.showTitle = true,
+    this.showLogo = true,
     this.title,
     this.titleColor,
   });
 
   final bool showTitle;
+  final bool showLogo;
   /// 为空时显示「乐投」
   final String? title;
   final Color? titleColor;
@@ -22,19 +24,20 @@ class AppLogoHeader extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 36.w,
-          height: 36.w,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppColors.primaryLight, AppColors.primary],
+        if (showLogo)
+          Container(
+            width: 36.w,
+            height: 36.w,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.primaryLight, AppColors.primary],
+              ),
+              borderRadius: BorderRadius.circular(8.r),
             ),
-            borderRadius: BorderRadius.circular(8.r),
+            child: Icon(Icons.bolt, color: Colors.white, size: 22.sp),
           ),
-          child: Icon(Icons.bolt, color: Colors.white, size: 22.sp),
-        ),
         if (showTitle) ...[
-          SizedBox(width: 8.w),
+          if (showLogo) SizedBox(width: 8.w),
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: 160.w),
             child: Text(

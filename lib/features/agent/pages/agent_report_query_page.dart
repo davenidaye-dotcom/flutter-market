@@ -514,6 +514,8 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('盈亏结果', _summary['resultPnl'] ?? _summary['combinedPnl'], _cOrange),
         _cell('上缴货量', _summary['uplinkVolume'], _cBlack),
         _cell('上级交收', _summary['uplinkSettlement'], _cBlack),
+        // 第 16 格：总计无下钻
+        _cell('', null, _cBlack, raw: ''),
       ],
     );
   }
@@ -537,49 +539,54 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       if (display.isNotEmpty && display != user) '($display)',
       if (lv != null) '($lv)',
     ].join(' ');
-    final canTap = row['drillable'] == true ||
-        '${row['level'] ?? ''}'.toUpperCase().contains('MEMBER') ||
-        row['accountId'] != null;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: canTap ? () => _openDrill(row) : null,
-        child: _reportBlock(
-          bg: Colors.white,
-          showTopBorder: showTopBorder,
-          cells: [
-            _cell(head, null, _cRed, raw: ''),
-            _cell('下注金额', row['betAmount'], _cRed),
-            _cell('输赢', row['memberWin'] ?? row['memberWinLoss'], _cRed),
-            _cell('退水', row['memberRebate'], _cRed),
-            _cell('盈亏', row['memberResult'], _cRed),
-            _cell('下级交货', row['downVolume'], _cGreen),
-            _cell('应收下线', row['receivable'], _cGreen),
-            _cell('占成', null, _cOrange, raw: _ratioText(row['shareRatio'])),
-            _cell('实占金额', row['shareAmount'], _cOrange),
-            _cell('实占结果', row['shareResult'] ?? row['sharePnl'], _cOrange),
-            _cell('实占退水', row['shareRebate'], _cOrange),
-            _cell('赚水', row['earnWater'] ?? row['rebateIncome'], _cOrange),
-            _cell('盈亏结果', row['selfPnl'], _cOrange),
-            _cell('上缴货量', row['uplinkVolume'], _cBlack),
-            _cell('上级交收', row['uplinkSettlement'], _cBlack),
-          ],
-        ),
-      ),
+    final level = '${row['level'] ?? row['accountType'] ?? ''}'.toUpperCase();
+    final id = row['accountId'] is int
+        ? row['accountId'] as int
+        : int.tryParse('${row['accountId'] ?? ''}');
+    final isMember = level.contains('MEMBER') || row['drillable'] == false;
+    final actionLabel = id == null
+        ? null
+        : (isMember ? '查看注单' : '查看下级');
+    return _reportBlock(
+      bg: Colors.white,
+      showTopBorder: showTopBorder,
+      cells: [
+        _cell(head, null, _cRed, raw: ''),
+        _cell('下注金额', row['betAmount'], _cRed),
+        _cell('输赢', row['memberWin'] ?? row['memberWinLoss'], _cRed),
+        _cell('退水', row['memberRebate'], _cRed),
+        _cell('盈亏', row['memberResult'], _cRed),
+        _cell('下级交货', row['downVolume'], _cGreen),
+        _cell('应收下线', row['receivable'], _cGreen),
+        _cell('占成', null, _cOrange, raw: _ratioText(row['shareRatio'])),
+        _cell('实占金额', row['shareAmount'], _cOrange),
+        _cell('实占结果', row['shareResult'] ?? row['sharePnl'], _cOrange),
+        _cell('实占退水', row['shareRebate'], _cOrange),
+        _cell('赚水', row['earnWater'] ?? row['rebateIncome'], _cOrange),
+        _cell('盈亏结果', row['selfPnl'], _cOrange),
+        _cell('上缴货量', row['uplinkVolume'], _cBlack),
+        _cell('上级交收', row['uplinkSettlement'], _cBlack),
+        // 第 16 格：仅此可点下钻
+        actionLabel == null
+            ? _cell('', null, _cBlack, raw: '')
+            : _cell(actionLabel, null, const Color(0xFF1565C0),
+                onAction: () => _openDrill(row)),
+      ],
     );
   }
 
-  ({String label, dynamic value, Color labelColor, String? raw}) _cell(
+  ({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction}) _cell(
     String label,
     dynamic value,
     Color labelColor, {
     String? raw,
+    VoidCallback? onAction,
   }) =>
-      (label: label, value: value, labelColor: labelColor, raw: raw);
+      (label: label, value: value, labelColor: labelColor, raw: raw, onAction: onAction);
 
   Widget _reportBlock({
     required Color bg,
-    required List<({String label, dynamic value, Color labelColor, String? raw})> cells,
+    required List<({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction})> cells,
     bool showTopBorder = true,
   }) {
     return Container(
@@ -618,7 +625,29 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   /// 对齐参考图：标签/数字都是 Regular（不加粗），列内居中，上下留空
-  Widget _metric(({String label, dynamic value, Color labelColor, String? raw}) c) {
+  Widget _metric(({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction}) c) {
+    if (c.onAction != null) {
+      return Center(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: c.onAction,
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 6.h, horizontal: 2.w),
+            child: Text(
+              c.label,
+              maxLines: 2,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13.sp,
+                height: 1.25,
+                color: c.labelColor,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
     final text = c.raw ?? (c.value == null ? '—' : displayNumber(c.value));
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,

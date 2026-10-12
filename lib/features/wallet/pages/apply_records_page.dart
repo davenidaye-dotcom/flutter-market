@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import '../../../core/network/session_store.dart';
+import '../../../data/models/wallet_model.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/app_empty_hint.dart';
+import '../../../shared/widgets/app_page_loading.dart';
+import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../room/cs_share_helper.dart';
 import '../utils/draw_snapshot_utils.dart';
 import '../widgets/date_range_filter.dart';
 import '../widgets/member_ledger_card.dart';
-import '../../../shared/widgets/app_page_loading.dart';
-import '../../../shared/widgets/emulator_safe_text_field.dart';
-import '../../room/cs_share_helper.dart';
 
-/// 上下分记录（申请记录）
+/// 上下分记录（申请记录）— 顶栏总资产与钱包中心一致，用 totalAssets
 class ApplyRecordsPage extends ConsumerStatefulWidget {
   const ApplyRecordsPage({super.key});
 
@@ -23,6 +26,7 @@ class ApplyRecordsPage extends ConsumerStatefulWidget {
 class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
     with DateRangePageMixin {
   List<Map<String, dynamic>> _rows = [];
+  double? _totalAssets;
   bool _loading = false;
 
   @override
@@ -39,10 +43,20 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final data = await ref.read(walletRepositoryProvider).getApplications(
+      final roomId = SessionStore.instance.roomId ?? '';
+      final appsFuture = ref.read(walletRepositoryProvider).getApplications(
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
           );
+      final summaryFuture =
+          ref.read(walletRepositoryProvider).getSummary(roomId);
+      final data = await appsFuture;
+      WalletSummaryModel? summary;
+      try {
+        summary = await summaryFuture;
+      } catch (_) {
+        summary = null;
+      }
       final raw = data['rows'];
       final list = raw is List
           ? raw
@@ -51,7 +65,10 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
               .toList()
           : <Map<String, dynamic>>[];
       if (!mounted) return;
-      setState(() => _rows = list);
+      setState(() {
+        _rows = list;
+        _totalAssets = summary?.totalAssets;
+      });
     } catch (e) {
       if (!mounted) return;
       AppToast.error(e.toString());
@@ -75,6 +92,7 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
 
   @override
   Widget build(BuildContext context) {
+    const brown = Color(0xFF7B4C38);
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(
@@ -83,6 +101,23 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
               PageAppBar(
                 title: '上下分记录',
                 onBack: () => appSafePop(context),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 0),
+                child: Row(
+                  children: [
+                    Text('总资产', style: TextStyle(fontSize: 14.sp, color: brown)),
+                    const Spacer(),
+                    Text(
+                      _totalAssets == null ? '--' : displayNumber(_totalAssets),
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.w600,
+                        color: brown,
+                      ),
+                    ),
+                  ],
+                ),
               ),
               SizedBox(height: 8.h),
               DateRangeFilter(

@@ -1,13 +1,146 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../config/theme/app_colors.dart';
 import '../../core/network/api_client.dart';
 import '../../shared/format/display_number.dart';
+import '../../shared/widgets/page_app_bar.dart';
 import '../wallet/utils/draw_snapshot_utils.dart';
+
+enum CsMsgMenuAction { copy, delete }
+
+/// 方案 A：气泡上方浅色横条「复制 | 删除」
+Future<CsMsgMenuAction?> showCsMsgActionChip(
+  BuildContext context, {
+  required Rect anchorGlobal,
+}) async {
+  final overlay = Overlay.maybeOf(context, rootOverlay: true);
+  if (overlay == null) return null;
+
+  final done = Completer<CsMsgMenuAction?>();
+  late OverlayEntry entry;
+  var closed = false;
+
+  void finish(CsMsgMenuAction? action) {
+    if (closed) return;
+    closed = true;
+    entry.remove();
+    if (!done.isCompleted) done.complete(action);
+  }
+
+  final screen = MediaQuery.sizeOf(context);
+  const menuW = 132.0;
+  const menuH = 36.0;
+  var left = anchorGlobal.left;
+  if (left + menuW > screen.width - 12) {
+    left = screen.width - 12 - menuW;
+  }
+  if (left < 12) left = 12;
+  var top = anchorGlobal.top - menuH - 8;
+  if (top < MediaQuery.paddingOf(context).top + 8) {
+    top = anchorGlobal.bottom + 8;
+  }
+
+  entry = OverlayEntry(
+    builder: (ctx) => Stack(
+      children: [
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => finish(null),
+            child: const ColoredBox(color: Colors.transparent),
+          ),
+        ),
+        Positioned(
+          left: left,
+          top: top,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              height: menuH,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE0E0E0)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _CsMenuChipItem(
+                    label: '复制',
+                    onTap: () => finish(CsMsgMenuAction.copy),
+                  ),
+                  Container(width: 1, height: 20, color: const Color(0xFFE8E8E8)),
+                  _CsMenuChipItem(
+                    label: '删除',
+                    danger: true,
+                    onTap: () => finish(CsMsgMenuAction.delete),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+  overlay.insert(entry);
+  return done.future;
+}
+
+class _CsMenuChipItem extends StatelessWidget {
+  const _CsMenuChipItem({
+    required this.label,
+    required this.onTap,
+    this.danger = false,
+  });
+
+  final String label;
+  final VoidCallback onTap;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: danger ? const Color(0xFFE53935) : const Color(0xFF333333),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String csMessageCopyText(Map<String, dynamic> message) {
+  final type = (message['msgType'] ?? 'TEXT').toString().toUpperCase();
+  final content = (message['content'] ?? '').toString().trim();
+  switch (type) {
+    case 'IMAGE':
+      return content.isNotEmpty ? content : '[图片]';
+    case 'VIDEO':
+      return content.isNotEmpty ? content : '[视频]';
+    case 'SHARE':
+      final refType = message['refType']?.toString() ?? '';
+      final chip = csShareChipLabel(refType);
+      if (content.isEmpty) return '[$chip]';
+      return content;
+    default:
+      return content;
+  }
+}
 
 final Map<String, Uint8List> _csMediaBytesCache = {};
 
@@ -235,7 +368,31 @@ class CsMessageBubble extends StatelessWidget {
   final bool mine;
   final bool ownerSide;
   final VoidCallback? onOpenShare;
+  /// 选「删除」后回调（接入现有确认弹框）。
   final VoidCallback? onLongPress;
+
+  Future<void> _onLongPress(BuildContext context) async {
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      onLongPress?.call();
+      return;
+    }
+    final origin = box.localToGlobal(Offset.zero);
+    final rect = origin & box.size;
+    final action = await showCsMsgActionChip(context, anchorGlobal: rect);
+    if (action == null || !context.mounted) return;
+    if (action == CsMsgMenuAction.copy) {
+      final text = csMessageCopyText(message);
+      if (text.isEmpty) {
+        AppToast.info('无可复制内容');
+        return;
+      }
+      await Clipboard.setData(ClipboardData(text: text));
+      AppToast.success('已复制');
+      return;
+    }
+    onLongPress?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -285,7 +442,6 @@ class CsMessageBubble extends StatelessWidget {
           borderRadius: BorderRadius.circular(12.r),
           child: InkWell(
             onTap: onOpenShare,
-            onLongPress: onLongPress,
             borderRadius: BorderRadius.circular(12.r),
             child: Container(
               padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 10.h),
@@ -324,9 +480,11 @@ class CsMessageBubble extends StatelessWidget {
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-      child: GestureDetector(
-        onLongPress: onLongPress,
-        child: child,
+      child: Builder(
+        builder: (ctx) => GestureDetector(
+          onLongPress: () => _onLongPress(ctx),
+          child: child,
+        ),
       ),
     );
   }

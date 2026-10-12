@@ -144,15 +144,16 @@ class _AgentChildCreditPageState extends ConsumerState<AgentChildCreditPage> {
                     ],
                   ),
                 ),
+                SizedBox(height: 12.h),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12.w),
+                  child: AgentTealButton(
+                    label: _saving ? '...' : '确定',
+                    block: true,
+                    onTap: _saving ? () {} : _submit,
+                  ),
+                ),
               ],
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 16.h),
-            child: AgentTealButton(
-              label: _saving ? '...' : '确定',
-              block: true,
-              onTap: _saving ? () {} : _submit,
             ),
           ),
         ],

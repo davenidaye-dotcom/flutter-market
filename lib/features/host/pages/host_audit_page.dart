@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -30,6 +32,8 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
   bool _loading = true;
   bool _acting = false;
   List<DateRangeQuickItem> _dayItems = [];
+  int _loadGen = 0;
+  DateTime? _lastLoadAt;
 
   static const _statusKeys = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 
@@ -45,7 +49,17 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
   }
 
   Future<void> _load({bool fromPull = false}) async {
-    if (!fromPull && mounted) setState(() => _loading = true);
+    final now = DateTime.now();
+    // 进 Tab 时 initState + shell tick 可能连打两次，合并
+    if (_lastLoadAt != null &&
+        now.difference(_lastLoadAt!) < const Duration(milliseconds: 400)) {
+      return;
+    }
+    _lastLoadAt = now;
+    final gen = ++_loadGen;
+    _dayItems = _buildDayItems();
+    final silent = fromPull || _items.isNotEmpty;
+    if (!silent && mounted) setState(() => _loading = true);
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final dayItem = _dayItems[_day.clamp(0, _dayItems.length - 1)];
@@ -60,13 +74,13 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
         repo.getApplications('enter',
             startDate: start, endDate: end, status: status, pageSize: 50),
       ]);
+      if (gen != _loadGen || !mounted) return;
       final merged = <HostAuditItem>[
         ...hostRowsOf(results[0]).map((e) => hostAuditFromMap(e, AuditType.up)),
         ...hostRowsOf(results[1]).map((e) => hostAuditFromMap(e, AuditType.down)),
         ...hostRowsOf(results[2]).map((e) => hostAuditFromMap(e, AuditType.join)),
       ];
       merged.sort((a, b) => b.time.compareTo(a.time));
-      if (!mounted) return;
       setState(() {
         _items = merged;
         _loading = false;
@@ -74,7 +88,7 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
       // 同步底部 Tab / 标题角标
       await ref.read(hostPendingAuditProvider.notifier).refresh();
     } catch (e) {
-      if (!mounted) return;
+      if (gen != _loadGen || !mounted) return;
       setState(() => _loading = false);
       AppToast.error(e.toString());
     }
@@ -110,6 +124,11 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 进审核 Tab / 再点 Tab：壳层 tick → 静默重拉
+    ref.listen<int>(hostAuditListRefreshTickProvider, (prev, next) {
+      if (prev == next) return;
+      unawaited(_load(fromPull: true));
+    });
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(

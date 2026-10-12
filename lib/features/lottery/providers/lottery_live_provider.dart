@@ -292,6 +292,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
     try {
       final wallet = await _ref.read(walletRepositoryProvider).getSummary(roomId);
+      // 房间顶栏只用 available；总资产给钱包/申请记录
       state = state.copyWith(
         points: wallet.availablePoints,
         turnover: wallet.todayTurnover,

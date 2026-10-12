@@ -178,7 +178,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
                                       Text('总资产', style: TextStyle(fontSize: 15.sp, color: brown)),
                                       SizedBox(height: 8.h),
                                       Text(
-                                        s == null ? '--' : displayNumber(s.availablePoints),
+                                        s == null ? '--' : displayNumber(s.totalAssets),
                                         style: TextStyle(
                                           fontSize: 34.sp,
                                           fontWeight: FontWeight.bold,

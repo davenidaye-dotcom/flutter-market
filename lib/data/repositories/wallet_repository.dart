@@ -16,8 +16,14 @@ class WalletRepository {
     final m = Map<String, dynamic>.from(data);
     double n(dynamic v) =>
         v is num ? v.toDouble() : double.tryParse('$v') ?? 0;
+    final hasAvailable = m.containsKey('available') || m.containsKey('availablePoints');
+    final hasTotal = m.containsKey('totalAssets') || m.containsKey('balance');
+    final available = n(m['available'] ?? m['availablePoints']);
+    final total = n(m['totalAssets'] ?? m['balance']);
     return WalletSummaryModel(
-      availablePoints: n(m['totalAssets'] ?? m['available'] ?? m['availablePoints'] ?? m['balance']),
+      // 房间顶栏用可用；钱包「总资产」用账面。缺一则互为回落（兼容旧包）
+      availablePoints: hasAvailable ? available : total,
+      totalAssets: hasTotal ? total : available,
       todayTurnover: n(m['turnover'] ?? m['todayTurnover']),
       // pendingRebate = 待领金额；paidRebate = 当前业务日已领取回水
       pendingRebate: n(m['pendingRebate']),

@@ -213,6 +213,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             SizedBox(height: 12.h),
             EmulatorSafeTextField(
               controller: remarkCtrl,
+              // 中文备注：默认文本键盘 + 开联想（关联想时部分 IME 卡英文）
+              keyboardType: TextInputType.text,
+              enableSuggestions: true,
+              autocorrect: true,
+              maxLines: 3,
               decoration: const InputDecoration(hintText: '申请说明（可选）'),
             ),
           ],
@@ -255,7 +260,9 @@ class _HomePageState extends ConsumerState<HomePage> {
     final live = ref.read(roomLotteryLiveProvider(room.roomCode).notifier);
     await live.ensureLoaded();
     if (!mounted) return;
-    context.push(RoutePaths.roomLottery(room.roomCode));
+    await context.push(RoutePaths.roomLottery(room.roomCode));
+    // 从房间返回后刷新历史（进房时后端才写入 history）
+    if (mounted) unawaited(_loadHistory());
   }
 
   Future<void> _enterRoom([String? code]) async {
@@ -337,7 +344,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     onRoomCodeChanged: (v) => _roomCode = v,
                     onEnterRoom: _enterRoom,
                   ),
-                  SizedBox(height: 40.h),
+                  SizedBox(height: 22.h),
                   Text(
                     '历史房间:',
                     style: TextStyle(
@@ -418,110 +425,114 @@ class _ProfileCardState extends State<_ProfileCard> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      alignment: Alignment.bottomCenter,
-      children: [
-        Container(
-          width: double.infinity,
-          padding: EdgeInsets.fromLTRB(20.w, 20.w, 20.w, 40.h),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(22.r),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 16,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  UserAvatar(
-                    codeOrUrl: widget.avatarUrl,
-                    radius: 28.r,
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                widget.nickname,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+    // 底部留出按钮下探高度，避免 Positioned 溢出 Stack 后半截点不到
+    return Padding(
+      padding: EdgeInsets.only(bottom: 18.h),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.bottomCenter,
+        children: [
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.fromLTRB(20.w, 20.w, 20.w, 40.h),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(22.r),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    UserAvatar(
+                      codeOrUrl: widget.avatarUrl,
+                      radius: 28.r,
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.nickname,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
+                                ),
                               ),
-                            ),
-                            if (widget.trial) ...[
-                              SizedBox(width: 6.w),
-                              const TrialAccountTag(),
+                              if (widget.trial) ...[
+                                SizedBox(width: 6.w),
+                                const TrialAccountTag(),
+                              ],
                             ],
-                          ],
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          widget.username,
-                          style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
-                        ),
-                      ],
+                          ),
+                          SizedBox(height: 2.h),
+                          Text(
+                            widget.username,
+                            style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 16.h),
-              Row(
-                children: [
-                  Expanded(
-                    child: _ActionBtn(
-                      label: '个人设置',
-                      icon: Icons.hexagon_outlined,
-                      color: AppColors.accentBrownDark,
-                      onTap: widget.onSettings,
+                  ],
+                ),
+                SizedBox(height: 16.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _ActionBtn(
+                        label: '个人设置',
+                        icon: Icons.hexagon_outlined,
+                        color: AppColors.accentBrownDark,
+                        onTap: widget.onSettings,
+                      ),
                     ),
-                  ),
-                  SizedBox(width: 12.w),
-                  Expanded(
-                    child: _ActionBtn(
-                      label: '安全退出',
-                      icon: Icons.power_settings_new,
-                      color: const Color(0xFF8FA9E0),
-                      onTap: widget.onLogout,
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: _ActionBtn(
+                        label: '安全退出',
+                        icon: Icons.power_settings_new,
+                        color: const Color(0xFF8FA9E0),
+                        onTap: widget.onLogout,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 20.h),
-              Text('房间号', style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary)),
-              SizedBox(height: 12.h),
-              RoomCodeSixInput(
-                controller: _roomCodeCtrl,
-                onSubmitted: (v) {
-                  if (v.length == 6) widget.onEnterRoom(v);
-                },
-              ),
-              SizedBox(height: 8.h),
-            ],
+                  ],
+                ),
+                SizedBox(height: 20.h),
+                Text('房间号', style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary)),
+                SizedBox(height: 12.h),
+                RoomCodeSixInput(
+                  controller: _roomCodeCtrl,
+                  onSubmitted: (v) {
+                    if (v.length == 6) widget.onEnterRoom(v);
+                  },
+                ),
+                SizedBox(height: 8.h),
+              ],
+            ),
           ),
-        ),
-        Positioned(
-          bottom: -18.h,
-          left: 28.w,
-          right: 28.w,
-          child: GlossyButton(
-            text: '进入房间',
-            onPressed: widget.loading ? null : () => widget.onEnterRoom(),
-            loading: widget.loading,
-            height: 48.h,
+          Positioned(
+            bottom: 0,
+            left: 28.w,
+            right: 28.w,
+            child: GlossyButton(
+              text: '进入房间',
+              onPressed: widget.loading ? null : () => widget.onEnterRoom(),
+              loading: widget.loading,
+              height: 48.h,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

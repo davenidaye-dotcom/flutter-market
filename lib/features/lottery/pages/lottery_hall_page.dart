@@ -384,6 +384,7 @@ class _HallHeaderState extends ConsumerState<_HallHeader> {
               child: AppLogoHeader(
                 title: title,
                 titleColor: Colors.white,
+                showLogo: false,
               ),
             ),
           ),

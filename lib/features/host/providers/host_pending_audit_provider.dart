@@ -41,6 +41,9 @@ final hostPendingAuditProvider =
   HostPendingAuditNotifier.new,
 );
 
+/// 切到「审核列表」Tab（含再次点选）时 +1，申请记录页监听后重拉。
+final hostAuditListRefreshTickProvider = StateProvider<int>((ref) => 0);
+
 class HostPendingAuditNotifier extends Notifier<HostPendingAuditCounts> {
   @override
   HostPendingAuditCounts build() {
