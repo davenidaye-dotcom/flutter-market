@@ -19,7 +19,7 @@ class HistoryDrawRow {
 }
 
 /// 顶栏期号、开奖球、历史表头、下拉数据行共用同一套列宽。
-/// 方块规格：S22（22.w）· gap 2.w · 截图色 · 常驻 1-5龙虎列。
+/// 方块规格：S22（22.w）· 左右 gap 2.w · 上下贴紧（行高=球+2.w，separator=0）。
 abstract final class HistoryDrawLayout {
   static double hPad() => 4.w;
   /// 后 4 位期号完整显示（避免 34.w + ellipsis 变成 56…）
@@ -56,11 +56,12 @@ abstract final class HistoryDrawLayout {
   static double ballBoxBoost() => 0;
 
   static const int visibleRows = 10;
-  static double rowHeight() => 28.h;
-  static double rowGap() => 1.h;
-  static double headerHeight() => 28.h;
-  static double listPadTop() => 1.h;
-  static double listPadBottom() => 1.h;
+  /// 方案 A：行高 = 球径 + 2.w，球上下净空约 2.w（对齐图1）
+  static double rowHeight() => ballSize() + 2.w;
+  static double rowGap() => 0;
+  static double headerHeight() => rowHeight();
+  static double listPadTop() => 1.w;
+  static double listPadBottom() => 1.w;
 }
 
 /// 期号 | 十个等宽槽 | 冠亚和 | 1-5龙虎。
