@@ -1495,46 +1495,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     return amounts.join('+');
   }
 
-  Future<void> _claimRedpack() async {
-    _fabSelectedNotifier.value = 2;
-    if (_panel == _BottomPanel.quickBet) {
-      _setPanel(_BottomPanel.none);
-    }
-    try {
-      final list = await ref.read(memberRepositoryProvider).getRedpacks();
-      if (!mounted) return;
-      if (list.isEmpty) {
-        AppToast.info('\u6682\u65e0\u53ef\u9886\u7ea2\u5305');
-        return;
-      }
-      final first = list.first;
-      final id = (first['redpackId'] ?? first['id'] ?? '').toString();
-      if (id.isEmpty) {
-        AppToast.info('\u7ea2\u5305\u6570\u636e\u5f02\u5e38');
-        return;
-      }
-      final claimed = first['claimed'] == true;
-      if (claimed) {
-        AppToast.info('\u5df2\u9886\u53d6');
-        return;
-      }
-      final res = await ref.read(memberRepositoryProvider).claimRedpack(id);
-      if (!mounted) return;
-      final amount = res['amount'];
-      final msg = (res['message'] ?? '').toString();
-      if (res['success'] == false) {
-        AppToast.info(msg.isEmpty ? '\u9886\u53d6\u5931\u8d25' : msg);
-      } else {
-        AppToast.success(msg.isEmpty ? '\u9886\u53d6\u6210\u529f ${amount ?? ''}' : msg);
-        await ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet();
-      }
-    } catch (e) {
-      AppToast.error(e.toString());
-    } finally {
-      if (mounted) _fabSelectedNotifier.value = null;
-    }
-  }
-
   Future<void> _loadLongDragon({bool force = false}) async {
     if (!force &&
         _longDragonLoadedGameId == _gameId &&
@@ -2090,7 +2050,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                             CustomerServicePage(roomId: widget.roomId),
                           );
                         },
-                        onRedPacket: () => _claimRedpack(),
                         onMarket: () {
                           final open = _panel != _BottomPanel.quickBet;
                           if (open) {
@@ -2098,7 +2057,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                           } else {
                             _setPanel(_BottomPanel.none);
                           }
-                          _fabSelectedNotifier.value = open ? 3 : null;
+                          _fabSelectedNotifier.value = open ? 2 : null;
                           _historyExpandedNotifier.value = false;
                           _topPanelNotifier.value = _TopPanel.none;
                         },
@@ -2628,14 +2587,12 @@ class _FloatingActions extends StatelessWidget {
   const _FloatingActions({
     required this.onSwitchGame,
     required this.onService,
-    required this.onRedPacket,
     required this.onMarket,
     this.selectedIndex,
   });
 
   final VoidCallback onSwitchGame;
   final VoidCallback onService;
-  final VoidCallback onRedPacket;
   final VoidCallback onMarket;
   final int? selectedIndex;
 
@@ -2648,9 +2605,7 @@ class _FloatingActions extends StatelessWidget {
         SizedBox(height: 10.h),
         _fab(1, Icons.headset_mic, AppColors.navBlue, onService),
         SizedBox(height: 10.h),
-        _fab(2, Icons.redeem, const Color(0xFFFF6B8A), onRedPacket),
-        SizedBox(height: 10.h),
-        _fab(3, Icons.grid_view, AppColors.navBlue, onMarket),
+        _fab(2, Icons.grid_view, AppColors.navBlue, onMarket),
       ],
     );
   }

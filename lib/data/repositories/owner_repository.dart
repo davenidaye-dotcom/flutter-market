@@ -640,6 +640,34 @@ class OwnerRepository {
     return _asMap(data);
   }
 
+  /// 飞单报表当期注单明细 — GET /owner/feipan/reports/items
+  Future<Map<String, dynamic>> getFeipanReportItems({
+    required String issueNo,
+    required String gameType,
+    int pageNum = 1,
+    int pageSize = 20,
+  }) async {
+    final data = await _client.get('/owner/feipan/reports/items', query: {
+      'issueNo': issueNo,
+      'gameType': gameType,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+    });
+    final map = _asMap(data);
+    final summary = <String, dynamic>{};
+    final rawSummary = map['summary'];
+    if (rawSummary is Map) summary.addAll(Map<String, dynamic>.from(rawSummary));
+    for (final k in ['itemCount', 'betAmount', 'playerResult', 'nickname', 'accountId']) {
+      if (map[k] != null) summary.putIfAbsent(k, () => map[k]);
+    }
+    return {
+      ...map,
+      'summary': summary,
+      'total': map['total'] ?? summary['itemCount'],
+      'rows': map['rows'] ?? const [],
+    };
+  }
+
   Future<Map<String, dynamic>> getFeipanOdds({required String gameType}) async {
     final data = await _client.get('/owner/feipan/odds', query: {
       'gameType': gameType,

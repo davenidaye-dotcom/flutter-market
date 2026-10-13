@@ -21,6 +21,7 @@ import '../../../shared/widgets/room_code_six_input.dart';
 import '../../../shared/widgets/safe_text_controller.dart';
 import '../../../shared/widgets/trial_account_tag.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
@@ -339,7 +340,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     onSettings: () => context.push(RoutePaths.personalSettings),
                     onLogout: () async {
                       await ref.read(authSessionProvider.notifier).logout();
-                      if (context.mounted) context.go(RoutePaths.login);
+                      if (context.mounted) appGoLoginClearingStack(context);
                     },
                     onRoomCodeChanged: (v) => _roomCode = v,
                     onEnterRoom: _enterRoom,

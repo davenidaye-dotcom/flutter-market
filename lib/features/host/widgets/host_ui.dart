@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -28,15 +30,16 @@ class HostSubPageScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // false：避免底部输入弹层 + 键盘时底层页跟着缩，关掉时闪红/溢布局
     return AppPageScaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: GradientBackground(
         child: SafeArea(
           child: Column(
             children: [
               PageAppBar(
                 title: title,
-                onBack: onBack ?? () => appSafePop(context),
+                onBack: onBack ?? () => appHandleBack(context),
                 trailing: trailing,
               ),
               Expanded(child: body),
@@ -175,6 +178,7 @@ Future<bool> hostConfirm(
   final result = await showModalBottomSheet<bool>(
     context: context,
     backgroundColor: Colors.transparent,
+    barrierColor: const Color(0x99000000),
     isScrollControlled: true,
     useSafeArea: true,
     builder: (ctx) => _HostKeyboardAware(
@@ -223,73 +227,78 @@ Future<String?> hostInputSheet(
   bool systemKeyboard = false,
   String confirmText = '保存',
   String cancelText = '取消',
-}) {
+}) async {
   final ctrl = TextEditingController(text: initial ?? '');
-  return showModalBottomSheet<String>(
-    context: context,
-    backgroundColor: Colors.transparent,
-    isScrollControlled: true,
-    useSafeArea: true,
-    builder: (ctx) {
-      return _HostKeyboardAware(
-        child: _HostSheetShell(
-          title: title,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              EmulatorSafeTextField(
-                controller: ctrl,
-                autofocus: true,
-                obscureText: obscureText,
-                keyboardType: systemKeyboard ? TextInputType.text : keyboardType,
-                enableSuggestions: systemKeyboard,
-                autocorrect: systemKeyboard,
-                textInputAction: TextInputAction.done,
-                scrollPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 160.h),
-                onSubmitted: (v) {
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  Navigator.pop(ctx, v.trim());
-                },
-                decoration: InputDecoration(
-                  hintText: hint,
-                  suffixText: suffixText,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.r),
-                    borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.r),
-                    borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10.r),
-                    borderSide: BorderSide(color: AppColors.navBlue, width: 1.2),
+  try {
+    return await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      barrierColor: const Color(0x99000000),
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (ctx) {
+        return _HostKeyboardAware(
+          child: _HostSheetShell(
+            title: title,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                EmulatorSafeTextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  obscureText: obscureText,
+                  keyboardType: systemKeyboard ? TextInputType.text : keyboardType,
+                  enableSuggestions: systemKeyboard,
+                  autocorrect: systemKeyboard,
+                  textInputAction: TextInputAction.done,
+                  scrollPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 160.h),
+                  onSubmitted: (v) {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    Navigator.pop(ctx, v.trim());
+                  },
+                  decoration: InputDecoration(
+                    hintText: hint,
+                    suffixText: suffixText,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                      borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                      borderSide: const BorderSide(color: Color(0xFFDDDDDD)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10.r),
+                      borderSide: BorderSide(color: AppColors.navBlue, width: 1.2),
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(height: 16.h),
-              _HostSheetActions(
-                cancelText: cancelText,
-                confirmText: confirmText,
-                onCancel: () {
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  Navigator.pop(ctx);
-                },
-                onConfirm: () {
-                  FocusManager.instance.primaryFocus?.unfocus();
-                  Navigator.pop(ctx, ctrl.text.trim());
-                },
-              ),
-            ],
+                SizedBox(height: 16.h),
+                _HostSheetActions(
+                  cancelText: cancelText,
+                  confirmText: confirmText,
+                  onCancel: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    Navigator.pop(ctx);
+                  },
+                  onConfirm: () {
+                    FocusManager.instance.primaryFocus?.unfocus();
+                    Navigator.pop(ctx, ctrl.text.trim());
+                  },
+                ),
+              ],
+            ),
           ),
-        ),
-      );
-    },
-  ).whenComplete(() {
+        );
+      },
+    );
+  } finally {
+    FocusManager.instance.primaryFocus?.unfocus();
+    SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
     // 等弹层/IME 卸载完成再 dispose，避免 InheritedElement dependents 断言
     disposeTextControllersAfterFrame([ctrl]);
-  });
+  }
 }
 
 /// 底部弹出多字段表单。fields 返回 true 时关闭并回 true。
@@ -395,6 +404,7 @@ class _HostKeyboardAwareState extends State<_HostKeyboardAware>
       padding: EdgeInsets.only(bottom: _inset),
       child: SingleChildScrollView(
         reverse: true,
+        clipBehavior: Clip.hardEdge,
         physics: const ClampingScrollPhysics(),
         keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         child: widget.child,

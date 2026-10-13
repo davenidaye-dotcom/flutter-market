@@ -8,7 +8,7 @@ import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../../shared/widgets/red_count_badge.dart';
@@ -116,62 +116,6 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
   Future<void> _openFlyHub() async {
     await pushHostPage(context, FlyHubPage(roomId: widget.roomId));
     if (mounted) await _loadDash();
-  }
-
-  Future<void> _sendRedpack() async {
-    final titleCtrl = TextEditingController(text: '红包');
-    final totalCtrl = TextEditingController(text: '100');
-    final countCtrl = TextEditingController(text: '10');
-    final ok = await hostFormSheet(
-      context,
-      title: '发红包',
-      confirmText: '确定',
-      buildFields: (ctx, setSheet) => Column(
-        children: [
-          EmulatorSafeTextField(
-            controller: titleCtrl,
-            decoration: InputDecoration(
-              hintText: '标题',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
-            ),
-          ),
-          SizedBox(height: 10.h),
-          EmulatorSafeTextField(
-            controller: totalCtrl,
-            decoration: InputDecoration(
-              hintText: '总金额',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
-            ),
-            keyboardType: TextInputType.number,
-          ),
-          SizedBox(height: 10.h),
-          EmulatorSafeTextField(
-            controller: countCtrl,
-            decoration: InputDecoration(
-              hintText: '个数',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10.r)),
-            ),
-            keyboardType: TextInputType.number,
-          ),
-        ],
-      ),
-    );
-    if (!ok) {
-      disposeTextControllersAfterFrame([titleCtrl, totalCtrl, countCtrl]);
-      return;
-    }
-    try {
-      await ref.read(ownerRepositoryProvider).createRedpack({
-        'title': titleCtrl.text.trim(),
-        'totalAmount': num.tryParse(totalCtrl.text) ?? 0,
-        'count': int.tryParse(countCtrl.text) ?? 1,
-      });
-      AppToast.success('红包已发送');
-    } catch (e) {
-      AppToast.error(e.toString());
-    } finally {
-      disposeTextControllersAfterFrame([titleCtrl, totalCtrl, countCtrl]);
-    }
   }
 
   String _n(String key, {int fraction = 2}) {
@@ -335,8 +279,6 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                           _div(),
                           _menu('飞盘助手', _openFlyHub),
                           _div(),
-                          _menu('\u53d1\u7ea2\u5305', _sendRedpack),
-                          _div(),
                           _menu('房间报表', () => pushHostPage(context, RoomReportPage(roomId: roomId))),
                           _div(),
                           _menu('\u798f\u5229\u62a5\u8868', () => pushHostPage(context, RebateReportPage(roomId: roomId))),
@@ -350,10 +292,9 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                     SizedBox(height: 28.h),
                     GestureDetector(
                       onTap: () async {
-                        dismissAllShellCovers();
                         ref.invalidate(roomLotteryLiveProvider(roomId));
                         await ref.read(authSessionProvider.notifier).logout();
-                        if (context.mounted) context.go(RoutePaths.login);
+                        if (context.mounted) appGoLoginClearingStack(context);
                       },
                       child: Container(
                         height: 44.h,

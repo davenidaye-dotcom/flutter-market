@@ -43,7 +43,10 @@ class _Member {
       case 'FROZEN':
         return '已冻结';
       case 'BAN_ENTER':
-        return '禁止进房';
+      case 'BAN':
+      case 'BANNED':
+      case 'BLOCK':
+        return '封禁';
       case 'DISABLED':
         return '已禁用';
       case 'NORMAL':

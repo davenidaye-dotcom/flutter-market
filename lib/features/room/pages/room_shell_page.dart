@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
-import '../../../shared/widgets/page_app_bar.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/user_bottom_nav.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
@@ -30,6 +30,8 @@ class RoomShellPage extends ConsumerStatefulWidget {
 
 class _RoomShellPageState extends ConsumerState<RoomShellPage> {
   Timer? _csTimer;
+  /// 底栏浏览历史（不含当前），返回时回到上一 Tab
+  final List<int> _tabHistory = <int>[];
 
   @override
   void initState() {
@@ -73,37 +75,43 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
     // 底栏 0~3 → 分支 1~4；勿 initialLocation:true，否则会重置分支丢掉保活 State
     final branch = index + 1;
     if (branch == widget.navigationShell.currentIndex) return;
+    final from = widget.navigationShell.currentIndex;
+    if (_tabHistory.isEmpty || _tabHistory.last != from) {
+      _tabHistory.add(from);
+    }
     widget.navigationShell.goBranch(branch);
+  }
+
+  bool _tryTabBack() {
+    if (_tabHistory.isEmpty) return false;
+    final prev = _tabHistory.removeLast();
+    widget.navigationShell.goBranch(prev);
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
     final unread = ref.watch(csUnreadCountProvider);
-    return AppPageScaffold(
-      body: widget.navigationShell,
-      bottomNavigationBar: UserBottomNavBar(
-        currentIndex: _navIndex,
-        // 正在看客服时数字让给对话本身，离开这一栏再显示未读
-        csBadge: _navIndex == 0 ? 0 : unread,
-        onTap: _onNavTap,
+    return AppBackScope(
+      child: ShellTabBack(
+        tryBack: _tryTabBack,
+        child: AppPageScaffold(
+          body: widget.navigationShell,
+          bottomNavigationBar: UserBottomNavBar(
+            currentIndex: _navIndex,
+            // 正在看客服时数字让给对话本身，离开这一栏再显示未读
+            csBadge: _navIndex == 0 ? 0 : unread,
+            onTap: _onNavTap,
+          ),
+        ),
       ),
     );
   }
 }
 
-/// 房间子页返回：Overlay / 本地栈优先 pop，否则回彩种大厅 Tab
+/// 房间子页返回：与系统返回同一套 [appHandleBack]
 void appRoomBack(BuildContext context, String roomId) {
-  final nav = Navigator.of(context);
-  if (nav.canPop()) {
-    nav.pop();
-    return;
-  }
-  final closer = ShellCoverCloser.maybeOf(context);
-  if (closer != null) {
-    closer.close();
-    return;
-  }
-  goRoomLottery(context, roomId);
+  appHandleBack(context);
 }
 
 /// 切回房间彩种大厅（优先 goBranch 保活，避免整页重载闪烁）

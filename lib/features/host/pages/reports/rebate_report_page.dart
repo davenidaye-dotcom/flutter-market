@@ -27,6 +27,7 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
     with DateRangePageMixin {
   Map<String, dynamic> _data = {};
   bool _loading = false;
+  bool _summaryOpen = true;
 
   @override
   void initState() {
@@ -109,44 +110,78 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
                       padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
                       children: [
                         HostWhiteCard(
+                          padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 10.h),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                '房级合计',
-                                style: TextStyle(
-                                  fontSize: 15.sp,
-                                  fontWeight: FontWeight.w700,
+                              GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTap: () =>
+                                    setState(() => _summaryOpen = !_summaryOpen),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        '房级合计',
+                                        style: TextStyle(
+                                          fontSize: 15.sp,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      _summaryOpen ? '收起' : '展开',
+                                      style: TextStyle(
+                                        fontSize: 13.sp,
+                                        color: const Color(0xFF4A90D9),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                              SizedBox(height: 12.h),
-                              _metricRow(
-                                widget.commission ? '应抽佣' : '应回水',
-                                _data['accrued'],
-                              ),
-                              _metricRow('已发放', _data['paid']),
-                              _metricRow(
-                                '待领取',
-                                _data['pending'],
-                                valueColor: const Color(0xFF2E7D32),
-                              ),
-                              _metricRow(
-                                widget.commission ? '未发笔数' : '未回笔数',
-                                _data['unpaidCount'],
-                              ),
-                              _metricRow(
-                                widget.commission ? '未发流水' : '未回流水',
-                                _data['unpaidTurnover'],
-                              ),
-                              _metricRow('有效流水', _data['turnover']),
-                              Divider(height: 20.h, color: AppColors.divider),
-                              _metricRow('自行领取', _data['selfPaid']),
-                              _metricRow('房主一键', _data['ownerPaid']),
-                              _metricRow('系统自动', _data['systemPaid']),
+                              if (!_summaryOpen) ...[
+                                SizedBox(height: 8.h),
+                                _metricRow(
+                                  '待领取',
+                                  _data['pending'],
+                                  valueColor: const Color(0xFF2E7D32),
+                                  compact: true,
+                                ),
+                              ] else ...[
+                                SizedBox(height: 10.h),
+                                _metricRow(
+                                  widget.commission ? '应抽佣' : '应回水',
+                                  _data['accrued'],
+                                  compact: true,
+                                ),
+                                _metricRow('已发放', _data['paid'], compact: true),
+                                _metricRow(
+                                  '待领取',
+                                  _data['pending'],
+                                  valueColor: const Color(0xFF2E7D32),
+                                  compact: true,
+                                ),
+                                _metricRow(
+                                  widget.commission ? '未发笔数' : '未回笔数',
+                                  _data['unpaidCount'],
+                                  compact: true,
+                                ),
+                                _metricRow(
+                                  widget.commission ? '未发流水' : '未回流水',
+                                  _data['unpaidTurnover'],
+                                  compact: true,
+                                ),
+                                _metricRow('有效流水', _data['turnover'], compact: true),
+                                Divider(height: 16.h, color: AppColors.divider),
+                                _metricRow('自行领取', _data['selfPaid'], compact: true),
+                                _metricRow('房主一键', _data['ownerPaid'], compact: true),
+                                _metricRow('系统自动', _data['systemPaid'], compact: true),
+                              ],
                             ],
                           ),
                         ),
-                        SizedBox(height: 14.h),
+                        SizedBox(height: 10.h),
                         if (members.isEmpty)
                           Padding(
                             padding: EdgeInsets.only(top: 24.h),
@@ -164,11 +199,18 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
                           for (final m in members) ...[
                             _MemberRebateCard(
                               name: _memberName(m),
+                              commission: widget.commission,
                               paid: hostNumStr(m['paid'], fraction: 2),
+                              accrued: hostNumStr(m['accrued'], fraction: 2),
+                              pending: hostNumStr(m['pending'], fraction: 2),
                               ratio: '${hostNumStr(m['ratio'], fraction: 2)}%',
                               turnover: hostNumStr(m['turnover'], fraction: 2),
+                              orderCount: hostNumStr(m['orderCount'], fraction: 0),
+                              unpaidCount: hostNumStr(m['unpaidCount'], fraction: 0),
+                              unpaidTurnover:
+                                  hostNumStr(m['unpaidTurnover'], fraction: 2),
                             ),
-                            SizedBox(height: 10.h),
+                            SizedBox(height: 6.h),
                           ],
                           Padding(
                             padding: EdgeInsets.only(top: 4.h, bottom: 8.h),
@@ -192,20 +234,25 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
     );
   }
 
-  Widget _metricRow(String label, dynamic value, {Color? valueColor}) {
+  Widget _metricRow(
+    String label,
+    dynamic value, {
+    Color? valueColor,
+    bool compact = false,
+  }) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 8.h),
+      padding: EdgeInsets.only(bottom: compact ? 5.h : 8.h),
       child: Row(
         children: [
           Text(
             label,
-            style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
+            style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
           ),
           const Spacer(),
           Text(
             hostNumStr(value, fraction: 2),
             style: TextStyle(
-              fontSize: 14.sp,
+              fontSize: 13.sp,
               fontWeight: FontWeight.w600,
               color: valueColor ?? const Color(0xFF222222),
             ),
@@ -216,23 +263,35 @@ class _RebateReportPageState extends ConsumerState<RebateReportPage>
   }
 }
 
-/// 截图：名称左 + 已发放绿字右；下方两列「比例」「总流水」
 class _MemberRebateCard extends StatelessWidget {
   const _MemberRebateCard({
     required this.name,
+    required this.commission,
     required this.paid,
+    required this.accrued,
+    required this.pending,
     required this.ratio,
     required this.turnover,
+    required this.orderCount,
+    required this.unpaidCount,
+    required this.unpaidTurnover,
   });
 
   final String name;
+  final bool commission;
   final String paid;
+  final String accrued;
+  final String pending;
   final String ratio;
   final String turnover;
+  final String orderCount;
+  final String unpaidCount;
+  final String unpaidTurnover;
 
   @override
   Widget build(BuildContext context) {
     return HostWhiteCard(
+      padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 8.h),
       child: Column(
         children: [
           Row(
@@ -241,27 +300,38 @@ class _MemberRebateCard extends StatelessWidget {
                 child: Text(
                   name,
                   style: TextStyle(
-                    fontSize: 15.sp,
+                    fontSize: 14.sp,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF222222),
                   ),
                 ),
               ),
               Text(
-                paid,
+                '待领 $pending · ${commission ? '应抽' : '应回'} $accrued',
                 style: TextStyle(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w700,
+                  fontSize: 12.sp,
+                  fontWeight: FontWeight.w600,
                   color: const Color(0xFF2E7D32),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 14.h),
+          SizedBox(height: 8.h),
           Row(
             children: [
               Expanded(child: _col('比例', ratio)),
               Expanded(child: _col('总流水', turnover)),
+              Expanded(child: _col('注单', orderCount)),
+              Expanded(child: _col(commission ? '未发笔数' : '未回笔数', unpaidCount)),
+            ],
+          ),
+          SizedBox(height: 6.h),
+          Row(
+            children: [
+              Expanded(child: _col(commission ? '未发流水' : '未回流水', unpaidTurnover)),
+              Expanded(child: _col('已发放', paid)),
+              Expanded(child: _col('待领取', pending)),
+              Expanded(child: _col(commission ? '应抽佣' : '应回水', accrued)),
             ],
           ),
         ],
@@ -274,13 +344,17 @@ class _MemberRebateCard extends StatelessWidget {
       children: [
         Text(
           label,
-          style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
         ),
-        SizedBox(height: 4.h),
+        SizedBox(height: 2.h),
         Text(
           value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            fontSize: 15.sp,
+            fontSize: 13.sp,
             fontWeight: FontWeight.w700,
             color: const Color(0xFF222222),
           ),

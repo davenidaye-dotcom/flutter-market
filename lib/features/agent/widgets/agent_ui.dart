@@ -1,20 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:go_router/go_router.dart';
 import '../../../config/env/env_config.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../shared/format/display_number.dart';
 import '../../../shared/format/game_series.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/widgets/page_app_bar.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../auth/providers/auth_session_provider.dart';
 
 /// 顶栏余额：GET /agent/credits/account
 /// 文档字段：header.displayId / header.balance / header.subordinateBalance
 ///           + available / totalCredit / occupied
+/// 口径：始终是「当前登录代理」本人 available + 其下级树 totalCredit 之和。
+/// 一级/二级换号后必须重拉，故 watch 登录 accountId，避免仍显示上一账号缓存。
 final agentHeaderProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final accountId = ref.watch(authSessionProvider.select((s) => s.user?.id));
+  if (accountId == null || accountId.isEmpty) {
+    return {
+      'displayId': '',
+      'balance': 0,
+      'subordinateBalance': 0,
+      'totalCredit': null,
+      'occupied': null,
+      'available': null,
+    };
+  }
   final account = await ref.read(agentRepositoryProvider).getCreditAccount();
   final header = account['header'] is Map
       ? Map<String, dynamic>.from(account['header'] as Map)
@@ -22,7 +34,7 @@ final agentHeaderProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   // 严格按 V1.3：顶栏读 header.*；额度读顶层 available/totalCredit/occupied
   final available = account['available'];
   return {
-    'displayId': header['displayId']?.toString() ?? '',
+    'displayId': header['displayId']?.toString() ?? accountId,
     'balance': header['balance'] ?? 0,
     'subordinateBalance': header['subordinateBalance'] ?? 0,
     'totalCredit': account['totalCredit'],
@@ -33,6 +45,8 @@ final agentHeaderProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 
 /// Game tab options from lottery/info PROFILE
 final agentGameOptionsProvider = FutureProvider<List<Map<String, String>>>((ref) async {
+  final accountId = ref.watch(authSessionProvider.select((s) => s.user?.id));
+  if (accountId == null || accountId.isEmpty) return const [];
   final data = await ref.read(agentRepositoryProvider).getLotteryInfo(scene: 'PROFILE');
   final games = data['games'];
   if (games is! List) return const [];
@@ -253,8 +267,15 @@ class AgentDrawer extends ConsumerWidget {
             for (final item in _items)
               InkWell(
                 onTap: () {
+                  final path = _pathFor(item.$2);
+                  // 先取壳上的路径栈（抽屉 pop 后 context 可能失效）
+                  final pathBack = AgentShellPathBack.maybeOf(context);
                   Navigator.pop(context);
-                  context.go(_pathFor(item.$2));
+                  if (pathBack != null) {
+                    pathBack.rememberAndGo(path);
+                  } else {
+                    agentShellPush(context, path);
+                  }
                 },
                 child: Padding(
                   padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 20.w),
@@ -271,9 +292,8 @@ class AgentDrawer extends ConsumerWidget {
             const Spacer(),
             InkWell(
               onTap: () async {
-                dismissAllShellCovers();
                 await ref.read(authSessionProvider.notifier).logout();
-                if (context.mounted) context.go(RoutePaths.login);
+                if (context.mounted) appGoLoginClearingStack(context);
               },
               child: Padding(
                 padding: EdgeInsets.symmetric(vertical: 14.h, horizontal: 20.w),
@@ -457,7 +477,7 @@ class AgentBackTitle extends StatelessWidget {
         children: [
           IconButton(
             icon: Icon(Icons.arrow_back_ios_new, size: 16.sp, color: AppColors.textPrimary),
-            onPressed: () => Navigator.of(context).maybePop(),
+            onPressed: () => appHandleBack(context),
           ),
           Expanded(
             child: Text(

@@ -4,11 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:go_router/go_router.dart';
 import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/env/env_config.dart';
-import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -222,7 +221,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                       ref.invalidate(roomLotteryLiveProvider(rid));
                     }
                     await ref.read(authSessionProvider.notifier).logout();
-                    if (context.mounted) context.go(RoutePaths.login);
+                    if (context.mounted) appGoLoginClearingStack(context);
                   },
                   child: Container(
                     width: double.infinity,

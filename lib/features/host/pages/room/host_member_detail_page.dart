@@ -235,19 +235,6 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
     }
   }
 
-  Future<void> _deleteMember() async {
-    final ok = await hostConfirm(context, title: '删除玩家', message: '确认删除该玩家？', danger: true);
-    if (!ok || !mounted) return;
-    try {
-      await ref.read(ownerRepositoryProvider).deleteMember(widget.memberId);
-      if (!mounted) return;
-      AppToast.success('已删除');
-      Navigator.of(context).pop();
-    } catch (e) {
-      AppToast.error(e.toString());
-    }
-  }
-
   Future<void> _setStatus(String status, String tip) async {
     if (_statusBusy) return;
     final cur = (_member?.status ?? 'NORMAL').toUpperCase();
@@ -255,12 +242,20 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
       AppToast.info('当前已是$tip');
       return;
     }
-    final ok = await hostConfirm(context, title: tip, message: tip, danger: true);
+    final isBan = status.toUpperCase() == 'BAN_ENTER';
+    final ok = await hostConfirm(
+      context,
+      title: tip,
+      message: isBan
+          ? '封禁后该玩家无法进房，其未审核的进房/上下分申请将全部拒绝。确定封禁？'
+          : tip,
+      danger: true,
+    );
     if (!ok || !mounted) return;
     _statusBusy = true;
     try {
       await ref.read(ownerRepositoryProvider).updateMemberStatus(widget.memberId, status);
-      AppToast.success('已提交');
+      AppToast.success(isBan ? '已封禁' : '已提交');
       await _load(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
@@ -406,13 +401,12 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                     ),
                   _MenuItem(
                     Icons.block,
-                    member.status.toUpperCase() == 'BAN_ENTER' ? '当前已禁止进房' : '封禁玩家',
+                    member.status.toUpperCase() == 'BAN_ENTER' ? '当前已封禁' : '封禁玩家',
                     member.status.toUpperCase() == 'BAN_ENTER' || _statusBusy
                         ? null
-                        : () => _setStatus('BAN_ENTER', '禁止进房'),
+                        : () => _setStatus('BAN_ENTER', '封禁玩家'),
                     danger: true,
                   ),
-                  _MenuItem(Icons.delete_outline, '删除玩家', _deleteMember, danger: true),
                 ]),
                 SizedBox(height: 14.h),
                 _sectionTitle('报表入口'),
@@ -444,16 +438,6 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                         roomId: widget.roomId,
                         accountId: widget.memberId,
                         kind: 'welfare',
-                      ),
-                    );
-                  }),
-                  _MenuItem(Icons.redeem_outlined, '红包报表', () {
-                    pushHostPage(
-                      context,
-                      HostMemberReportPage(
-                        roomId: widget.roomId,
-                        accountId: widget.memberId,
-                        kind: 'redpacks',
                       ),
                     );
                   }),

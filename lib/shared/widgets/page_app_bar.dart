@@ -121,9 +121,9 @@ class _AppToastScopeState extends State<AppToastScope> implements _AppToastLayer
   }
 }
 
-/// 安全返回：无栈可弹时不抛异常（避免闪退）
+/// 安全返回：无栈可弹时不抛异常（避免闪退）。
+/// 壳首页 / 系统返回请用 [appHandleBack]（app_back.dart）。
 void appSafePop(BuildContext context) {
-  // 先强制藏键盘，再关盖层，避免 IME viewport 风暴卡死
   FocusManager.instance.primaryFocus?.unfocus();
   SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
   final nav = Navigator.of(context);

@@ -13,6 +13,7 @@ import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/auth_card.dart';
 import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/gradient_background.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../login_remember_store.dart';
@@ -133,7 +134,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppPageScaffold(
+    // 登录页栈底：系统返回 / 侧滑 → 再按一次退出
+    return AppBackScope(
+      child: AppPageScaffold(
       // 键盘盖住底部即可，不要 resize 触发 ScreenUtil 全树重建
       resizeToAvoidBottomInset: false,
       body: GradientBackground(
@@ -269,6 +272,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

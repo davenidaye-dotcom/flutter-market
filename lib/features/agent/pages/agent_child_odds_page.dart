@@ -7,6 +7,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
 import '../../../shared/format/game_series.dart';
 import '../../../shared/format/play_odds_merge.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -290,7 +291,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
         children: [
           IconButton(
             icon: Icon(Icons.arrow_back_ios_new, size: 16.sp, color: AppColors.navBlue),
-            onPressed: () => Navigator.of(context).maybePop(),
+            onPressed: () => appHandleBack(context),
           ),
           Expanded(
             child: Text(

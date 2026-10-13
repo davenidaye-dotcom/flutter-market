@@ -103,8 +103,15 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
       m.roleLabel.contains('假人') ||
       m.roleLabel.contains('试玩');
 
+  bool _isBanned(HostMember m) {
+    final st = m.status.toUpperCase();
+    return st == 'BAN_ENTER' || st == 'BAN' || st == 'BANNED' || st == 'BLOCK';
+  }
+
   String _badge(HostMember m) {
     if (m.isMood) return m.disabled ? '已停用' : '启用中';
+    // 封禁优先展示，仍留在列表里，统计也计入
+    if (_isBanned(m)) return '封禁';
     if (_isTrialLike(m)) return '试玩号';
     if (m.isAgent) return '代理';
     if (m.disabled) {
@@ -119,6 +126,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
     if (m.isMood) {
       return m.disabled ? const Color(0xFF757575) : const Color(0xFF2E7D32);
     }
+    if (_isBanned(m)) return const Color(0xFFC62828);
     if (_isTrialLike(m)) return const Color(0xFFC62828);
     if (m.disabled) return const Color(0xFF757575);
     return const Color(0xFF616161);
@@ -128,6 +136,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
     if (m.isMood) {
       return m.disabled ? const Color(0xFFEEEEEE) : const Color(0xFFE8F5E9);
     }
+    if (_isBanned(m)) return const Color(0xFFFFEBEE);
     if (_isTrialLike(m)) return const Color(0xFFFFEBEE);
     if (m.disabled) return const Color(0xFFEEEEEE);
     return const Color(0xFFF0F0F0);

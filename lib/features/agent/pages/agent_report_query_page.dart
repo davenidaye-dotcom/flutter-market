@@ -39,6 +39,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   int? _ticketMemberId;
   String _ticketMemberName = '';
 
+  /// 注单期汇总下钻：`issueNo|gameType`；null = 期列表
+  String? _ticketIssueKey;
+
   static const _sourceLabels = ['全部来源', 'Web直属', '房主飞单'];
   static const _sourceKeys = ['ALL', 'WEB_DIRECT', 'OWNER_FLIGHT'];
   static const _fallbackGames = <Map<String, String>>[
@@ -146,7 +149,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
           memberAccountId: _ticketMemberId,
           type: _selectedType,
           source: _selectedSource,
-          status: 'ALL',
+          status: 'SETTLED',
         );
       } else {
         data = await repo.getReports(
@@ -180,34 +183,52 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     }
   }
 
-  void _openDrill(Map<String, dynamic> row) {
-    final level = '${row['level'] ?? row['accountType'] ?? ''}'.toUpperCase();
+  void _openTickets(Map<String, dynamic> row) {
     final id = row['accountId'] is int
         ? row['accountId'] as int
         : int.tryParse('${row['accountId'] ?? ''}');
     if (id == null) return;
     final name = '${row['displayName'] ?? row['username'] ?? id}'.trim();
-    final isMember = level.contains('MEMBER') || row['drillable'] == false;
-    if (isMember) {
-      setState(() {
-        _ticketMemberId = id;
-        _ticketMemberName = name;
-      });
-      _load();
-      return;
-    }
     setState(() {
-      _drill.add({'accountId': id, 'username': name});
-      _ticketMemberId = null;
+      _ticketMemberId = id;
+      _ticketMemberName = name;
+      _ticketIssueKey = null;
     });
     _load();
   }
 
+  void _openChildren(Map<String, dynamic> row) {
+    final id = row['accountId'] is int
+        ? row['accountId'] as int
+        : int.tryParse('${row['accountId'] ?? ''}');
+    if (id == null) return;
+    final name = '${row['displayName'] ?? row['username'] ?? id}'.trim();
+    setState(() {
+      _drill.add({'accountId': id, 'username': name});
+      _ticketMemberId = null;
+      _ticketIssueKey = null;
+    });
+    _load();
+  }
+
+  /// 下级盈亏 = 盈亏 − 盈亏结果
+  num? _subordinatePnl(dynamic profit, dynamic result) {
+    final a = profit is num ? profit.toDouble() : double.tryParse('$profit'.trim());
+    final b = result is num ? result.toDouble() : double.tryParse('$result'.trim());
+    if (a == null || b == null) return null;
+    return a - b;
+  }
+
   void _popDrill() {
+    if (_ticketMemberId != null && _ticketIssueKey != null) {
+      setState(() => _ticketIssueKey = null);
+      return;
+    }
     if (_ticketMemberId != null) {
       setState(() {
         _ticketMemberId = null;
         _ticketMemberName = '';
+        _ticketIssueKey = null;
       });
       _load();
       return;
@@ -332,11 +353,17 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                             ),
                           ),
                         )
-                      else
-                        for (final row in _rows) ...[
+                      else if (_ticketIssueKey != null) ...[
+                        for (final row in _ticketDetailRows()) ...[
                           SizedBox(height: 6.h),
                           _ticketCard(row),
                         ],
+                      ] else ...[
+                        for (final g in _ticketIssueGroups()) ...[
+                          SizedBox(height: 6.h),
+                          _ticketIssueRow(g),
+                        ],
+                      ],
                     ] else ...[
                       // 总览 + 明细上下连成一体，同一 ListView 滑动
                       if (_summary.isNotEmpty) _summaryBlock(),
@@ -452,6 +479,10 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     if (_ticketMemberId != null) {
       parts.add(_ticketMemberName.isEmpty ? '$_ticketMemberId' : _ticketMemberName);
     }
+    if (_ticketIssueKey != null) {
+      final issue = _ticketIssueKey!.split('|').first;
+      parts.add(issue.isEmpty ? '明细' : '期$issue');
+    }
     return Row(
       children: [
         GestureDetector(
@@ -495,6 +526,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     final pnl = _summary['pnl'] ??
         ((num.tryParse('${_summary['winLoss'] ?? 0}') ?? 0) +
             (num.tryParse('${_summary['rebate'] ?? 0}') ?? 0));
+    final resultPnl = _summary['resultPnl'] ?? _summary['combinedPnl'];
     final count = _summary['orderCount'] ?? _summary['betCount'] ?? _rows.length;
     return _reportBlock(
       bg: _summaryBg,
@@ -504,6 +536,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('输赢', _summary['winLoss'], _cRed),
         _cell('退水', _summary['rebate'], _cRed),
         _cell('盈亏', pnl, _cRed),
+        _cell('下级盈亏', _subordinatePnl(pnl, resultPnl), _cGreen),
         _cell('下级交货', _summary['downVolume'], _cGreen),
         _cell('应收下线', _summary['receivable'], _cGreen),
         _cell('占成', null, _cOrange, raw: _ratioText(_summary['shareRatio'] ?? 0)),
@@ -511,22 +544,10 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('实占结果', _summary['sharePnl'], _cOrange),
         _cell('实占退水', _summary['rebateNet'], _cOrange),
         _cell('赚水', _summary['earnWater'] ?? _summary['rebateGot'], _cOrange),
-        _cell('盈亏结果', _summary['resultPnl'] ?? _summary['combinedPnl'], _cOrange),
+        _cell('盈亏结果', resultPnl, _cOrange),
         _cell('上缴货量', _summary['uplinkVolume'], _cBlack),
         _cell('上级交收', _summary['uplinkSettlement'], _cBlack),
-        // 第 16 格：总计无下钻
-        _cell('', null, _cBlack, raw: ''),
       ],
-    );
-  }
-
-  Widget _ticketSummaryBar() {
-    return _surface(
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
-      child: Text(
-        '$_ticketMemberName · ${_rows.length} 条',
-        style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
-      ),
     );
   }
 
@@ -544,18 +565,25 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         ? row['accountId'] as int
         : int.tryParse('${row['accountId'] ?? ''}');
     final isMember = level.contains('MEMBER') || row['drillable'] == false;
-    final actionLabel = id == null
+    final resultPnl = row['selfPnl'];
+    final profit = row['memberResult'];
+    // 姓名格下方：代理「查看下级」、会员「查看注单」
+    final String? actionLabel = id == null
         ? null
         : (isMember ? '查看注单' : '查看下级');
+    final VoidCallback? actionTap = actionLabel == null
+        ? null
+        : () => isMember ? _openTickets(row) : _openChildren(row);
     return _reportBlock(
       bg: Colors.white,
       showTopBorder: showTopBorder,
       cells: [
-        _cell(head, null, _cRed, raw: ''),
+        _cell(head, null, _cRed, raw: '', actionLabel: actionLabel, onAction: actionTap),
         _cell('下注金额', row['betAmount'], _cRed),
         _cell('输赢', row['memberWin'] ?? row['memberWinLoss'], _cRed),
         _cell('退水', row['memberRebate'], _cRed),
-        _cell('盈亏', row['memberResult'], _cRed),
+        _cell('盈亏', profit, _cRed),
+        _cell('下级盈亏', _subordinatePnl(profit, resultPnl), _cGreen),
         _cell('下级交货', row['downVolume'], _cGreen),
         _cell('应收下线', row['receivable'], _cGreen),
         _cell('占成', null, _cOrange, raw: _ratioText(row['shareRatio'])),
@@ -563,30 +591,33 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('实占结果', row['shareResult'] ?? row['sharePnl'], _cOrange),
         _cell('实占退水', row['shareRebate'], _cOrange),
         _cell('赚水', row['earnWater'] ?? row['rebateIncome'], _cOrange),
-        _cell('盈亏结果', row['selfPnl'], _cOrange),
+        _cell('盈亏结果', resultPnl, _cOrange),
         _cell('上缴货量', row['uplinkVolume'], _cBlack),
         _cell('上级交收', row['uplinkSettlement'], _cBlack),
-        // 第 16 格：仅此可点下钻
-        actionLabel == null
-            ? _cell('', null, _cBlack, raw: '')
-            : _cell(actionLabel, null, const Color(0xFF1565C0),
-                onAction: () => _openDrill(row)),
       ],
     );
   }
 
-  ({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction}) _cell(
+  ({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction, String? actionLabel}) _cell(
     String label,
     dynamic value,
     Color labelColor, {
     String? raw,
     VoidCallback? onAction,
+    String? actionLabel,
   }) =>
-      (label: label, value: value, labelColor: labelColor, raw: raw, onAction: onAction);
+      (
+        label: label,
+        value: value,
+        labelColor: labelColor,
+        raw: raw,
+        onAction: onAction,
+        actionLabel: actionLabel,
+      );
 
   Widget _reportBlock({
     required Color bg,
-    required List<({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction})> cells,
+    required List<({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction, String? actionLabel})> cells,
     bool showTopBorder = true,
   }) {
     return Container(
@@ -625,7 +656,47 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   /// 对齐参考图：标签/数字都是 Regular（不加粗），列内居中，上下留空
-  Widget _metric(({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction}) c) {
+  Widget _metric(({String label, dynamic value, Color labelColor, String? raw, VoidCallback? onAction, String? actionLabel}) c) {
+    // 姓名格：上方名称，下方「查看下级」或「查看注单」
+    if (c.actionLabel != null && c.onAction != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            c.label,
+            maxLines: 2,
+            softWrap: true,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12.sp,
+              height: 1.25,
+              color: c.labelColor,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+          SizedBox(height: 4.h),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: c.onAction,
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 2.h, horizontal: 2.w),
+              child: Text(
+                c.actionLabel!,
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13.sp,
+                  height: 1.25,
+                  color: const Color(0xFF1565C0),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     if (c.onAction != null) {
       return Center(
         child: GestureDetector(
@@ -696,6 +767,164 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     final pct = n.abs() <= 1 ? n * 100 : n;
     final rounded = (pct * 100).roundToDouble() / 100;
     return '${displayNumber(rounded)}%';
+  }
+
+  List<Map<String, dynamic>> _ticketIssueGroups() {
+    final map = <String, Map<String, dynamic>>{};
+    for (final row in _rows) {
+      final issue = '${row['issueNo'] ?? ''}'.trim();
+      final gt = '${row['gameType'] ?? ''}'.trim();
+      final key = '$issue|$gt';
+      final g = map.putIfAbsent(key, () {
+        return <String, dynamic>{
+          'key': key,
+          'issueNo': issue.isEmpty ? '—' : issue,
+          'gameType': gt,
+          'gameName': row['gameName'] ?? gt,
+          'orderCount': 0,
+          'betAmount': 0.0,
+          'result': 0.0,
+          'createdAt': row['createdAt'],
+        };
+      });
+      g['orderCount'] = (g['orderCount'] as int) + 1;
+      final amt = row['amount'];
+      final res = row['itemResult'] ?? row['selfResult'];
+      g['betAmount'] = (g['betAmount'] as num) +
+          (amt is num ? amt : num.tryParse('$amt') ?? 0);
+      g['result'] = (g['result'] as num) +
+          (res is num ? res : num.tryParse('$res') ?? 0);
+      final ca = row['createdAt'];
+      if (ca != null && g['createdAt'] == null) g['createdAt'] = ca;
+    }
+    final list = map.values.toList();
+    list.sort((a, b) {
+      final sa = '${a['createdAt'] ?? a['issueNo'] ?? ''}';
+      final sb = '${b['createdAt'] ?? b['issueNo'] ?? ''}';
+      return sb.compareTo(sa);
+    });
+    return list;
+  }
+
+  List<Map<String, dynamic>> _ticketDetailRows() {
+    final key = _ticketIssueKey;
+    if (key == null) return const [];
+    return _rows.where((row) {
+      final issue = '${row['issueNo'] ?? ''}'.trim();
+      final gt = '${row['gameType'] ?? ''}'.trim();
+      return '$issue|$gt' == key;
+    }).toList();
+  }
+
+  Widget _ticketSummaryBar() {
+    if (_ticketIssueKey != null) {
+      final details = _ticketDetailRows();
+      num bet = 0;
+      num result = 0;
+      for (final r in details) {
+        final amt = r['amount'];
+        final res = r['itemResult'] ?? r['selfResult'];
+        bet += amt is num ? amt : num.tryParse('$amt') ?? 0;
+        result += res is num ? res : num.tryParse('$res') ?? 0;
+      }
+      final issue = _ticketIssueKey!.split('|').first;
+      return _surface(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$_ticketMemberName · 期$issue',
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: 8.h),
+            Row(
+              children: [
+                Expanded(child: AgentMetric(label: '注单', value: details.length)),
+                Expanded(child: AgentMetric(label: '流水', value: bet)),
+                Expanded(child: AgentMetric(label: '结果', value: result, signed: true)),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    final groups = _ticketIssueGroups();
+    num bet = 0;
+    num result = 0;
+    var count = 0;
+    for (final g in groups) {
+      count += g['orderCount'] as int;
+      bet += g['betAmount'] as num;
+      result += g['result'] as num;
+    }
+    return _surface(
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$_ticketMemberName · ${groups.length} 期 · $count 条',
+            style: TextStyle(
+              fontSize: 13.sp,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Row(
+            children: [
+              Expanded(child: AgentMetric(label: '流水', value: bet)),
+              Expanded(child: AgentMetric(label: '注单', value: count)),
+              Expanded(child: AgentMetric(label: '结果', value: result, signed: true)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ticketIssueRow(Map<String, dynamic> g) {
+    return GestureDetector(
+      onTap: () => setState(() => _ticketIssueKey = '${g['key']}'),
+      child: _surface(
+        child: Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${g['issueNo'] ?? '—'}',
+                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                  ),
+                  SizedBox(height: 2.h),
+                  Text(
+                    '${g['gameName'] ?? g['gameType'] ?? '—'}',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: AgentMetric(label: '注单', value: g['orderCount']),
+            ),
+            Expanded(
+              child: AgentMetric(label: '流水', value: g['betAmount']),
+            ),
+            Expanded(
+              child: AgentMetric(label: '结果', value: g['result'], signed: true),
+            ),
+            Icon(Icons.chevron_right, size: 18.sp, color: AppColors.textHint),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _ticketCard(Map<String, dynamic> row) {

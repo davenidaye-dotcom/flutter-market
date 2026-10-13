@@ -8,6 +8,7 @@ import '../../../../shared/widgets/page_app_bar.dart';
 import '../../../wallet/widgets/date_range_filter.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
+import 'fly_issue_detail_page.dart';
 
 /// Feipan reports — 汇总 + 期号列表（对齐图7）
 class FlyReportPage extends ConsumerStatefulWidget {
@@ -212,9 +213,9 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
                                 children: [
                                   _colHead('期号/日期', flex: 3),
                                   _colHead('游戏', flex: 2),
-                                  _colHead('比例', flex: 1),
                                   _colHead('注单', flex: 1),
                                   _colHead('流水', flex: 2),
+                                  _colHead('输赢', flex: 2),
                                 ],
                               ),
                             ),
@@ -223,70 +224,80 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
                               final issue = '${r['issueNo'] ?? r['label'] ?? '—'}';
                               final game =
                                   '${r['gameName'] ?? r['label'] ?? r['gameType'] ?? '—'}';
+                              final wl = displayNumber(r['winLoss'] ?? 0);
                               final bg = i.isOdd
                                   ? const Color(0xFFF5F3FA)
                                   : Colors.white;
-                              return Container(
+                              return Material(
                                 color: bg,
-                                padding: EdgeInsets.symmetric(
-                                  vertical: 10.h,
-                                  horizontal: 4.w,
-                                ),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      flex: 3,
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            issue,
+                                child: InkWell(
+                                  onTap: () => _openIssueDetail(r),
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(
+                                      vertical: 10.h,
+                                      horizontal: 4.w,
+                                    ),
+                                    child: Row(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Expanded(
+                                          flex: 3,
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                issue,
+                                                style: TextStyle(
+                                                  fontSize: 12.sp,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: AppColors.navBlue,
+                                                ),
+                                              ),
+                                              Text(
+                                                '${_issueAt(r)} · ${_ratio(r)}',
+                                                style: TextStyle(
+                                                  fontSize: 11.sp,
+                                                  color: AppColors.textHint,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(
+                                            game,
+                                            style: TextStyle(fontSize: 12.sp),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 1,
+                                          child: Text(
+                                            displayNumber(r['orderCount'] ?? 0),
+                                            style: TextStyle(fontSize: 12.sp),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(
+                                            displayNumber(r['betAmount'] ?? 0),
+                                            style: TextStyle(fontSize: 12.sp),
+                                          ),
+                                        ),
+                                        Expanded(
+                                          flex: 2,
+                                          child: Text(
+                                            wl,
                                             style: TextStyle(
                                               fontSize: 12.sp,
-                                              fontWeight: FontWeight.w600,
+                                              color: _pnlColor(wl),
                                             ),
                                           ),
-                                          Text(
-                                            _issueAt(r),
-                                            style: TextStyle(
-                                              fontSize: 11.sp,
-                                              color: AppColors.textHint,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
+                                        ),
+                                      ],
                                     ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        game,
-                                        style: TextStyle(fontSize: 12.sp),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 1,
-                                      child: Text(
-                                        _ratio(r),
-                                        style: TextStyle(fontSize: 12.sp),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 1,
-                                      child: Text(
-                                        displayNumber(r['orderCount'] ?? 0),
-                                        style: TextStyle(fontSize: 12.sp),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        displayNumber(r['betAmount'] ?? 0),
-                                        style: TextStyle(fontSize: 12.sp),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               );
                             }),
@@ -295,6 +306,25 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
                       ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _openIssueDetail(Map<String, dynamic> r) {
+    final issue = '${r['issueNo'] ?? ''}'.trim();
+    final gameType = '${r['gameType'] ?? ''}'.trim();
+    if (issue.isEmpty || gameType.isEmpty) {
+      AppToast.error('缺少期号或彩种');
+      return;
+    }
+    final gameName = '${r['gameName'] ?? r['label'] ?? gameType}'.trim();
+    pushHostPage(
+      context,
+      FlyIssueDetailPage(
+        roomId: widget.roomId,
+        issueNo: issue,
+        gameType: gameType,
+        gameName: gameName,
       ),
     );
   }

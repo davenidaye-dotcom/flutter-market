@@ -47,7 +47,6 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
     _Filter('回水', action: 'REBATE,MEMBER_REBATE'),
     _Filter('彩种', action: 'GAME_SETTINGS'),
     _Filter('公告', action: 'ANNOUNCEMENT'),
-    _Filter('红包', action: 'REDPACK'),
     _Filter('房间设置', action: 'ROOM_NAME,ENTER_PASSWORD,ROOM_FLAGS'),
     _Filter('协管', action: 'ASSISTANT*'),
   ];

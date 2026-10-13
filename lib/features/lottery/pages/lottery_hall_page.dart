@@ -8,6 +8,7 @@ import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/session_store.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
@@ -240,10 +241,9 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
                   roomCode: widget.roomId,
                   onBack: isHost
                       ? () async {
-                          dismissAllShellCovers();
                           ref.invalidate(roomLotteryLiveProvider(widget.roomId));
                           await ref.read(authSessionProvider.notifier).logout();
-                          if (context.mounted) context.go(RoutePaths.login);
+                          if (context.mounted) appGoLoginClearingStack(context);
                         }
                       : () {
                           dismissAllShellCovers();

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/host_bottom_nav.dart';
@@ -34,6 +35,8 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
   bool _dialogShowing = false;
   String? _dialogForId;
   int _prevBranch = -1;
+  /// 底栏浏览历史（不含当前），返回时回到上一 Tab
+  final List<int> _tabHistory = <int>[];
 
   @override
   void initState() {
@@ -89,10 +92,21 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       if (index == 3) _bumpAuditListRefresh();
       return;
     }
+    final from = widget.navigationShell.currentIndex;
+    if (_tabHistory.isEmpty || _tabHistory.last != from) {
+      _tabHistory.add(from);
+    }
     widget.navigationShell.goBranch(branch);
     if (index == 2 || index == 3) {
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
     }
+  }
+
+  bool _tryTabBack() {
+    if (_tabHistory.isEmpty) return false;
+    final prev = _tabHistory.removeLast();
+    widget.navigationShell.goBranch(prev);
+    return true;
   }
 
   Future<void> _maybeShowApplyDialog(HostApplyNotice? notice) async {
@@ -136,13 +150,18 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       if (next == null) return;
       unawaited(_maybeShowApplyDialog(next));
     });
-    return AppPageScaffold(
-      body: widget.navigationShell,
-      bottomNavigationBar: HostBottomNavBar(
-        currentIndex: _navIndex,
-        auditBadge: badge,
-        csBadge: csUnread,
-        onTap: _onNavTap,
+    return AppBackScope(
+      child: ShellTabBack(
+        tryBack: _tryTabBack,
+        child: AppPageScaffold(
+          body: widget.navigationShell,
+          bottomNavigationBar: HostBottomNavBar(
+            currentIndex: _navIndex,
+            auditBadge: badge,
+            csBadge: csUnread,
+            onTap: _onNavTap,
+          ),
+        ),
       ),
     );
   }

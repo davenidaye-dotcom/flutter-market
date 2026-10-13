@@ -240,8 +240,8 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
                       SizedBox(height: 4.h),
                       Text(
                         _member
-                            ? '占成是直属上级占这个会员多少，不能超过该上级的可分配上限。'
-                            : '占成是直属上级占这个账号多少；占成上限是分给它再往下分配的最大比例。两者之和不能超过该上级的可分配上限。',
+                            ? '本级占成是直属上级占这个会员多少，不能超过该上级的可分配上限。'
+                            : '本级占成是直属上级占这个账号多少；占成上限是分给它再往下分配的最大比例。两者之和不能超过该上级的可分配上限。',
                         style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary, height: 1.4),
                       ),
                       SizedBox(height: 8.h),
@@ -289,8 +289,8 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
         children: [
           _cell('游戏', flex: 3, header: true, align: TextAlign.left),
           _cell('可分配上限', flex: 2, header: true),
-          _cell('占成', flex: 2, header: true),
           if (!_member) _cell('占成上限', flex: 2, header: true),
+          _cell('本级占成', flex: 2, header: true),
         ],
       ),
     );
@@ -307,21 +307,11 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
         children: [
           _cell(_gameName(gt), flex: 3, align: TextAlign.left),
           _cell('$cap', flex: 2),
-          Expanded(
-            flex: 2,
-            child: _dropdownBox(
-              '$own',
-              onTap: () async {
-                final v = await _pickValue('占成', own, cap);
-                if (v != null) _setOwn(r, v);
-              },
-            ),
-          ),
           if (!_member)
             Expanded(
               flex: 2,
               child: Padding(
-                padding: EdgeInsets.only(left: 4.w),
+                padding: EdgeInsets.only(right: 4.w),
                 child: _dropdownBox(
                   '$child',
                   onTap: () async {
@@ -332,6 +322,16 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
                 ),
               ),
             ),
+          Expanded(
+            flex: 2,
+            child: _dropdownBox(
+              '$own',
+              onTap: () async {
+                final v = await _pickValue('本级占成', own, cap);
+                if (v != null) _setOwn(r, v);
+              },
+            ),
+          ),
         ],
       ),
     );
