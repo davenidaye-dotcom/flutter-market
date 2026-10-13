@@ -1425,9 +1425,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           pair: _pairOf(payload),
         );
       }
-      if (_engine.isDrawingPhase(gameType, DateTime.now())) {
-        _scheduleRefreshGamesFromServer(immediate: true);
-      }
+      // 官方出号后立即拉期态：服务端已换期时退出「开奖中」，勿等下一次 watchdog
+      _scheduleRefreshGamesFromServer(immediate: true);
+      _scheduleDrawWatchdog();
       return;
     }
 
@@ -1903,8 +1903,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _drawWatchdog = null;
       return;
     }
-    // 周期性补拉：部分房间漏 SNAPSHOT 时只靠一次 1s 不够
-    _drawWatchdog ??= Timer.periodic(const Duration(seconds: 3), (_) {
+    // 周期性补拉：漏 SNAPSHOT 时尽快对齐服务端未来 openAt，退出「开奖中」
+    _drawWatchdog ??= Timer.periodic(const Duration(seconds: 2), (_) {
       if (!mounted) {
         _cancelDrawWatchdog();
         return;

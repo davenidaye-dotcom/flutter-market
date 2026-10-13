@@ -211,12 +211,13 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     _load();
   }
 
-  /// 下级盈亏 = 盈亏 − 盈亏结果
-  num? _subordinatePnl(dynamic profit, dynamic result) {
+  /// 下级盈亏 = 盈亏 − 盈亏结果 − 上级交收
+  num? _subordinatePnl(dynamic profit, dynamic result, dynamic uplink) {
     final a = profit is num ? profit.toDouble() : double.tryParse('$profit'.trim());
     final b = result is num ? result.toDouble() : double.tryParse('$result'.trim());
-    if (a == null || b == null) return null;
-    return a - b;
+    final c = uplink is num ? uplink.toDouble() : double.tryParse('$uplink'.trim());
+    if (a == null || b == null || c == null) return null;
+    return a - b - c;
   }
 
   void _popDrill() {
@@ -536,7 +537,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('输赢', _summary['winLoss'], _cRed),
         _cell('退水', _summary['rebate'], _cRed),
         _cell('盈亏', pnl, _cRed),
-        _cell('下级盈亏', _subordinatePnl(pnl, resultPnl), _cGreen),
+        _cell(
+          '下级盈亏',
+          _subordinatePnl(pnl, resultPnl, _summary['uplinkSettlement']),
+          _cGreen,
+        ),
         _cell('下级交货', _summary['downVolume'], _cGreen),
         _cell('应收下线', _summary['receivable'], _cGreen),
         _cell('占成', null, _cOrange, raw: _ratioText(_summary['shareRatio'] ?? 0)),
@@ -583,7 +588,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('输赢', row['memberWin'] ?? row['memberWinLoss'], _cRed),
         _cell('退水', row['memberRebate'], _cRed),
         _cell('盈亏', profit, _cRed),
-        _cell('下级盈亏', _subordinatePnl(profit, resultPnl), _cGreen),
+        _cell(
+          '下级盈亏',
+          _subordinatePnl(profit, resultPnl, row['uplinkSettlement']),
+          _cGreen,
+        ),
         _cell('下级交货', row['downVolume'], _cGreen),
         _cell('应收下线', row['receivable'], _cGreen),
         _cell('占成', null, _cOrange, raw: _ratioText(row['shareRatio'])),
@@ -928,10 +937,12 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   Widget _ticketCard(Map<String, dynamic> row) {
-    final play = row['contentOdds']?.toString() ??
-        row['playName']?.toString() ??
-        row['gameName']?.toString() ??
-        '—';
+    final play = _stripOddsInContent(
+      row['contentOdds']?.toString() ??
+          row['playName']?.toString() ??
+          row['gameName']?.toString() ??
+          '—',
+    );
     return _surface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -975,6 +986,13 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       default:
         return s?.isNotEmpty == true ? s! : '—';
     }
+  }
+
+  /// contentOdds 里 `@ 9.50000000` 抹成 `@ 9.5`
+  String _stripOddsInContent(String raw) {
+    return raw.replaceAllMapped(RegExp(r'@\s*(\d+(?:\.\d+)?)'), (m) {
+      return '@ ${displayNumber(m.group(1), maxDecimals: 4)}';
+    });
   }
 
   Widget _surface({required Widget child, EdgeInsetsGeometry? padding, Color? color}) {

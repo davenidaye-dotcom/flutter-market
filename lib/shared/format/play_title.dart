@@ -1,9 +1,12 @@
+import 'display_number.dart';
+
 /// 注单行名次。特码是冠军位的号码；名次玩法按位显示。
+/// 标题末尾若带赔率数字，统一走 [displayNumber] 抹零（最多 4 位）。
 String rankBetTitle(Map<dynamic, dynamic> row) {
   final title = '${row['title'] ?? '—'}'.trim();
   final code = '${row['playCode'] ?? ''}'.trim().toUpperCase();
-  final amount = _amountTail(title);
-  final tail = amount.isEmpty ? '' : ' $amount';
+  final odds = _oddsTail(row, title);
+  final tail = odds.isEmpty ? '' : ' $odds';
 
   if (code.startsWith('TM-')) {
     return '冠军 [${code.substring(3)}]$tail';
@@ -18,17 +21,17 @@ String rankBetTitle(Map<dynamic, dynamic> row) {
 
   final tm = RegExp(r'^特码-(\d+)\s*[【\[]([^】\]]+)[】\]]\s*(.*)$').firstMatch(title);
   if (tm != null) {
-    final rest = (tm.group(3) ?? '').trim();
+    final rest = _formatTitleRest(tm.group(3));
     return rest.isEmpty ? '冠军 [${tm.group(2)}]' : '冠军 [${tm.group(2)}] $rest';
   }
   final pos = RegExp(r'^第(\d+)名\s*[【\[]([^】\]]+)[】\]]\s*(.*)$').firstMatch(title);
   if (pos != null) {
     final rank = int.tryParse(pos.group(1) ?? '') ?? 0;
-    final rest = (pos.group(3) ?? '').trim();
+    final rest = _formatTitleRest(pos.group(3));
     final name = _rankTitle(rank);
     return rest.isEmpty ? '$name [${pos.group(2)}]' : '$name [${pos.group(2)}] $rest';
   }
-  return title;
+  return _stripOddsInTitle(title);
 }
 
 String _rankTitle(int position) {
@@ -37,6 +40,37 @@ String _rankTitle(int position) {
   return '第$position名';
 }
 
-String _amountTail(String title) {
-  return RegExp(r'(\d+(?:\.\d+)?)\s*$').firstMatch(title)?.group(1) ?? '';
+/// 优先用 row.odds / oddsSnapshot，否则从 title 末尾抠数字，再抹零。
+String _oddsTail(Map<dynamic, dynamic> row, String title) {
+  final fromField = row['odds'] ?? row['oddsSnapshot'];
+  if (fromField != null && '$fromField'.trim().isNotEmpty) {
+    return displayNumber(fromField, maxDecimals: 4);
+  }
+  final raw = RegExp(r'(\d+(?:\.\d+)?)\s*$').firstMatch(title)?.group(1);
+  if (raw == null || raw.isEmpty) return '';
+  return displayNumber(raw, maxDecimals: 4);
+}
+
+String _formatTitleRest(String? rest) {
+  final s = (rest ?? '').trim();
+  if (s.isEmpty) return '';
+  return _stripOddsInTitle(s);
+}
+
+/// 把文案里 `@ 9.50000000` / 末尾赔率抹成 `@ 9.5`。
+String _stripOddsInTitle(String title) {
+  var s = title;
+  s = s.replaceAllMapped(RegExp(r'@\s*(\d+(?:\.\d+)?)'), (m) {
+    return '@ ${displayNumber(m.group(1), maxDecimals: 4)}';
+  });
+  final m = RegExp(r'^(.*?)(\d+(?:\.\d+)?)\s*$').firstMatch(s);
+  if (m != null && m.group(1) != null && (m.group(1)!.contains('[') || m.group(1)!.trim().isNotEmpty)) {
+    final head = m.group(1)!;
+    // 仅当末尾像赔率（带小数或跟在空格后）才抹
+    final tail = m.group(2)!;
+    if (tail.contains('.') || head.endsWith(' ')) {
+      return '${head.trimRight()} ${displayNumber(tail, maxDecimals: 4)}'.trim();
+    }
+  }
+  return s;
 }

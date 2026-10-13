@@ -64,6 +64,9 @@ final class LotteryPeriodEngine {
   /// 开奖中超过这段时间，才接受服务端仍在未来的同期开奖时刻。
   static const stuckDrawingGrace = Duration(milliseconds: 500);
 
+  /// 开奖中已持续时长（用于 watchdog / 诊断）；未在开奖中则 null。
+  DateTime? drawingSinceOf(String gameId) => _slots[gameId]?.drawingSince;
+
   final Map<String, _GameSlot> _slots = {};
 
   List<LotteryGameModel> get games =>
