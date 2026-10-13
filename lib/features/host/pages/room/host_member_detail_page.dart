@@ -235,6 +235,15 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
     }
   }
 
+  bool _isBannedStatus(String? status) {
+    final st = (status ?? '').toUpperCase();
+    return st == 'BAN_ENTER' ||
+        st == 'BAN' ||
+        st == 'BANNED' ||
+        st == 'BLOCK' ||
+        st == 'DISABLED';
+  }
+
   Future<void> _setStatus(String status, String tip) async {
     if (_statusBusy) return;
     final cur = (_member?.status ?? 'NORMAL').toUpperCase();
@@ -242,20 +251,24 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
       AppToast.info('当前已是$tip');
       return;
     }
-    final isBan = status.toUpperCase() == 'BAN_ENTER';
+    final next = status.toUpperCase();
+    final isBan = _isBannedStatus(next);
+    final isUnban = next == 'NORMAL' || next == 'ACTIVE' || next == 'OK';
     final ok = await hostConfirm(
       context,
       title: tip,
       message: isBan
           ? '封禁后该玩家无法进房，其未审核的进房/上下分申请将全部拒绝。确定封禁？'
-          : tip,
-      danger: true,
+          : isUnban
+              ? '解禁后该玩家可重新进房。确定解禁？'
+              : tip,
+      danger: isBan,
     );
     if (!ok || !mounted) return;
     _statusBusy = true;
     try {
       await ref.read(ownerRepositoryProvider).updateMemberStatus(widget.memberId, status);
-      AppToast.success(isBan ? '已封禁' : '已提交');
+      AppToast.success(isBan ? '已封禁' : (isUnban ? '已解禁' : '已提交'));
       await _load(silent: true);
     } catch (e) {
       AppToast.error(e.toString());
@@ -401,10 +414,12 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
                     ),
                   _MenuItem(
                     Icons.block,
-                    member.status.toUpperCase() == 'BAN_ENTER' ? '当前已封禁' : '封禁玩家',
-                    member.status.toUpperCase() == 'BAN_ENTER' || _statusBusy
+                    _isBannedStatus(member.status) ? '解禁玩家' : '封禁玩家',
+                    _statusBusy
                         ? null
-                        : () => _setStatus('BAN_ENTER', '封禁玩家'),
+                        : () => _isBannedStatus(member.status)
+                            ? _setStatus('NORMAL', '解禁玩家')
+                            : _setStatus('BAN_ENTER', '封禁玩家'),
                     danger: true,
                   ),
                 ]),

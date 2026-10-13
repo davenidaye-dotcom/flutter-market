@@ -37,6 +37,57 @@ class BetConfirmResult {
   final String command;
 }
 
+/// 确认框改额后的聊天气泡指令。
+/// - 特码同额：`12345/100`
+/// - 特码混额：按金额拆开 `1234/100 5/200`（改成 200 的号单独一段）
+/// - 其它玩法：`冠军/大/100` 空格拼接
+String compactBetCommandFromItems(
+  List<Map<String, dynamic>> items, {
+  List<BetConfirmLine>? lines,
+}) {
+  if (items.isEmpty) return '';
+  final codes = <String>[];
+  final amts = <int>[];
+  for (final it in items) {
+    final code = '${it['playCode'] ?? ''}'.trim().toUpperCase();
+    final n = it['amount'] is int
+        ? it['amount'] as int
+        : int.tryParse('${it['amount']}'.trim());
+    if (code.isEmpty || n == null || n <= 0) continue;
+    codes.add(code);
+    amts.add(n);
+  }
+  if (codes.isEmpty) return '';
+
+  final allTm = codes.every((c) => c.startsWith('TM-'));
+  if (allTm) {
+    final orderAmts = <int>[];
+    final byAmt = <int, List<int>>{};
+    for (var i = 0; i < codes.length; i++) {
+      final num = int.tryParse(codes[i].substring(3));
+      if (num == null) continue;
+      final a = amts[i];
+      if (!byAmt.containsKey(a)) orderAmts.add(a);
+      byAmt.putIfAbsent(a, () => []).add(num);
+    }
+    return orderAmts.map((a) {
+      final sels = byAmt[a]!..sort();
+      return '${sels.join()}/$a';
+    }).join(' ');
+  }
+
+  if (lines != null && lines.length == items.length) {
+    final parts = <String>[];
+    for (var i = 0; i < lines.length; i++) {
+      parts.add('${lines[i].label.replaceAll(' ', '/')}/${amts[i]}');
+    }
+    return parts.join(' ');
+  }
+  return items
+      .map((e) => '${e['playCode']}/${e['amount']}')
+      .join(' ');
+}
+
 /// 房主开启「下注确认」后的明细弹窗（对齐 Web：无确认列，金额可改）
 Future<BetConfirmResult?> showBetConfirmDialog({
   required BuildContext context,
@@ -198,7 +249,6 @@ class _BetConfirmSheetState extends State<_BetConfirmSheet> {
     final lines = _lines;
     if (lines == null || lines.isEmpty) return;
     final items = <Map<String, dynamic>>[];
-    final cmdParts = <String>[];
     for (final l in lines) {
       final raw = l.amountCtrl.text.trim();
       final n = int.tryParse(raw);
@@ -207,10 +257,13 @@ class _BetConfirmSheetState extends State<_BetConfirmSheet> {
         return;
       }
       items.add({'playCode': l.playCode, 'amount': n});
-      cmdParts.add('${l.label.replaceAll(' ', '/')}/$n');
     }
     Navigator.of(context).pop(
-      BetConfirmResult(items: items, command: cmdParts.join(' ')),
+      BetConfirmResult(
+        items: items,
+        // 同额压成 12345/100；混额拆开 1234/100 5/200
+        command: compactBetCommandFromItems(items, lines: lines),
+      ),
     );
   }
 

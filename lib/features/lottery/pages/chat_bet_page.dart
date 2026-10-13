@@ -1416,8 +1416,12 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       if (command.contains('梭哈')) {
         submitItems = null;
       } else {
-        // 气泡/同房广播仍用输入原文；确认框只带回改后 items。
         submitItems = confirmed.items;
+        // 改额后气泡不再沿用原文（如 12345/100），混额用 1234/100 5/200
+        final next = confirmed.command.trim();
+        if (next.isNotEmpty) {
+          submitCommand = next;
+        }
       }
     }
 
@@ -1450,9 +1454,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
           accountId: _accountId,
         ),
       );
-      final slip = done.content.trim().isNotEmpty ? done.content.trim() : command;
-      _completeOptimisticBet(command, done.orderIds);
-      _rememberSuccessfulBet(command);
+      final slip = done.content.trim().isNotEmpty ? done.content.trim() : submitCommand;
+      _completeOptimisticBet(submitCommand, done.orderIds);
+      _rememberSuccessfulBet(submitCommand);
       _appendBetSlip(slip, orderIds: done.orderIds);
       AppToast.success('下注成功');
     } catch (e) {
