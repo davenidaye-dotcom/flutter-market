@@ -1404,6 +1404,27 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       ..addAll(desired);
   }
 
+  /// 订阅被服务端拒绝（进房状态还没写好 / 租户上下文等）：不能当作已订阅，否则永远收不到房间推送。
+  final Map<String, int> _denialRetries = {};
+  final Map<String, Timer> _denialTimers = {};
+
+  void _onSubscribeDenied(String topic) {
+    if (topic.isEmpty) return;
+    _wsSubscribedTopics.remove(topic);
+    final n = (_denialRetries[topic] ?? 0) + 1;
+    _denialRetries[topic] = n;
+    if (n > 4) {
+      // 持续被拒：交给 HTTP 周期补拉兜底，不再刷屏重试
+      _scheduleResync(null);
+      return;
+    }
+    _denialTimers[topic]?.cancel();
+    _denialTimers[topic] = Timer(Duration(milliseconds: 1000 * n), () {
+      _denialTimers.remove(topic);
+      if (mounted) _syncWsSubscriptions();
+    });
+  }
+
   void _onWsEvent(Map<String, dynamic> event) {
     if (!mounted) return;
     final payload = _wsPayload(event);
@@ -1429,6 +1450,20 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
     if (type == 'BET_ACK') {
       _betExecutor.onAck(payload);
+      return;
+    }
+
+    if (type == 'SUBSCRIBE_DENIED') {
+      _onSubscribeDenied('${payload['topic'] ?? ''}');
+      return;
+    }
+
+    if (type == 'SUBSCRIBED') {
+      final t = '${payload['topic'] ?? ''}';
+      if (_denialRetries.remove(t) != null) {
+        // 之前被拒过又订上了：这段时间的开奖 / 核对卡 / 封盘都没收到，补拉最新一页
+        _scheduleResync(null);
+      }
       return;
     }
 
@@ -2263,6 +2298,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _wsConnectGen++;
     _wsReconnectTimer?.cancel();
     _wsReconnectTimer = null;
+    for (final t in _denialTimers.values) {
+      t.cancel();
+    }
+    _denialTimers.clear();
     _ticker?.cancel();
     _drawPollDebounce?.cancel();
     _drawWatchdog?.cancel();
