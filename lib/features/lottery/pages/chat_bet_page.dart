@@ -625,7 +625,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       );
       _applyTimelineFromCache();
     }
-    _appendLocalReceipt(command, orderIds: orderIds);
+    // 机器人回执等房间 WS 的 BET_RECEIPT / CHAT，不再本地生成
   }
 
   void _appendLocalMessage(String command, {List<String> orderIds = const []}) {
@@ -651,13 +651,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       accountId: user?.id,
     );
     _publishChatMessage(message, dedupeKey: id);
-    _appendLocalReceipt(
-      command,
-      orderIds: orderIds,
-      sender: sender,
-      issue: issue,
-      time: message.time,
-    );
   }
 
   void _appendLocalReceipt(
@@ -1557,9 +1550,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
           accountId: _accountId,
         ),
       );
-      final slip = done.content.trim().isNotEmpty ? done.content.trim() : submitCommand;
       _completeOptimisticBet(submitCommand, done.orderIds);
       _rememberSuccessfulBet(submitCommand);
+      final slip = done.content.trim().isNotEmpty ? done.content.trim() : submitCommand;
       _appendBetSlip(slip, orderIds: done.orderIds);
       AppToast.success('下注成功');
     } catch (e) {
@@ -2051,9 +2044,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                             onBetStart: _publishOptimisticBet,
                             onBetFailed: _dropOptimisticBet,
                             onBetSuccess: (command, orderIds, content) {
-                              final slip = content.trim().isNotEmpty ? content.trim() : command;
                               _completeOptimisticBet(command, orderIds);
                               _rememberSuccessfulBet(command);
+                              final slip = content.trim().isNotEmpty ? content.trim() : command;
                               _appendBetSlip(slip, orderIds: orderIds);
                             },
                           );

@@ -7,7 +7,6 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../config/env/env_config.dart';
-import 'session_store.dart';
 import 'ws_message_codec.dart';
 
 enum FlyroomWsRole { member, owner }
@@ -36,9 +35,8 @@ class FlyroomWsClient {
   bool get isConnected => _channel != null;
 
   Uri get _uri {
-    final token = SessionStore.instance.accessToken ?? '';
-    final path = role == FlyroomWsRole.owner ? 'owner' : 'member';
-    return Uri.parse('${EnvConfig.wsBaseUrl}/$path?token=$token');
+    // 房间广播走公共通道，不带 token；下注在 BET 帧里单独带 token。
+    return Uri.parse('${EnvConfig.wsBaseUrl}/flyroom');
   }
 
   Future<void> connect() async {

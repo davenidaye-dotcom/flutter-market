@@ -65,7 +65,7 @@ Future<void> main(List<String> args) async {
     'HTTP snapshot: issue=$httpIssue countdown=$httpCd openAt=$httpOpenAt',
   );
 
-  final uri = '$wsBase/member?token=$token';
+  final uri = '$wsBase/flyroom';
   final ws = await WebSocket.connect(uri).timeout(const Duration(seconds: 15));
   ws.add(jsonEncode({
     'action': 'SUBSCRIBE',

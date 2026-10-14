@@ -152,7 +152,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     sendWs: (reqId, body) {
       final ws = _ws;
       if (ws == null || !ws.isConnected) return false;
-      ws.send({'action': 'BET', 'data': body});
+      final data = Map<String, dynamic>.from(body);
+      final token = SessionStore.instance.accessToken;
+      if (token != null && token.isNotEmpty) {
+        data['token'] = token;
+      }
+      ws.send({'action': 'BET', 'data': data});
       return true;
     },
     poll: (reqId) =>
@@ -1151,6 +1156,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   Future<void> _refreshGamesFromServerImpl() async {
     if (!mounted) return;
+    if (!SessionStore.instance.hasToken) {
+      _cancelDrawWatchdog();
+      return;
+    }
     try {
       final isHost = _ref.read(authSessionProvider).isHostSide;
       final games = await _ref
