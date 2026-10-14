@@ -639,12 +639,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       await refreshDrawHistoryRows(gameId);
       if (!mounted) return;
 
-      final cache = ChatPushCache.instance;
-      if (!cache.hasDrawsForGame(roomId, gameId)) {
-        cache.clearLiveDedupe(roomId, gameId);
-        cache.purgeSystemMessagesForGame(roomId, gameId);
-      }
-
       await loadChatMessagesFromServer(gameId);
       if (!mounted) return;
 
@@ -1338,6 +1332,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsFeatures = const {};
 
       _wsSub = client.events.listen(_onWsEvent);
+      _sendWsAuth();
       _syncWsSubscriptions();
       if (isReconnect) {
         unawaited(_refreshGamesFromServer());
@@ -1390,6 +1385,33 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           isReconnect: true,
         ),
       );
+    });
+  }
+
+  void _sendWsAuth() {
+    final client = _ws;
+    if (client == null || !client.isConnected) return;
+    final token = SessionStore.instance.accessToken;
+    if (token == null || token.isEmpty) return;
+    client.send({
+      'action': 'AUTH',
+      'data': {'token': token},
+    });
+  }
+
+  void applyBetAckReceipt(String gameId, BetSubmitResult ack) {
+    if (gameId.isEmpty && ack.gameType.isEmpty) return;
+    final receipt = ack.receipt;
+    _onBetReceiptWs(ack.gameType.isNotEmpty ? ack.gameType : gameId, {
+      'orderId': ack.orderIds.isNotEmpty ? ack.orderIds.first : '',
+      'issueNo': ack.issueNo,
+      'mentionName': ack.mentionName,
+      'receipt': receipt,
+      'text': receipt,
+      'content': receipt.isNotEmpty ? receipt : ack.content,
+      'totalAmount': ack.totalAmount,
+      'items': ack.items,
+      'senderName': '机器人',
     });
   }
 
@@ -1454,6 +1476,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsFeatures = {
         if (f is List) for (final e in f) '$e'.toUpperCase(),
       };
+      _sendWsAuth();
       return;
     }
 
@@ -1901,10 +1924,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   void _onBetReceiptWs(String gameType, Map<String, dynamic> payload) {
     final orderId = (payload['orderId'] ?? '').toString().trim();
     final issue = (payload['issueNo'] ?? '').toString().trim();
-    final fallback =
-        (payload['content'] ?? payload['text'] ?? '').toString().trim();
-    // BET_FAIL 文案已由后端拼好；成功卡仍走 formatBetReceiptText
-    final content = fallback.contains('投注失败')
+    final fallback = (payload['receipt'] ??
+            payload['text'] ??
+            payload['content'] ??
+            '')
+        .toString()
+        .trim();
+    // 服务端已拼好的确认卡 / 失败卡直接用；否则本地按 items 拼
+    final content = fallback.contains('投注失败') || fallback.contains('投注成功')
         ? fallback
         : formatBetReceiptText(
             mention: (payload['mentionName'] ?? '').toString(),

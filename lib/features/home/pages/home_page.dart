@@ -259,7 +259,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         );
     ref.read(authSessionProvider.notifier).bindRoomCode(room.roomCode);
     final live = ref.read(roomLotteryLiveProvider(room.roomCode).notifier);
-    await live.ensureLoaded();
+    unawaited(live.ensureLoaded());
     if (!mounted) return;
     await context.push(RoutePaths.roomLottery(room.roomCode));
     // 从房间返回后刷新历史（进房时后端才写入 history）
@@ -275,18 +275,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (_loading) return;
     setState(() => _loading = true);
     try {
-      final verified = await ref.read(roomRepositoryProvider).verifyRoom(roomCode);
-      if (!mounted) return;
-
-      // 审核房：已通过/已是成员 → 直接进；否则才弹申请
-      if (verified.requiresEnterAudit && !verified.enterApproved) {
-        await _handleAuditRoom(verified.roomCode, verified.name);
-        return;
-      }
-
-      await _enterVerifiedRoom(verified);
+      await _doEnter(roomCode);
     } on ApiException catch (e) {
-      // 校验未返回 enterMode 时，enter 可能直接报需审核
       if (e.message.contains('审核') || e.message.contains('申请')) {
         if (_canEnterWithoutApply(e)) {
           await _doEnter(roomCode);

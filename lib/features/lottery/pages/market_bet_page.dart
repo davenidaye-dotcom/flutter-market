@@ -308,6 +308,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
       if (!mounted) return;
+      ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .applyBetAckReceipt(widget.gameId, done);
       widget.onBetSuccess?.call(submitCommand, done.orderIds, done.content);
       AppToast.success('重投成功');
     } catch (e) {
@@ -465,6 +468,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
       if (!mounted) return;
+      ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .applyBetAckReceipt(widget.gameId, done);
       widget.onBetSuccess?.call(submitCommand, done.orderIds, done.content);
       _rememberBet(submitCommand);
       AppToast.success('下注成功');

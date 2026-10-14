@@ -1551,6 +1551,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         ),
       );
       _completeOptimisticBet(submitCommand, done.orderIds);
+      ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .applyBetAckReceipt(_gameId, done);
       _rememberSuccessfulBet(submitCommand);
       final slip = done.content.trim().isNotEmpty ? done.content.trim() : submitCommand;
       _appendBetSlip(slip, orderIds: done.orderIds);

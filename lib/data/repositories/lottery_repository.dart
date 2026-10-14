@@ -13,26 +13,42 @@ class BetSubmitResult {
   const BetSubmitResult({
     required this.orderIds,
     this.content = '',
+    this.receipt = '',
+    this.issueNo = '',
+    this.mentionName = '',
+    this.gameType = '',
     this.totalAmount,
     this.available,
+    this.items,
   });
 
   final List<String> orderIds;
   final String content;
+  final String receipt;
+  final String issueNo;
+  final String mentionName;
+  final String gameType;
   final Object? totalAmount;
   final Object? available;
+  final List<dynamic>? items;
 
   /// HTTP 下注响应 / WS BET_ACK / 按 reqId 查询结果共用：orderIds 或单个 orderId。
   factory BetSubmitResult.fromMap(Map<dynamic, dynamic> resp) {
     final ids = resp['orderIds'];
     final single = '${resp['orderId'] ?? ''}'.trim();
+    final items = resp['items'];
     return BetSubmitResult(
       orderIds: ids is List
           ? ids.map((e) => '$e').where((e) => e.isNotEmpty).toList()
           : (single.isNotEmpty ? [single] : const <String>[]),
       content: '${resp['content'] ?? ''}'.trim(),
+      receipt: '${resp['receipt'] ?? resp['text'] ?? ''}'.trim(),
+      issueNo: '${resp['issueNo'] ?? ''}'.trim(),
+      mentionName: '${resp['mentionName'] ?? ''}'.trim(),
+      gameType: '${resp['gameType'] ?? ''}'.trim(),
       totalAmount: resp['totalAmount'],
       available: resp['available'],
+      items: items is List ? items : null,
     );
   }
 }
