@@ -49,6 +49,8 @@ class _Member {
         return '封禁';
       case 'DISABLED':
         return '已禁用';
+      case 'REMOVED':
+        return '已删除';
       case 'NORMAL':
       case '':
         return '正常';
@@ -144,7 +146,12 @@ HostMember hostMemberFromMap(Map<String, dynamic> m) {
       role.contains('试玩');
   final disabled = status == 'FROZEN' ||
       status == 'BAN_ENTER' ||
+      status == 'BAN' ||
+      status == 'BANNED' ||
+      status == 'BLOCK' ||
       status == 'DISABLED' ||
+      status == 'REMOVED' ||
+      m['enabled'] == false ||
       m['disabled'] == true;
   final avatar = (m['avatar'] ?? m['avatarUrl'] ?? '').toString().trim();
   return HostMember(

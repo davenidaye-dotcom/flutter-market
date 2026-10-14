@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -41,6 +43,8 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
   bool _hasMore = true;
   int _pageNum = 1;
   int _total = 0;
+  int _listReq = 0;
+  int _statsReq = 0;
   Map<String, dynamic> _stats = {};
 
   @override
@@ -92,42 +96,26 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
       setState(() => _loadingMore = true);
     }
     final page = reset ? 1 : _pageNum + 1;
+    final listReq = ++_listReq;
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final kw = _search.text.trim();
-      // 顶部四块统计永远用「全部」summary；机器人 Tab 列表走 atmosphere
-      final listFuture = _filter == 2
-          ? repo.getAtmosphereList(keyword: kw, pageNum: page, pageSize: _pageSize)
-          : repo.getMembers(
+      // 列表不要带全房统计。统计单独请求，避免搜索被总流水汇总拖住。
+      final data = _filter == 2
+          ? await repo.getAtmosphereList(keyword: kw, pageNum: page, pageSize: _pageSize)
+          : await repo.getMembers(
               keyword: kw,
               memberType: _memberType,
               pageNum: page,
               pageSize: _pageSize,
+              summary: false,
             );
-      final Map<String, dynamic> data;
-      Map<String, dynamic>? statsData;
-      if (reset) {
-        final results = await Future.wait([
-          listFuture,
-          repo.getMembers(memberType: 'ALL', pageNum: 1, pageSize: 1),
-        ]);
-        data = results[0];
-        statsData = results[1];
-      } else {
-        data = await listFuture;
-      }
-      if (!mounted) return;
+      if (!mounted || listReq != _listReq) return;
       final list = hostRowsOf(data).map(hostMemberFromMap).toList();
       final total = _asInt(data['total']);
       setState(() {
         if (reset) {
           _rows = list;
-          final summary = statsData?['summary'];
-          _stats = summary is Map
-              ? Map<String, dynamic>.from(summary)
-              : (data['summary'] is Map
-                  ? Map<String, dynamic>.from(data['summary'] as Map)
-                  : <String, dynamic>{});
         } else {
           _rows = [..._rows, ...list];
         }
@@ -137,13 +125,34 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
         _loading = false;
         _loadingMore = false;
       });
+      if (reset && kw.isEmpty) {
+        final statsReq = ++_statsReq;
+        unawaited(_loadStats(statsReq));
+      }
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || listReq != _listReq) return;
       setState(() {
         _loading = false;
         _loadingMore = false;
       });
       AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _loadStats(int statsReq) async {
+    try {
+      final statsData = await ref.read(ownerRepositoryProvider).getMembers(
+            memberType: 'ALL',
+            pageNum: 1,
+            pageSize: 1,
+            summary: true,
+          );
+      if (!mounted || statsReq != _statsReq) return;
+      final summary = statsData['summary'];
+      if (summary is! Map) return;
+      setState(() => _stats = Map<String, dynamic>.from(summary));
+    } catch (_) {
+      // 列表已经出来，统计失败不打断搜索
     }
   }
 

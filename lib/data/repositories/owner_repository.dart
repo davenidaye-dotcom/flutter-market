@@ -94,6 +94,7 @@ class OwnerRepository {
     String? presence,
     int pageNum = 1,
     int pageSize = 20,
+    bool summary = true,
   }) async {
     final data = await _client.get('/owner/room/members', query: {
       if (keyword != null && keyword.isNotEmpty) 'keyword': keyword,
@@ -102,6 +103,7 @@ class OwnerRepository {
       if (presence != null) 'presence': presence,
       'pageNum': pageNum,
       'pageSize': pageSize,
+      'summary': summary,
     });
     return _asMap(data);
   }
