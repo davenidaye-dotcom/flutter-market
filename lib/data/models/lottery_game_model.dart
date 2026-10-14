@@ -15,6 +15,8 @@ class LotteryGameModel {
     this.openAtEpochMs,
     this.sealAtEpochMs,
     this.sealSeconds,
+    this.closeStartEpochMs,
+    this.closeEndEpochMs,
   });
 
   final String id;
@@ -31,6 +33,10 @@ class LotteryGameModel {
   final int? sealAtEpochMs;
   /// 提前封盘秒数（后台配置）；有 sealAt/openAt 时优先用时刻差
   final int? sealSeconds;
+  /// 后台配置的封盘时间窗（当前进行中的或下一个，ms）；null/0 = 没配置。
+  /// copyWith 传 0 表示清除。
+  final int? closeStartEpochMs;
+  final int? closeEndEpochMs;
 
   LotteryGameModel copyWith({
     String? id,
@@ -44,6 +50,8 @@ class LotteryGameModel {
     int? openAtEpochMs,
     int? sealAtEpochMs,
     int? sealSeconds,
+    int? closeStartEpochMs,
+    int? closeEndEpochMs,
   }) {
     return LotteryGameModel(
       id: id ?? this.id,
@@ -57,6 +65,8 @@ class LotteryGameModel {
       openAtEpochMs: openAtEpochMs ?? this.openAtEpochMs,
       sealAtEpochMs: sealAtEpochMs ?? this.sealAtEpochMs,
       sealSeconds: sealSeconds ?? this.sealSeconds,
+      closeStartEpochMs: closeStartEpochMs ?? this.closeStartEpochMs,
+      closeEndEpochMs: closeEndEpochMs ?? this.closeEndEpochMs,
     );
   }
 
@@ -88,6 +98,8 @@ class LotteryGameModel {
         openAtEpochMs == other.openAtEpochMs &&
         sealAtEpochMs == other.sealAtEpochMs &&
         sealSeconds == other.sealSeconds &&
+        closeStartEpochMs == other.closeStartEpochMs &&
+        closeEndEpochMs == other.closeEndEpochMs &&
         listEquals(previousResults, other.previousResults);
   }
 
@@ -103,6 +115,8 @@ class LotteryGameModel {
         openAtEpochMs,
         sealAtEpochMs,
         sealSeconds,
+        closeStartEpochMs,
+        closeEndEpochMs,
         Object.hashAll(previousResults),
       );
 

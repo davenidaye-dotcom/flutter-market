@@ -102,8 +102,8 @@ class AgentRepository {
     return _asMap(data);
   }
 
-  /// 会员注单明细（玩法行）。点进会员后调这个，不要继续 reports 下钻。
-  Future<Map<String, dynamic>> getReportTickets({
+  /// 会员注单 · 按期汇总（对齐飞单报表，只扫订单不展开明细）。
+  Future<Map<String, dynamic>> getReportTicketIssues({
     required String startDate,
     required String endDate,
     int? memberAccountId,
@@ -111,13 +111,39 @@ class AgentRepository {
     String status = 'SETTLED',
     String? source,
     int? bindingId,
+  }) async {
+    final data = await _client.get('/agent/reports/tickets/issues', query: {
+      'startDate': startDate,
+      'endDate': endDate,
+      if (memberAccountId != null) 'memberAccountId': memberAccountId,
+      if (type != null && type.isNotEmpty) 'type': type,
+      'status': status,
+      if (source != null && source.isNotEmpty) 'source': source,
+      if (bindingId != null) 'bindingId': bindingId,
+    });
+    return _asMap(data);
+  }
+
+  /// 会员注单明细（单期玩法行，分页）。须带 issueNo。
+  Future<Map<String, dynamic>> getReportTickets({
+    required String startDate,
+    required String endDate,
+    required String issueNo,
+    int? memberAccountId,
+    String? gameType,
+    String? type,
+    String status = 'SETTLED',
+    String? source,
+    int? bindingId,
     int pageNum = 1,
-    int pageSize = 50,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/agent/reports/tickets', query: {
       'startDate': startDate,
       'endDate': endDate,
+      'issueNo': issueNo,
       if (memberAccountId != null) 'memberAccountId': memberAccountId,
+      if (gameType != null && gameType.isNotEmpty) 'gameType': gameType,
       if (type != null && type.isNotEmpty) 'type': type,
       'status': status,
       if (source != null && source.isNotEmpty) 'source': source,

@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../shared/widgets/flip_countdown.dart';
+import '../../../core/time/server_clock.dart';
 
 /// 对齐《App期数封盘与开奖时间_20260923》与 plus-ui `lotteryFeed.ts`。
 /// - `openAtEpochMs` = 本期开奖时刻（距开奖终点）
@@ -42,12 +43,13 @@ class LotteryPeriodRules {
   }
 }
 
-enum LotteryDisplayPhase { betting, sealed, drawing }
+/// closed = 后台配置的「封盘时间窗」内：不出消息、不可下注、倒计时显示距窗口结束。
+enum LotteryDisplayPhase { betting, sealed, drawing, closed }
 
 abstract final class LotteryPeriodHelper {
   /// 距开奖：文档 §4.1——优先 `openAtEpochMs` 本地算，勿靠 countdown 自减。
   static int openRemainSeconds(LotteryGameModel game, [DateTime? now]) {
-    final clock = now ?? DateTime.now();
+    final clock = now ?? ServerClock.now();
     final openAt = game.openAtEpochMs ?? 0;
     if (openAt > 0) {
       return LotteryPeriodRules._remainToEpochMs(openAt, clock);
@@ -57,7 +59,7 @@ abstract final class LotteryPeriodHelper {
 
   /// 距封盘：文档 §4.2 + web `sealRemainSeconds`——优先 `sealAtEpochMs`。
   static int sealRemainSeconds(LotteryGameModel game, [DateTime? now]) {
-    final clock = now ?? DateTime.now();
+    final clock = now ?? ServerClock.now();
     final sealAt = game.sealAtEpochMs ?? 0;
     if (sealAt > 0) {
       return LotteryPeriodRules._remainToEpochMs(sealAt, clock);
@@ -72,11 +74,40 @@ abstract final class LotteryPeriodHelper {
     return openLeft;
   }
 
+  /// 是否处在后台配置的封盘时间窗内。用校准后的服务器时钟，和服务端判定同一条时间轴。
+  static bool inCloseWindow(LotteryGameModel game, [DateTime? now]) {
+    final start = game.closeStartEpochMs ?? 0;
+    final end = game.closeEndEpochMs ?? 0;
+    if (start <= 0 || end <= start) return false;
+    final t = (now ?? ServerClock.now()).millisecondsSinceEpoch;
+    return t >= start && t < end;
+  }
+
+  /// 距封盘时间窗结束（开盘）的秒数，向上取整，窗口外为 0。
+  static int closeRemainSeconds(LotteryGameModel game, [DateTime? now]) {
+    if (!inCloseWindow(game, now)) return 0;
+    final end = game.closeEndEpochMs ?? 0;
+    final t = (now ?? ServerClock.now()).millisecondsSinceEpoch;
+    return math.max(0, ((end - t) / 1000).ceil());
+  }
+
+  /// 封盘时间窗倒计时文案：不足 1 小时 mm:ss，否则 h:mm:ss。
+  static String formatCloseRemain(int seconds) {
+    final s = math.max(0, seconds);
+    final h = s ~/ 3600;
+    final m = ((s % 3600) ~/ 60).toString().padLeft(2, '0');
+    final sec = (s % 60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$sec' : '$m:$sec';
+  }
+
   static LotteryDisplayPhase phaseOf(LotteryGameModel game, [DateTime? now]) {
+    if (inCloseWindow(game, now)) {
+      return LotteryDisplayPhase.closed;
+    }
     if (game.isDrawing || game.status == LotteryStatus.drawing) {
       return LotteryDisplayPhase.drawing;
     }
-    final clock = now ?? DateTime.now();
+    final clock = now ?? ServerClock.now();
     final openLeft = openRemainSeconds(game, clock);
     // 与 web openText 一致：封盘和开奖剩余都到 0，显示开奖中，不停留在「封盘中 00:00」。
     if (openLeft <= 0) {
@@ -168,7 +199,7 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final now = DateTime.now();
+    final now = ServerClock.now();
     final phase = LotteryPeriodHelper.phaseOf(game, now);
     final issue = showIssue ? (issuePrefix ?? '') : '';
     final baseIssue = TextStyle(
@@ -184,6 +215,23 @@ class LotteryPeriodCountdownRow extends StatelessWidget {
     );
 
     return switch (phase) {
+      LotteryDisplayPhase.closed => _phaseRow(
+          Text.rich(
+            TextSpan(
+              children: [
+                if (issue.isNotEmpty)
+                  TextSpan(text: '$issue ', style: issueTextStyle),
+                TextSpan(
+                  text:
+                      '封盘中，距离开盘${LotteryPeriodHelper.formatCloseRemain(LotteryPeriodHelper.closeRemainSeconds(game, now))}',
+                  style: sealedStyle ?? phaseLabel,
+                ),
+              ],
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
       LotteryDisplayPhase.drawing => _phaseRow(
           Text.rich(
             TextSpan(

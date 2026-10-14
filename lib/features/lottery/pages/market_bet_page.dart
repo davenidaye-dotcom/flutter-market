@@ -68,7 +68,16 @@ class _MarketBetPageState extends ConsumerState<MarketBetPage> {
 
   @override
   Widget build(BuildContext context) {
-    final canBet = ref.watch(authSessionProvider.select((s) => s.canPlaceBet));
+    final canPlaceBet =
+        ref.watch(authSessionProvider.select((s) => s.canPlaceBet));
+    // 后台封盘时间窗内禁止下注（select 只在布尔翻转时重建）
+    final gameClosed = ref.watch(
+      roomLotteryLiveProvider(widget.roomId).select((s) {
+        final g = s.gameById(widget.gameId);
+        return g != null && LotteryPeriodHelper.inCloseWindow(g);
+      }),
+    );
+    final canBet = canPlaceBet && !gameClosed;
     final body = Column(
       children: [
         if (!widget.embedded)

@@ -27,6 +27,7 @@ import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
 import '../utils/chat_timeline.dart';
 import '../widgets/history_draw_panel.dart';
+import '../../../core/time/server_clock.dart';
 
 export '../services/chat_push_cache.dart' show LotteryChatPush;
 
@@ -265,11 +266,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   // ── public period APIs ──
 
   int countdownFor(String gameId) =>
-      _engine.countdownFor(gameId, DateTime.now());
+      _engine.countdownFor(gameId, ServerClock.now());
 
   LotteryGameModel? displayGameFor(String gameId) {
     final named = state.gameById(gameId);
-    final g = _engine.displayGame(gameId, DateTime.now());
+    final g = _engine.displayGame(gameId, ServerClock.now());
     if (g.id.isEmpty && named == null) return null;
     return g.copyWith(
       name: named?.name.isNotEmpty == true ? named!.name : g.name,
@@ -335,7 +336,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   void applyServerPatch(LotteryGameModel patch, {DateTime? sealAt}) {
     if (!mounted) return;
-    _engine.patchGame(patch, DateTime.now());
+    _engine.patchGame(patch, ServerClock.now());
     _publishGames();
     _ensureTickerRunning();
   }
@@ -968,7 +969,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           .getGames(roomId, asOwner: isHost);
       if (!mounted) return;
 
-      final now = DateTime.now();
+      final now = ServerClock.now();
       if (warm) {
         _engine.syncCatalog(games, now);
         if (!state.ready) {
@@ -1160,7 +1161,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           .read(lotteryRepositoryProvider)
           .getGames(roomId, asOwner: isHost);
       if (!mounted) return;
-      final now = DateTime.now();
+      final now = ServerClock.now();
       // 必须 syncCatalog：关则移除、开则加回（merge 不会删）
       _engine.syncCatalog(games, now);
       for (final g in games) {
@@ -1189,7 +1190,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   Future<void> _enrichSealFromPublic(List<LotteryGameModel> games) async {
     if (!mounted || games.isEmpty) return;
     final repo = _ref.read(lotteryRepositoryProvider);
-    final now = DateTime.now();
+    final now = ServerClock.now();
     var touched = false;
     await Future.wait(games.map((g) async {
       if (g.id.isEmpty) return;
@@ -1249,7 +1250,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   /// 停在「开奖中」：立刻 HTTP 补期态（不要求已有上期球号，部分房间会空球卡住）。
   void _recoverStuckDrawingIfNeeded(String gameId) {
-    final g = _engine.displayGame(gameId, DateTime.now());
+    final g = _engine.displayGame(gameId, ServerClock.now());
     if (!g.isDrawing) return;
     _scheduleRefreshGamesFromServer(immediate: true);
   }
@@ -1561,6 +1562,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       final issue = payload['issueNo']?.toString() ??
           payload['latestIssueNo']?.toString() ??
           '';
+      // 先校准服务器时钟，再算倒计时：所有玩家按同一时间轴倒数，不受手机时钟偏差影响
+      ServerClock.observe(_toInt(payload['serverNowMs']));
       final seconds = _toInt(payload['countdownSeconds']);
       final openAtMs = _toInt(payload['openAtEpochMs']);
       var sealAtMs = _toInt(payload['sealAtEpochMs']);
@@ -1578,6 +1581,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         openAtEpochMs: openAtMs > 0 ? openAtMs : null,
         sealAtEpochMs: sealAtMs > 0 ? sealAtMs : null,
         sealSeconds: sealSeconds > 0 ? sealSeconds : null,
+        // 没带 = 后台没配封盘时间窗；始终传值（0）才能把已清除的窗口同步掉
+        closeStartEpochMs: _toInt(payload['closeStartEpochMs']),
+        closeEndEpochMs: _toInt(payload['closeEndEpochMs']),
         lastIssue: lastIssue,
         lastRanks: lastRanks,
       );
@@ -2225,7 +2231,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   // ── ticker / recovery ──
 
   bool _gameNeedsRecovery(String gameId) {
-    return _engine.isDrawingPhase(gameId, DateTime.now());
+    return _engine.isDrawingPhase(gameId, ServerClock.now());
   }
 
   void _scheduleServerSync() {
@@ -2289,7 +2295,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         return;
       }
 
-      final now = DateTime.now();
+      final now = ServerClock.now();
       final result = _engine.onSecondTick(now);
       _applySecondTickResult(result);
 

@@ -23,10 +23,13 @@ void main() {
 
     expect(lines[0], '$issue期已封盘');
     // 标题 3 行之后第一行是自己
-    expect(lines[3], startsWith('第3名 [u3]'));
+    expect(lines[3], '[u3]下注总金额:997');
+    // 旧模板：玩家之间空一行
+    expect(lines[4], '');
+    expect(lines[5], '[u1]下注总金额:999');
     // 自己只出现一次
     expect(lines.where((l) => l.contains('[u3]')).length, 1);
-    expect(lines.where((l) => l.startsWith('1. [u1]')).length, 1);
+    expect(lines.where((l) => l.contains('[u1]')).length, 1);
     // 20 行里包含自己：N = 120 - 20
     expect(lines.last, '另有 100 位未显示');
   });
@@ -39,8 +42,30 @@ void main() {
       'self': {'rank': 33, 'row': _rank(33, 'me', 5, aid: '999')},
     }, isWin: false);
     final lines = composeCheckCardText(data: card, issue: issue).split('\n');
-    expect(lines[3], startsWith('第33名 [me]'));
+    expect(lines[3], '[me]下注总金额:5');
     expect(lines.last, '另有 29 位未显示');
+  });
+
+  test('封盘核对：玩法行跟在昵称下面，沿用旧模板', () {
+    final card = parseCheckCard({
+      'rankings': [
+        {
+          'nickname': 'test006',
+          'amount': 10000,
+          'items': [
+            {'playName': '冠军', 'text': '1/1000 2/1000'},
+          ],
+        },
+      ],
+      'total': 1,
+    }, isWin: false);
+    expect(composeCheckCardText(data: card, issue: issue).split('\n'), [
+      '$issue期已封盘',
+      '竞猜列表核对',
+      '-------------------',
+      '[test006]下注总金额:10000',
+      '冠军[ 1/1000 2/1000 ]',
+    ]);
   });
 
   test('WIN_LIST：未中奖置顶，且 total<=20 时不出现尾行', () {
@@ -64,7 +89,7 @@ void main() {
     }, isWin: false);
     final withSelf = base.withSelf(rank: 2, row: CheckRow(_rank(2, 'b', 5)));
     final lines = composeCheckCardText(data: withSelf, issue: issue).split('\n');
-    expect(lines[3], startsWith('第2名 [b]'));
+    expect(lines[3], '[b]下注总金额:5');
     expect(lines.where((l) => l.contains('[b]')).length, 1);
   });
 

@@ -16,6 +16,7 @@ class BetInputBar extends StatelessWidget {
     this.keypadOpen = false,
     this.enabled = true,
     this.submitting = false,
+    this.disabledHint,
   });
 
   final TextEditingController controller;
@@ -26,6 +27,8 @@ class BetInputBar extends StatelessWidget {
   final bool keypadOpen;
   final bool enabled;
   final bool submitting;
+  /// 不可输入时的占位文案；默认「房主不可下注」
+  final String? disabledHint;
 
   static double get _barH => 44.h;
 
@@ -34,7 +37,7 @@ class BetInputBar extends StatelessWidget {
     final bg = !enabled
         ? const Color(0xFFE8E8E8)
         : (keypadOpen || menuOpen ? Colors.white : const Color(0xFFEEEEEE));
-    final hint = enabled ? '请输入投注金额' : '房主不可下注';
+    final hint = enabled ? '请输入投注金额' : (disabledHint ?? '房主不可下注');
     final fieldBg = enabled ? const Color(0xFFF5F5F5) : const Color(0xFFDDDDDD);
     final textColor = enabled ? AppColors.textPrimary : AppColors.textHint;
 

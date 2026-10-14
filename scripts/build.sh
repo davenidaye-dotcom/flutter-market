@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 乐投 Flutter 多环境打包脚本
+# 瑞丰 Flutter 多环境打包脚本
 # 用法: ./scripts/build.sh [dev|test|pro] [apk|appbundle|ios]
 # 说明: APP_ENV=test 对应 Android Flavor=staging
 

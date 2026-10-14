@@ -62,17 +62,24 @@ String composeCheckCardText({
 
   final selfRow = data.selfRow;
   var selfInTop = false;
+  // 封盘核对沿用后端旧模板：每人一段「[昵称]下注总金额:x」+ 玩法行，段与段之间空一行。
+  var blocks = 0;
+  void addRow(CheckRow row, {int? selfRank}) {
+    if (!data.isWin && blocks > 0) lines.add('');
+    blocks++;
+    lines.addAll(_rowLines(row, data.isWin, selfRank: selfRank));
+  }
+
   if (selfRow != null) {
     selfInTop = data.rows.any(selfRow.sameAs);
-    final rank = data.selfRank ?? selfRow.rank;
-    lines.addAll(_rowLines(selfRow, data.isWin, selfRank: rank));
+    addRow(selfRow, selfRank: data.selfRank ?? selfRow.rank);
   } else if (data.lost) {
     lines.add('本期未中奖');
   }
 
   for (final row in data.rows) {
     if (selfRow != null && selfRow.sameAs(row)) continue;
-    lines.addAll(_rowLines(row, data.isWin));
+    addRow(row);
   }
   if (data.rows.isEmpty && selfRow == null && !data.lost) {
     lines.add(data.isWin ? '本期暂无中奖名单，再接再厉!' : '暂无下注');
@@ -103,8 +110,14 @@ List<String> _rowLines(CheckRow row, bool isWin, {int? selfRank}) {
   final amount = row.amount;
   final amountText =
       amount == null || '$amount'.trim().isEmpty ? '' : displayNumber(amount);
-  if (selfRank != null && selfRank > 0) {
-    return ['第$selfRank名 [${row.name}] $amountText'.trimRight()];
+  final out = <String>['[${row.name}]下注总金额:$amountText'];
+  final items = row.raw['items'];
+  if (items is List) {
+    for (final item in items) {
+      if (item is! Map) continue;
+      final line = formatReceiptItemLine(Map<String, dynamic>.from(item));
+      if (line.isNotEmpty) out.add(line);
+    }
   }
-  return ['${row.rank ?? ''}. [${row.name}] $amountText'.trimRight()];
+  return out;
 }

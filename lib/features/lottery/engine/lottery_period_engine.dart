@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
+import '../../../core/time/server_clock.dart';
 
 /// 开奖露出事件：由 provider 推入聊天，引擎不碰 ChatPushCache。
 class DrawRevealEvent {
@@ -124,6 +125,9 @@ final class LotteryPeriodEngine {
               ? _pickNewer(g.currentIssue, existing.model.currentIssue)
               : existing.model.currentIssue,
           sealSeconds: g.sealSeconds ?? existing.model.sealSeconds,
+          // 目录里没带封盘时间窗 = 没配置（或已清除），传 0 覆盖旧值
+          closeStartEpochMs: g.closeStartEpochMs ?? 0,
+          closeEndEpochMs: g.closeEndEpochMs ?? 0,
         );
         if (!pinned) {
           _applyEpochs(
@@ -234,6 +238,8 @@ final class LotteryPeriodEngine {
     int? openAtEpochMs,
     int? sealAtEpochMs,
     int? sealSeconds,
+    int? closeStartEpochMs,
+    int? closeEndEpochMs,
     String? lastIssue,
     List<int> lastRanks = const [],
     DateTime? now,
@@ -242,11 +248,18 @@ final class LotteryPeriodEngine {
     final existing = _slots[gameId];
     if (existing == null) return PeriodTickResult.none;
 
-    final clock = now ?? DateTime.now();
+    final clock = now ?? ServerClock.now();
     final slot = existing;
 
     if (sealSeconds != null && sealSeconds > 0) {
       slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
+    }
+    // 封盘时间窗：包里每秒都带当前/下一个窗口；没带 = 已清除（传 0 覆盖）
+    if (closeStartEpochMs != null || closeEndEpochMs != null) {
+      slot.model = slot.model.copyWith(
+        closeStartEpochMs: closeStartEpochMs ?? 0,
+        closeEndEpochMs: closeEndEpochMs ?? 0,
+      );
     }
 
     final first = !slot.wsSynced;
@@ -314,7 +327,7 @@ final class LotteryPeriodEngine {
     if (issue.isEmpty || ranks.isEmpty) return PeriodTickResult.none;
     final slot = _slots[gameId];
     if (slot == null) return PeriodTickResult.none;
-    final clock = now ?? DateTime.now();
+    final clock = now ?? ServerClock.now();
     if (!slot.wsSynced) slot.wsSynced = true;
 
     // DRAW_RESULT 是服务端权威：本地 CD 未归零也必须立刻出号（勿等 tick，否则 WIN_LIST 先上屏）。
@@ -379,6 +392,8 @@ final class LotteryPeriodEngine {
       previousIssue: nextPrevIssue,
       previousResults: nextResults,
       sealSeconds: patch.sealSeconds ?? slot.model.sealSeconds,
+      closeStartEpochMs: patch.closeStartEpochMs,
+      closeEndEpochMs: patch.closeEndEpochMs,
     );
     if (pinned) {
       // 封盘后钉死时仍要接受服务端「同期 openAt 被拉回未来」（换期/heal），否则一直开奖中
@@ -414,12 +429,12 @@ final class LotteryPeriodEngine {
   // ── internal ──
 
   bool _slotNeedsTicker(_GameSlot s) {
-    if (_secondsLeft(s, DateTime.now()) > 0) return true;
+    if (_secondsLeft(s, ServerClock.now()) > 0) return true;
     return s.wsSynced;
   }
 
   LotteryGameModel _toDisplay(_GameSlot s, [DateTime? now]) {
-    final clock = now ?? DateTime.now();
+    final clock = now ?? ServerClock.now();
     final cd = _secondsLeft(s, clock);
     final drawing = cd <= 0;
     final openAt = s.model.openAtEpochMs ??
@@ -432,6 +447,8 @@ final class LotteryPeriodEngine {
     final phase = LotteryPeriodHelper.phaseOf(display, clock);
     return display.copyWith(
       status: switch (phase) {
+        // LotteryStatus.closed 表示彩种被关闭（会被过滤），封盘时间窗按「已封盘」展示
+        LotteryDisplayPhase.closed => LotteryStatus.sealed,
         LotteryDisplayPhase.drawing => LotteryStatus.drawing,
         LotteryDisplayPhase.sealed => LotteryStatus.sealed,
         LotteryDisplayPhase.betting => LotteryStatus.open,
@@ -505,7 +522,7 @@ final class LotteryPeriodEngine {
   }) {
     final slot = _slots[gameId];
     if (slot == null) return;
-    final clock = now ?? DateTime.now();
+    final clock = now ?? ServerClock.now();
     if (sealSeconds != null && sealSeconds > 0) {
       slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
     }

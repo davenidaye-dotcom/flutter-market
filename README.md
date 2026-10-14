@@ -1,4 +1,4 @@
-# 乐投 Flutter App
+# 瑞丰 Flutter App
 
 基于 `D:\老铁` 原型图 1:1 还原的用户端应用，当前为 **UI 阶段**（Mock 数据，预留 API 入口）。
 
@@ -62,9 +62,9 @@ scripts\build.bat pro apk
 
 | 环境 | APP_ENV | Android Flavor | API 地址 | 应用名 |
 |------|---------|----------------|----------|--------|
-| 开发 | dev | dev | https://dev-api.letou.com | 乐投Dev |
-| 测试 | test | staging | https://test-api.letou.com | 乐投Test |
-| 生产 | pro | pro | https://api.letou.com | 乐投 |
+| 开发 | dev | dev | https://dev-api.letou.com | 瑞丰Dev |
+| 测试 | test | staging | https://test-api.letou.com | 瑞丰Test |
+| 生产 | pro | pro | https://api.letou.com | 瑞丰 |
 
 ## 顶象 SDK
 

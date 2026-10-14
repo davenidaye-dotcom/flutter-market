@@ -9,6 +9,7 @@ import '../../../shared/widgets/lottery_ball.dart';
 import '../providers/lottery_live_provider.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
+import '../../../core/time/server_clock.dart';
 
 /// 从房间 live 态读取最新开奖快照（不读 uiTick）。
 ({String issue, List<int> ranks, bool placeholder}) latestDrawSnapshot(
@@ -280,10 +281,27 @@ class LiveHallGameCountdown extends ConsumerWidget {
     final notifier = ref.read(roomLotteryLiveProvider(roomId).notifier);
     final game = notifier.displayGameFor(gameId);
     if (game == null) return const SizedBox.shrink();
-    final now = DateTime.now();
+    final now = ServerClock.now();
     final phase = LotteryPeriodHelper.phaseOf(game, now);
 
     return switch (phase) {
+      LotteryDisplayPhase.closed => SizedBox(
+          height: 18.h,
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '封盘中，距离开盘${LotteryPeriodHelper.formatCloseRemain(LotteryPeriodHelper.closeRemainSeconds(game, now))}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: AppColors.danger,
+                fontWeight: FontWeight.w600,
+                height: 1,
+              ),
+            ),
+          ),
+        ),
       LotteryDisplayPhase.drawing => SizedBox(
           height: 18.h,
           child: Align(

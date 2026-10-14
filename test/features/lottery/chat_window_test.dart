@@ -142,10 +142,10 @@ void main() {
       row: const {'rank': 2, 'nickname': 'b', 'amount': 5},
     );
     expect(updated, isNotNull);
-    expect(updated!.content, contains('第2名 [b]'));
+    expect(updated!.content, contains('[b]下注总金额'));
     expect(
       cache.bufferedForGame(roomId, gameId).single.content,
-      contains('第2名 [b]'),
+      contains('[b]下注总金额'),
     );
     expect(
       cache.applyCheckSelf(

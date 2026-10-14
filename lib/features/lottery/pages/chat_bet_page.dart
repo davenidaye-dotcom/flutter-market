@@ -1453,8 +1453,20 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     pushLocalPage(context, page);
   }
 
+  /// 当前彩种是否处在后台封盘时间窗内
+  bool _gameClosedNow() {
+    final game = ref
+        .read(roomLotteryLiveProvider(widget.roomId).notifier)
+        .displayGameFor(_gameId);
+    return game != null && LotteryPeriodHelper.inCloseWindow(game);
+  }
+
   Future<void> _submitBet() async {
     if (!ref.read(authSessionProvider).canPlaceBet) return;
+    if (_gameClosedNow()) {
+      AppToast.info('封盘中，暂不能投注');
+      return;
+    }
     final command = _betCtrl.text.trim();
     if (command.isEmpty) {
       AppToast.info('请输入下注指令');
@@ -1766,7 +1778,16 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   @override
   Widget build(BuildContext context) {
     // 根 build 不 setState：倒计时/键盘/面板各自 ValueNotifier + Consumer select
-    final canBet = ref.watch(authSessionProvider.select((s) => s.canPlaceBet));
+    final canPlaceBet =
+        ref.watch(authSessionProvider.select((s) => s.canPlaceBet));
+    // 后台封盘时间窗内：输入禁用、不可注单。select 只在布尔翻转时重建，不会每秒重绘整页。
+    final gameClosed = ref.watch(
+      roomLotteryLiveProvider(widget.roomId).select((s) {
+        final g = s.gameById(_gameId);
+        return g != null && LotteryPeriodHelper.inCloseWindow(g);
+      }),
+    );
+    final canBet = canPlaceBet && !gameClosed;
     final isTrialAccount = ref.watch(
       roomLotteryLiveProvider(widget.roomId).select((s) => s.isTrialAccount),
     );
@@ -2077,6 +2098,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                               }
                               return _ChatBetDock(
                                 canBet: canBet,
+                                gameClosed: gameClosed,
                                 isTrialAccount: isTrialAccount,
                                 submitting: submitting,
                                 panel: panel,
@@ -2201,6 +2223,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 class _ChatBetDock extends StatelessWidget {
   const _ChatBetDock({
     required this.canBet,
+    this.gameClosed = false,
     required this.isTrialAccount,
     required this.submitting,
     required this.panel,
@@ -2217,6 +2240,7 @@ class _ChatBetDock extends StatelessWidget {
   });
 
   final bool canBet;
+  final bool gameClosed;
   final bool isTrialAccount;
   final bool submitting;
   final _BottomPanel panel;
@@ -2267,6 +2291,7 @@ class _ChatBetDock extends StatelessWidget {
             BetInputBar(
               controller: controller,
               enabled: canBet,
+              disabledHint: gameClosed ? '封盘中，暂不能投注' : null,
               submitting: submitting,
               menuOpen: panel == _BottomPanel.menu,
               keypadOpen: panel == _BottomPanel.keypad,

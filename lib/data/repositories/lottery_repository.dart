@@ -2,6 +2,7 @@ import '../../core/network/api_client.dart';
 import '../../shared/format/display_number.dart';
 import '../../shared/format/game_series.dart';
 import '../../core/network/session_store.dart';
+import '../../core/time/server_clock.dart';
 import '../../features/lottery/utils/bet_receipt_format.dart';
 import '../../features/lottery/utils/check_card_format.dart';
 import '../../features/lottery/utils/draw_result_parse.dart';
@@ -93,6 +94,7 @@ class LotteryRepository {
     bool asOwner = false,
   }) async {
     final dynamic data;
+    final sentAt = DateTime.now().millisecondsSinceEpoch;
     if (asOwner) {
       data = await _client.get('/owner/games');
     } else {
@@ -106,6 +108,18 @@ class LotteryRepository {
       );
     }
     if (data is! List) return const [];
+    // 往返一半近似单程延迟；服务器时间戳是写响应前取的，偏差一般在百毫秒内
+    final rttHalf = (DateTime.now().millisecondsSinceEpoch - sentAt) ~/ 2;
+    for (final e in data) {
+      if (e is Map) {
+        final sn = e['serverNowMs'];
+        ServerClock.observe(
+          sn is num ? sn.toInt() : int.tryParse('$sn'),
+          latencyMs: rttHalf,
+        );
+        break;
+      }
+    }
     return data.whereType<Map>().map((e) {
       final m = Map<String, dynamic>.from(e);
       final ranks = m['lastRanks'];
@@ -127,6 +141,11 @@ class LotteryRepository {
       final sealSeconds = sealRaw is int
           ? sealRaw
           : int.tryParse('$sealRaw');
+      int? epochOf(dynamic v) {
+        if (v is num) return v.toInt();
+        return int.tryParse('$v');
+      }
+
       final gameType = m['gameType']?.toString() ?? '';
       final model = LotteryGameModel(
         id: gameType,
@@ -142,6 +161,8 @@ class LotteryRepository {
         openAtEpochMs: openAtEpochMs,
         sealAtEpochMs: sealAtEpochMs,
         sealSeconds: sealSeconds,
+        closeStartEpochMs: epochOf(m['closeStartEpochMs']),
+        closeEndEpochMs: epochOf(m['closeEndEpochMs']),
       );
       return model.copyWith(
         status: !enabled
@@ -159,6 +180,7 @@ class LotteryRepository {
       getPublicPeriod(String gameType) async {
     if (gameType.isEmpty) return null;
     try {
+      final sentAt = DateTime.now().millisecondsSinceEpoch;
       final data = await _client.get(
         '/public/lottery/period',
         query: {'gameType': gameType},
@@ -170,6 +192,11 @@ class LotteryRepository {
         if (v is num) return v.toInt();
         return int.tryParse('$v');
       }
+
+      ServerClock.observe(
+        toInt(m['serverNowMs']),
+        latencyMs: (DateTime.now().millisecondsSinceEpoch - sentAt) ~/ 2,
+      );
 
       return (
         openAt: toInt(m['openAtEpochMs']),

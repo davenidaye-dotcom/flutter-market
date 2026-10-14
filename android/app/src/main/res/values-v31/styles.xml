@@ -3,6 +3,6 @@
     <!-- API 31+ 系统 Splash 默认可能是黑底；与 Flutter 首帧叠层后模拟器常整屏黑，但 UI 已在下面 -->
     <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowSplashScreenBackground">@color/splash_background</item>
-        <item name="android:windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
     </style>
 </resources>

@@ -41,6 +41,14 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
 
   /// 注单期汇总下钻：`issueNo|gameType`；null = 期列表
   String? _ticketIssueKey;
+  String _ticketIssueNo = '';
+  String _ticketGameType = '';
+  Map<String, dynamic> _ticketIssueSummary = {};
+  bool _ticketLoadingMore = false;
+  bool _ticketHasMore = false;
+  int _ticketPageNum = 1;
+  static const _ticketPageSize = 20;
+  final _scroll = ScrollController();
 
   static const _sourceLabels = ['全部来源', 'Web直属', '房主飞单'];
   static const _sourceKeys = ['ALL', 'WEB_DIRECT', 'OWNER_FLIGHT'];
@@ -81,10 +89,27 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     _quick = 0;
     _start = _quickItems[0].start;
     _end = _quickItems[0].end;
+    _scroll.addListener(_onTicketScroll);
     Future.microtask(() async {
       await _loadGames();
       await _load();
     });
+  }
+
+  @override
+  void dispose() {
+    _scroll.removeListener(_onTicketScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _onTicketScroll() {
+    if (_ticketMemberId == null || _ticketIssueKey == null) return;
+    if (!_ticketHasMore || _ticketLoadingMore || _loading) return;
+    if (!_scroll.hasClients) return;
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 80) {
+      _loadTicketDetails(reset: false);
+    }
   }
 
   Future<void> _loadGames() async {
@@ -131,6 +156,14 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   Future<void> _load({bool fromPull = false}) async {
+    if (_ticketMemberId != null) {
+      if (_ticketIssueKey != null) {
+        await _loadTicketDetails(reset: true, fromPull: fromPull);
+      } else {
+        await _loadTicketIssues(fromPull: fromPull);
+      }
+      return;
+    }
     if (!fromPull && mounted) {
       setState(() {
         _loading = true;
@@ -140,26 +173,13 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       setState(() => _error = null);
     }
     try {
-      final repo = ref.read(agentRepositoryProvider);
-      final Map<String, dynamic> data;
-      if (_ticketMemberId != null) {
-        data = await repo.getReportTickets(
-          startDate: _fmt(_start),
-          endDate: _fmt(_end),
-          memberAccountId: _ticketMemberId,
-          type: _selectedType,
-          source: _selectedSource,
-          status: 'SETTLED',
-        );
-      } else {
-        data = await repo.getReports(
-          startDate: _fmt(_start),
-          endDate: _fmt(_end),
-          type: _selectedType,
-          source: _selectedSource,
-          parentAccountId: _parentAccountId,
-        );
-      }
+      final data = await ref.read(agentRepositoryProvider).getReports(
+            startDate: _fmt(_start),
+            endDate: _fmt(_end),
+            type: _selectedType,
+            source: _selectedSource,
+            parentAccountId: _parentAccountId,
+          );
       if (!mounted) return;
       final summary = data['summary'] is Map
           ? Map<String, dynamic>.from(data['summary'] as Map)
@@ -171,6 +191,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       setState(() {
         _summary = summary;
         _rows = rows;
+        _ticketIssueSummary = {};
         _loading = false;
       });
     } catch (e) {
@@ -178,6 +199,127 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       setState(() {
         _loading = false;
         _error = e.toString();
+      });
+      AppToast.error(e.toString());
+    }
+  }
+
+  /// 期列表：GET /agent/reports/tickets/issues（订单级聚合，不卡）
+  Future<void> _loadTicketIssues({bool fromPull = false}) async {
+    if (!fromPull && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else if (mounted) {
+      setState(() => _error = null);
+    }
+    try {
+      final data = await ref.read(agentRepositoryProvider).getReportTicketIssues(
+            startDate: _fmt(_start),
+            endDate: _fmt(_end),
+            memberAccountId: _ticketMemberId,
+            type: _selectedType,
+            source: _selectedSource,
+            status: 'SETTLED',
+          );
+      if (!mounted) return;
+      final summary = data['summary'] is Map
+          ? Map<String, dynamic>.from(data['summary'] as Map)
+          : <String, dynamic>{};
+      final raw = data['rows'];
+      final rows = raw is List
+          ? raw.whereType<Map>().map((e) {
+              final m = Map<String, dynamic>.from(e);
+              final issue = '${m['issueNo'] ?? ''}'.trim();
+              final gt = '${m['gameType'] ?? ''}'.trim();
+              m['key'] = '$issue|$gt';
+              return m;
+            }).toList()
+          : <Map<String, dynamic>>[];
+      setState(() {
+        _ticketIssueSummary = summary;
+        _summary = {};
+        _rows = rows;
+        _ticketHasMore = false;
+        _ticketPageNum = 1;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+      AppToast.error(e.toString());
+    }
+  }
+
+  /// 单期明细：分页加载，对齐飞单 reports/items
+  Future<void> _loadTicketDetails({required bool reset, bool fromPull = false}) async {
+    if (_ticketIssueNo.isEmpty) return;
+    if (reset) {
+      if (!fromPull && mounted) {
+        setState(() {
+          _loading = true;
+          _error = null;
+          _ticketPageNum = 1;
+          _ticketHasMore = true;
+        });
+      } else if (mounted) {
+        setState(() {
+          _error = null;
+          _ticketPageNum = 1;
+          _ticketHasMore = true;
+        });
+      }
+    } else {
+      if (!_ticketHasMore || _ticketLoadingMore || _loading) return;
+      setState(() => _ticketLoadingMore = true);
+    }
+    final page = reset ? 1 : _ticketPageNum + 1;
+    try {
+      final data = await ref.read(agentRepositoryProvider).getReportTickets(
+            startDate: _fmt(_start),
+            endDate: _fmt(_end),
+            memberAccountId: _ticketMemberId,
+            issueNo: _ticketIssueNo,
+            gameType: _ticketGameType.isEmpty ? null : _ticketGameType,
+            type: _selectedType,
+            source: _selectedSource,
+            status: 'SETTLED',
+            pageNum: page,
+            pageSize: _ticketPageSize,
+          );
+      if (!mounted) return;
+      final raw = data['rows'];
+      final list = raw is List
+          ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          : <Map<String, dynamic>>[];
+      final total = data['total'] is num
+          ? (data['total'] as num).toInt()
+          : (data['itemCount'] is num ? (data['itemCount'] as num).toInt() : list.length);
+      setState(() {
+        if (reset) {
+          _ticketIssueSummary = {
+            'orderCount': data['itemCount'] ?? total,
+            'betAmount': data['betAmount'] ?? 0,
+            'result': data['playerResult'] ?? 0,
+          };
+          _rows = list;
+        } else {
+          _rows = [..._rows, ...list];
+        }
+        _ticketPageNum = page;
+        _ticketHasMore = _rows.length < total && list.isNotEmpty;
+        _loading = false;
+        _ticketLoadingMore = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _ticketLoadingMore = false;
       });
       AppToast.error(e.toString());
     }
@@ -193,8 +335,30 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       _ticketMemberId = id;
       _ticketMemberName = name;
       _ticketIssueKey = null;
+      _ticketIssueNo = '';
+      _ticketGameType = '';
+      _ticketIssueSummary = {};
+      _rows = [];
     });
     _load();
+  }
+
+  void _openTicketIssue(Map<String, dynamic> g) {
+    final issue = '${g['issueNo'] ?? ''}'.trim();
+    final gt = '${g['gameType'] ?? ''}'.trim();
+    if (issue.isEmpty) return;
+    setState(() {
+      _ticketIssueKey = '${g['key'] ?? '$issue|$gt'}';
+      _ticketIssueNo = issue;
+      _ticketGameType = gt;
+      _rows = [];
+      _ticketIssueSummary = {
+        'orderCount': g['orderCount'],
+        'betAmount': g['betAmount'],
+        'result': g['result'],
+      };
+    });
+    _loadTicketDetails(reset: true);
   }
 
   void _openChildren(Map<String, dynamic> row) {
@@ -207,6 +371,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       _drill.add({'accountId': id, 'username': name});
       _ticketMemberId = null;
       _ticketIssueKey = null;
+      _ticketIssueNo = '';
+      _ticketGameType = '';
+      _ticketIssueSummary = {};
     });
     _load();
   }
@@ -222,7 +389,14 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
 
   void _popDrill() {
     if (_ticketMemberId != null && _ticketIssueKey != null) {
-      setState(() => _ticketIssueKey = null);
+      setState(() {
+        _ticketIssueKey = null;
+        _ticketIssueNo = '';
+        _ticketGameType = '';
+        _rows = [];
+        _ticketIssueSummary = {};
+      });
+      _loadTicketIssues();
       return;
     }
     if (_ticketMemberId != null) {
@@ -230,6 +404,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _ticketMemberId = null;
         _ticketMemberName = '';
         _ticketIssueKey = null;
+        _ticketIssueNo = '';
+        _ticketGameType = '';
+        _ticketIssueSummary = {};
       });
       _load();
       return;
@@ -314,7 +491,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   Widget _scrollBody(bool inTickets) {
     return AppPullRefresh(
       onRefresh: () => _load(fromPull: true),
-      child: _loading && _rows.isEmpty && _summary.isEmpty
+      child: _loading && _rows.isEmpty
           ? ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: const [
@@ -322,7 +499,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                 AppPageLoading(),
               ],
             )
-          : _error != null && _rows.isEmpty && _summary.isEmpty
+          : _error != null && _rows.isEmpty
               ? ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: [
@@ -339,6 +516,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                   ],
                 )
               : ListView(
+                  controller: _scroll,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(8.w, 6.h, 8.w, 16.h),
                   children: [
@@ -355,12 +533,27 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                           ),
                         )
                       else if (_ticketIssueKey != null) ...[
-                        for (final row in _ticketDetailRows()) ...[
+                        for (final row in _rows) ...[
                           SizedBox(height: 6.h),
                           _ticketCard(row),
                         ],
+                        if (_ticketLoadingMore)
+                          Padding(
+                            padding: EdgeInsets.symmetric(vertical: 12.h),
+                            child: const Center(child: AppPageLoading()),
+                          )
+                        else if (!_ticketHasMore && _rows.isNotEmpty)
+                          Padding(
+                            padding: EdgeInsets.symmetric(vertical: 10.h),
+                            child: Center(
+                              child: Text(
+                                '已加载全部',
+                                style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                              ),
+                            ),
+                          ),
                       ] else ...[
-                        for (final g in _ticketIssueGroups()) ...[
+                        for (final g in _rows) ...[
                           SizedBox(height: 6.h),
                           _ticketIssueRow(g),
                         ],
@@ -778,65 +971,17 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     return '${displayNumber(rounded)}%';
   }
 
-  List<Map<String, dynamic>> _ticketIssueGroups() {
-    final map = <String, Map<String, dynamic>>{};
-    for (final row in _rows) {
-      final issue = '${row['issueNo'] ?? ''}'.trim();
-      final gt = '${row['gameType'] ?? ''}'.trim();
-      final key = '$issue|$gt';
-      final g = map.putIfAbsent(key, () {
-        return <String, dynamic>{
-          'key': key,
-          'issueNo': issue.isEmpty ? '—' : issue,
-          'gameType': gt,
-          'gameName': row['gameName'] ?? gt,
-          'orderCount': 0,
-          'betAmount': 0.0,
-          'result': 0.0,
-          'createdAt': row['createdAt'],
-        };
-      });
-      g['orderCount'] = (g['orderCount'] as int) + 1;
-      final amt = row['amount'];
-      final res = row['itemResult'] ?? row['selfResult'];
-      g['betAmount'] = (g['betAmount'] as num) +
-          (amt is num ? amt : num.tryParse('$amt') ?? 0);
-      g['result'] = (g['result'] as num) +
-          (res is num ? res : num.tryParse('$res') ?? 0);
-      final ca = row['createdAt'];
-      if (ca != null && g['createdAt'] == null) g['createdAt'] = ca;
-    }
-    final list = map.values.toList();
-    list.sort((a, b) {
-      final sa = '${a['createdAt'] ?? a['issueNo'] ?? ''}';
-      final sb = '${b['createdAt'] ?? b['issueNo'] ?? ''}';
-      return sb.compareTo(sa);
-    });
-    return list;
-  }
-
-  List<Map<String, dynamic>> _ticketDetailRows() {
-    final key = _ticketIssueKey;
-    if (key == null) return const [];
-    return _rows.where((row) {
-      final issue = '${row['issueNo'] ?? ''}'.trim();
-      final gt = '${row['gameType'] ?? ''}'.trim();
-      return '$issue|$gt' == key;
-    }).toList();
+  num _ticketSumNum(String key) {
+    final v = _ticketIssueSummary[key];
+    if (v is num) return v;
+    return num.tryParse('$v'.trim()) ?? 0;
   }
 
   Widget _ticketSummaryBar() {
     if (_ticketIssueKey != null) {
-      final details = _ticketDetailRows();
-      num bet = 0;
-      num result = 0;
-      for (final r in details) {
-        final amt = r['amount'];
-        final res = r['itemResult'] ?? r['selfResult'];
-        bet += amt is num ? amt : num.tryParse('$amt') ?? 0;
-        result += res is num ? res : num.tryParse('$res') ?? 0;
-      }
-      final issue = _ticketIssueKey!.split('|').first;
+      final issue = _ticketIssueNo.isNotEmpty
+          ? _ticketIssueNo
+          : _ticketIssueKey!.split('|').first;
       return _surface(
         padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
         child: Column(
@@ -853,31 +998,42 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             SizedBox(height: 8.h),
             Row(
               children: [
-                Expanded(child: AgentMetric(label: '注单', value: details.length)),
-                Expanded(child: AgentMetric(label: '流水', value: bet)),
-                Expanded(child: AgentMetric(label: '结果', value: result, signed: true)),
+                Expanded(
+                  child: AgentMetric(
+                    label: '注单',
+                    value: _ticketSumNum('orderCount'),
+                  ),
+                ),
+                Expanded(
+                  child: AgentMetric(
+                    label: '流水',
+                    value: _ticketSumNum('betAmount'),
+                  ),
+                ),
+                Expanded(
+                  child: AgentMetric(
+                    label: '结果',
+                    value: _ticketSumNum('result'),
+                    signed: true,
+                  ),
+                ),
               ],
             ),
           ],
         ),
       );
     }
-    final groups = _ticketIssueGroups();
-    num bet = 0;
-    num result = 0;
-    var count = 0;
-    for (final g in groups) {
-      count += g['orderCount'] as int;
-      bet += g['betAmount'] as num;
-      result += g['result'] as num;
-    }
+    final issueCount = _ticketIssueSummary['issueCount'] is num
+        ? (_ticketIssueSummary['issueCount'] as num).toInt()
+        : _rows.length;
+    final count = _ticketSumNum('orderCount');
     return _surface(
       padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '$_ticketMemberName · ${groups.length} 期 · $count 条',
+            '$_ticketMemberName · $issueCount 期 · $count 条',
             style: TextStyle(
               fontSize: 13.sp,
               color: AppColors.textSecondary,
@@ -887,9 +1043,20 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
           SizedBox(height: 8.h),
           Row(
             children: [
-              Expanded(child: AgentMetric(label: '流水', value: bet)),
+              Expanded(
+                child: AgentMetric(
+                  label: '流水',
+                  value: _ticketSumNum('betAmount'),
+                ),
+              ),
               Expanded(child: AgentMetric(label: '注单', value: count)),
-              Expanded(child: AgentMetric(label: '结果', value: result, signed: true)),
+              Expanded(
+                child: AgentMetric(
+                  label: '结果',
+                  value: _ticketSumNum('result'),
+                  signed: true,
+                ),
+              ),
             ],
           ),
         ],
@@ -899,7 +1066,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
 
   Widget _ticketIssueRow(Map<String, dynamic> g) {
     return GestureDetector(
-      onTap: () => setState(() => _ticketIssueKey = '${g['key']}'),
+      onTap: () => _openTicketIssue(g),
       child: _surface(
         child: Row(
           children: [

@@ -1,8 +1,8 @@
 /// App environment — switch via --dart-define=APP_ENV=dev|test|pro
 enum AppEnvironment {
-  dev('dev', '乐投Dev'),
-  test('test', '乐投Test'),
-  pro('pro', '乐投');
+  dev('dev', '瑞丰Dev'),
+  test('test', '瑞丰Test'),
+  pro('pro', '瑞丰');
 
   const AppEnvironment(this.key, this.appName);
 

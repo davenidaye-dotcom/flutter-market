@@ -30,24 +30,41 @@ class HostMembersPage extends ConsumerStatefulWidget {
 
 class _HostMembersPageState extends ConsumerState<HostMembersPage> {
   static const _tabs = ['全部', '在线', '机器人', '试玩号'];
+  static const _pageSize = 20;
 
   late int _filter;
   final _search = TextEditingController();
+  final _scroll = ScrollController();
   List<HostMember> _rows = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _pageNum = 1;
+  int _total = 0;
   Map<String, dynamic> _stats = {};
 
   @override
   void initState() {
     super.initState();
     _filter = widget.initialFilter.clamp(0, _tabs.length - 1);
-    Future.microtask(_load);
+    _scroll.addListener(_onScroll);
+    Future.microtask(() => _load(reset: true));
   }
 
   @override
   void dispose() {
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
     _search.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_hasMore || _loadingMore || _loading) return;
+    if (!_scroll.hasClients) return;
+    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 80) {
+      _load(reset: false);
+    }
   }
 
   String get _memberType => switch (_filter) {
@@ -57,33 +74,75 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
         _ => 'ALL',
       };
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  int _asInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse('$v') ?? 0;
+  }
+
+  Future<void> _load({required bool reset}) async {
+    if (reset) {
+      setState(() {
+        _loading = true;
+        _pageNum = 1;
+        _hasMore = true;
+      });
+    } else {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    }
+    final page = reset ? 1 : _pageNum + 1;
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final kw = _search.text.trim();
       // 顶部四块统计永远用「全部」summary；机器人 Tab 列表走 atmosphere
-      final statsFuture = repo.getMembers(memberType: 'ALL', pageSize: 1);
       final listFuture = _filter == 2
-          ? repo.getAtmosphereList(keyword: kw, pageSize: 100)
-          : repo.getMembers(keyword: kw, memberType: _memberType, pageSize: 100);
-      final results = await Future.wait([listFuture, statsFuture]);
+          ? repo.getAtmosphereList(keyword: kw, pageNum: page, pageSize: _pageSize)
+          : repo.getMembers(
+              keyword: kw,
+              memberType: _memberType,
+              pageNum: page,
+              pageSize: _pageSize,
+            );
+      final Map<String, dynamic> data;
+      Map<String, dynamic>? statsData;
+      if (reset) {
+        final results = await Future.wait([
+          listFuture,
+          repo.getMembers(memberType: 'ALL', pageNum: 1, pageSize: 1),
+        ]);
+        data = results[0];
+        statsData = results[1];
+      } else {
+        data = await listFuture;
+      }
       if (!mounted) return;
-      final data = results[0];
-      final statsData = results[1];
-      final summary = statsData['summary'];
+      final list = hostRowsOf(data).map(hostMemberFromMap).toList();
+      final total = _asInt(data['total']);
       setState(() {
-        _rows = hostRowsOf(data).map(hostMemberFromMap).toList();
-        _stats = summary is Map
-            ? Map<String, dynamic>.from(summary)
-            : (data['summary'] is Map
-                ? Map<String, dynamic>.from(data['summary'] as Map)
-                : <String, dynamic>{});
+        if (reset) {
+          _rows = list;
+          final summary = statsData?['summary'];
+          _stats = summary is Map
+              ? Map<String, dynamic>.from(summary)
+              : (data['summary'] is Map
+                  ? Map<String, dynamic>.from(data['summary'] as Map)
+                  : <String, dynamic>{});
+        } else {
+          _rows = [..._rows, ...list];
+        }
+        _pageNum = page;
+        _total = total > 0 ? total : _rows.length;
+        _hasMore = list.isNotEmpty && _rows.length < _total;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
       AppToast.error(e.toString());
     }
   }
@@ -95,7 +154,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
     );
     if (!mounted) return;
     setState(() => _filter = 2);
-    await _load();
+    await _load(reset: true);
   }
 
   bool _isTrialLike(HostMember m) =>
@@ -175,7 +234,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                         onTap: () {
                           if (_filter == i) return;
                           setState(() => _filter = i);
-                          _load();
+                          _load(reset: true);
                         },
                         child: Container(
                           alignment: Alignment.center,
@@ -217,7 +276,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                     child: EmulatorSafeTextField(
                       controller: _search,
                       textAlign: TextAlign.left,
-                      onSubmitted: (_) => _load(),
+                      onSubmitted: (_) => _load(reset: true),
                       decoration: InputDecoration(
                         border: InputBorder.none,
                         hintText: '请输入玩家昵称或备注',
@@ -229,7 +288,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                 ),
                 SizedBox(width: 8.w),
                 GestureDetector(
-                  onTap: _load,
+                  onTap: () => _load(reset: true),
                   child: Container(
                     width: 40.w,
                     height: 40.h,
@@ -253,6 +312,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                         child: Text('暂无数据', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
                       )
                     : ListView.separated(
+                        controller: _scroll,
                         padding: EdgeInsets.fromLTRB(16.w, 0, 16.w, 16.h),
                         itemCount: _rows.length + 1,
                         separatorBuilder: (_, i) =>
@@ -262,10 +322,17 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                             return Padding(
                               padding: EdgeInsets.only(top: 12.h, bottom: 8.h),
                               child: Center(
-                                child: Text(
-                                  '没有更多了，共 ${_rows.length} 条',
-                                  style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                                ),
+                                child: _loadingMore
+                                    ? const AppPageLoading()
+                                    : Text(
+                                        _hasMore
+                                            ? '上拉加载更多'
+                                            : '没有更多了，共 $_total 条',
+                                        style: TextStyle(
+                                          fontSize: 12.sp,
+                                          color: AppColors.textHint,
+                                        ),
+                                      ),
                               ),
                             );
                           }
@@ -293,7 +360,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                                   ),
                                 );
                               }
-                              if (mounted) await _load();
+                              if (mounted) await _load(reset: true);
                             },
                           );
                         },
