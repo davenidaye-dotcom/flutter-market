@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
+import '../../../shared/format/play_title.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../wallet/widgets/date_range_filter.dart';
@@ -1104,12 +1105,10 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   Widget _ticketCard(Map<String, dynamic> row) {
-    final play = _stripOddsInContent(
-      row['contentOdds']?.toString() ??
-          row['playName']?.toString() ??
-          row['gameName']?.toString() ??
-          '—',
-    );
+    final play = slipBetTitle({
+      ...row,
+      'title': row['title'] ?? row['contentOdds'],
+    });
     return _surface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1153,13 +1152,6 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       default:
         return s?.isNotEmpty == true ? s! : '—';
     }
-  }
-
-  /// contentOdds 里 `@ 9.50000000` 抹成 `@ 9.5`
-  String _stripOddsInContent(String raw) {
-    return raw.replaceAllMapped(RegExp(r'@\s*(\d+(?:\.\d+)?)'), (m) {
-      return '@ ${displayNumber(m.group(1), maxDecimals: 4)}';
-    });
   }
 
   Widget _surface({required Widget child, EdgeInsetsGeometry? padding, Color? color}) {

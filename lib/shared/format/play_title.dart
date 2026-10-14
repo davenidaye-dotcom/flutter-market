@@ -35,7 +35,7 @@ String rankBetTitle(Map<dynamic, dynamic> row) {
 }
 
 /// 飞单明细标题：按注单原文，不显示赔率档名。
-/// 冠亚和/大/10 → 冠亚和-大；其余去掉金额后照搬，如 4/龙、4/3、1/大。
+/// 冠亚和/大/10 → 冠亚和-大；名次 1、2 写成冠军、亚军，如 冠军/1、亚军/大、第四名/龙。
 String slipBetTitle(Map<dynamic, dynamic> row) {
   final code = '${row['playCode'] ?? ''}'.trim().toUpperCase();
   final label = _slipLabel(code);
@@ -64,20 +64,20 @@ String? _slipLabel(String code) {
   if (code.startsWith('DT-')) {
     final parts = code.split('-');
     if (parts.length >= 3) {
-      return '${parts[1]}/${parts[2] == 'D' ? '龙' : '虎'}';
+      return '${_rankOf(parts[1])}/${parts[2] == 'D' ? '龙' : '虎'}';
     }
   }
   if (code.startsWith('LM-')) {
     final parts = code.split('-');
-    if (parts.length == 2) return '1/${_cnSide(parts[1])}';
-    if (parts.length >= 3) return '${parts[1]}/${_cnSide(parts[2])}';
+    if (parts.length == 2) return '冠军/${_cnSide(parts[1])}';
+    if (parts.length >= 3) return '${_rankOf(parts[1])}/${_cnSide(parts[2])}';
   }
   if (code.startsWith('TM-')) {
-    return '1/${code.substring(3)}';
+    return '冠军/${code.substring(3)}';
   }
   if (code.startsWith('POS-')) {
     final parts = code.split('-');
-    if (parts.length >= 3) return '${parts[1]}/${parts[2]}';
+    if (parts.length >= 3) return '${_rankOf(parts[1])}/${parts[2]}';
   }
   return null;
 }
@@ -90,6 +90,10 @@ String _cnSide(String side) {
     'EVEN' => '双',
     _ => side,
   };
+}
+
+String _rankOf(String raw) {
+  return _rankTitle(int.tryParse(raw) ?? 0);
 }
 
 String _rankTitle(int position) {
