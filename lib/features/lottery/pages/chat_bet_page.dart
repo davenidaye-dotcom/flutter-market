@@ -1264,10 +1264,16 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     if (BetKeypadPanel.isPlayMutexBlocked(value, text)) {
       return;
     }
-    if (BetKeypadPanel.noRepeatTokens.contains(text) && value.endsWith(text)) {
+    final gyhSideRepeat = BetKeypadPanel.gyhSides.contains(text) &&
+        BetKeypadPanel.inGyhSideField(value);
+    if (BetKeypadPanel.noRepeatTokens.contains(text) &&
+        value.endsWith(text) &&
+        !gyhSideRepeat) {
       return;
     }
-    final next = '$value$text';
+    // 刚点完冠亚和就点大小单双时补上斜杠：冠亚和 + 大 → 冠亚和/大
+    final insert = gyhSideRepeat && value.endsWith('冠亚和') ? '/$text' : text;
+    final next = '$value$insert';
     _betCtrl.value = TextEditingValue(
       text: next,
       selection: TextSelection.collapsed(offset: next.length),

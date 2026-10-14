@@ -260,7 +260,7 @@ class _FlyBetLineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = rankBetTitle(row);
+    final title = slipBetTitle(row);
     final display = hostNumStr(row['displayAmount'] ?? row['net'] ?? 0, fraction: 2);
     final outcome = '${row['outcome'] ?? ''}'.toUpperCase();
     final displayNum = double.tryParse(display.replaceAll(',', '')) ?? 0;

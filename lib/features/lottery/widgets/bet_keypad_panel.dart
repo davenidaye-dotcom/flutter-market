@@ -25,7 +25,8 @@ class BetKeypadPanel extends StatefulWidget {
   /// 当前输入，用于玩法键互斥与禁连点
   final String currentText;
 
-  /// 大/小/单/双/龙/虎/冠亚和 整框互斥（只能出现其中一个）
+  /// 大/小/单/双/龙/虎/冠亚和 整框互斥（只能出现其中一个）。
+  /// 冠亚和的选项段里，大小单双可以混选、也可以连点。
   static const playMutexTokens = [
     '冠亚和', // 先匹配长词
     '大',
@@ -36,7 +37,14 @@ class BetKeypadPanel extends StatefulWidget {
     '虎',
   ];
 
-  /// 大/小/单/双/龙/虎/冠亚和、/ 禁止连续插入
+  static const gyhSides = {'大', '小', '单', '双'};
+
+  /// 正在写冠亚和选项：`冠亚和`、`冠亚和/`、`冠亚和/大大小`。金额斜杠之后不再算。
+  static bool inGyhSideField(String text) {
+    return RegExp(r'(?:^|\s)冠亚和(/[大小单双]*)?$').hasMatch(text);
+  }
+
+  /// 大/小/单/双/龙/虎/冠亚和、/ 禁止连续插入。冠亚和选项段里的大小单双除外。
   static const noRepeatTokens = {
     '大',
     '小',
@@ -71,6 +79,7 @@ class BetKeypadPanel extends StatefulWidget {
   /// 再插入 [token] 是否被玩法互斥挡住
   static bool isPlayMutexBlocked(String current, String token) {
     if (!playMutexTokens.contains(token)) return false;
+    if (gyhSides.contains(token) && inGyhSideField(current)) return false;
     final active = activePlayToken(current);
     return active != null && active != token;
   }
@@ -153,6 +162,10 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
   }
 
   bool _isPlayKeyDisabled(String key, String? activePlay) {
+    if (BetKeypadPanel.gyhSides.contains(key) &&
+        BetKeypadPanel.inGyhSideField(widget.currentText)) {
+      return false;
+    }
     if (activePlay == null) return false;
     if (!BetKeypadPanel.playMutexTokens.contains(key)) return false;
     return key != activePlay;

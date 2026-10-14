@@ -34,6 +34,64 @@ String rankBetTitle(Map<dynamic, dynamic> row) {
   return _stripOddsInTitle(title);
 }
 
+/// 飞单明细标题：按注单原文，不显示赔率档名。
+/// 冠亚和/大/10 → 冠亚和-大；其余去掉金额后照搬，如 4/龙、4/3、1/大。
+String slipBetTitle(Map<dynamic, dynamic> row) {
+  final code = '${row['playCode'] ?? ''}'.trim().toUpperCase();
+  final label = _slipLabel(code);
+  final odds = _oddsTail(row, '${row['title'] ?? ''}');
+  final tail = odds.isEmpty ? '' : ' @ $odds';
+  if (label != null) return '$label$tail';
+  return _stripOddsInTitle('${row['title'] ?? row['playName'] ?? '—'}');
+}
+
+String? _slipLabel(String code) {
+  if (code.isEmpty) return null;
+  if (code.startsWith('GYH-')) {
+    return '冠亚和-${code.substring(4)}';
+  }
+  if (code.startsWith('GYH_')) {
+    return switch (code) {
+      'GYH_BIG' => '冠亚和-大',
+      'GYH_SMALL' => '冠亚和-小',
+      'GYH_ODD' => '冠亚和-单',
+      'GYH_EVEN' => '冠亚和-双',
+      'GYH_DS' => '冠亚和-大双',
+      'GYH_XS' => '冠亚和-小单',
+      _ => '冠亚和-${code.substring(4)}',
+    };
+  }
+  if (code.startsWith('DT-')) {
+    final parts = code.split('-');
+    if (parts.length >= 3) {
+      return '${parts[1]}/${parts[2] == 'D' ? '龙' : '虎'}';
+    }
+  }
+  if (code.startsWith('LM-')) {
+    final parts = code.split('-');
+    if (parts.length == 2) return '1/${_cnSide(parts[1])}';
+    if (parts.length >= 3) return '${parts[1]}/${_cnSide(parts[2])}';
+  }
+  if (code.startsWith('TM-')) {
+    return '1/${code.substring(3)}';
+  }
+  if (code.startsWith('POS-')) {
+    final parts = code.split('-');
+    if (parts.length >= 3) return '${parts[1]}/${parts[2]}';
+  }
+  return null;
+}
+
+String _cnSide(String side) {
+  return switch (side) {
+    'BIG' => '大',
+    'SMALL' => '小',
+    'ODD' => '单',
+    'EVEN' => '双',
+    _ => side,
+  };
+}
+
 String _rankTitle(int position) {
   const names = ['', '冠军', '亚军', '第三名', '第四名', '第五名', '第六名', '第七名', '第八名', '第九名', '第十名'];
   if (position >= 1 && position < names.length) return names[position];
