@@ -25,7 +25,7 @@ class AppLogoHeader extends StatelessWidget {
     if (custom.isEmpty) {
       return Image.asset(
         'assets/brand/logo.png',
-        height: 44.h,
+        height: 112.h,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
       );
