@@ -1332,7 +1332,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsFeatures = const {};
 
       _wsSub = client.events.listen(_onWsEvent);
-      _sendWsAuth();
       _syncWsSubscriptions();
       if (isReconnect) {
         unawaited(_refreshGamesFromServer());
@@ -1385,17 +1384,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           isReconnect: true,
         ),
       );
-    });
-  }
-
-  void _sendWsAuth() {
-    final client = _ws;
-    if (client == null || !client.isConnected) return;
-    final token = SessionStore.instance.accessToken;
-    if (token == null || token.isEmpty) return;
-    client.send({
-      'action': 'AUTH',
-      'data': {'token': token},
     });
   }
 
@@ -1476,7 +1464,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsFeatures = {
         if (f is List) for (final e in f) '$e'.toUpperCase(),
       };
-      _sendWsAuth();
       return;
     }
 

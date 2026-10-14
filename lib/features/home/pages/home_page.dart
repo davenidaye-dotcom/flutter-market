@@ -141,15 +141,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         m.contains('已通过审核');
   }
 
-  Future<void> _enterVerifiedRoom(RoomModel verified) async {
-    String? password;
-    if (verified.hasEnterPassword) {
-      password = await _askEnterPassword();
-      if (password == null) return;
-    }
-    await _doEnter(verified.roomCode, enterPassword: password);
-  }
-
   Future<void> _handleAuditRoom(String roomCode, String roomName) async {
     // 后端才是准绳：已通过/已是成员时 enter 会成功，不要再弹申请
     try {

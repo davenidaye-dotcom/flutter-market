@@ -48,7 +48,7 @@ class EnvConfig {
           ? _apiBaseUrlOverride!.trim().replaceAll(RegExp(r'/+$'), '')
           : builtinApiBaseUrl;
 
-  /// WebSocket prefix (no trailing slash). App connects to /flyroom (no token).
+  /// WebSocket prefix (no trailing slash). Paths like /member?token=
   static String get wsBaseUrl =>
       (_wsBaseUrlOverride?.trim().isNotEmpty ?? false)
           ? _wsBaseUrlOverride!.trim().replaceAll(RegExp(r'/+$'), '')
