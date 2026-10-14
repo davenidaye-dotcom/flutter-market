@@ -92,21 +92,20 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final data = Map<String, dynamic>.from(await repo.getDashboard());
-      // 飞单余额与飞单管理页同源（credit.available），避免两处不一致
-      try {
-        final credit = await repo.getFeipanCredit();
-        if (credit['available'] != null) {
-          data['flyOrderBalance'] = credit['available'];
-        }
-      } catch (_) {
-        // 未绑定等：保留 dashboard 值
-      }
       if (!mounted) return;
       setState(() {
         _dash = data;
         _loading = false;
       });
-      await ref.read(hostPendingAuditProvider.notifier).refresh();
+      // 飞单余额与飞单管理页同源；不挡住首页
+      unawaited(() async {
+        try {
+          final credit = await repo.getFeipanCredit();
+          if (!mounted || credit['available'] == null) return;
+          setState(() => _dash['flyOrderBalance'] = credit['available']);
+        } catch (_) {}
+      }());
+      unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
