@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
@@ -29,6 +30,7 @@ import '../../wallet/pages/apply_records_page.dart';
 import '../../wallet/pages/bet_records_page.dart';
 import '../../wallet/pages/points_change_page.dart';
 import '../../wallet/pages/welfare_report_page.dart';
+import '../services/bet_executor.dart';
 import '../services/chat_push_cache.dart';
 import '../providers/lottery_live_provider.dart';
 import '../utils/chat_timeline.dart';
@@ -94,7 +96,7 @@ class ChatBetPage extends ConsumerStatefulWidget {
 }
 
 class _ChatBetPageState extends ConsumerState<ChatBetPage> {
-  final _messagesNotifier = ValueNotifier<List<ChatMessageModel>>([]);
+  final _messagesNotifier = _ChatListNotifier();
   final _betSlipsNotifier = ValueNotifier<List<BetSlipRow>>([]);
   final _betCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
@@ -126,6 +128,15 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   bool _walletDialogOpen = false;
   bool _rebateDialogOpen = false;
   StreamSubscription<LotteryChatPush>? _chatPushSub;
+  StreamSubscription<String>? _chatResyncSub;
+  /// 本帧要并入列表的推送：每帧最多处理一次，只通知一次 _messagesNotifier。
+  final List<ChatMessageModel> _pendingPushes = [];
+  bool _frameFlushQueued = false;
+  bool _fullSyncRequested = false;
+  /// 自上次整表同步后 O(1) 追加的条数；到一定量且钉在底部时整表重算以回收被淘汰的旧消息。
+  int _appendedSinceSync = 0;
+  static const _appendTrimThreshold = 64;
+  bool _loadingOlder = false;
 
   int _msgLoadGen = 0;
   Future<void>? _msgLoadInflight;
@@ -142,7 +153,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   int _chatSubGen = 0;
   String _accountId = '';
   String? _lastTimelineSig;
-  bool _timelineSyncQueued = false;
   bool _bottomJumpWait = false;
   /// reverse 列表下标：stable key → itemBuilder 下标，插入新消息时复用已有格子。
   final _childIndexByKey = <String, int>{};
@@ -150,10 +160,45 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   void _onScrollChanged() {
     if (!_scrollCtrl.hasClients) return;
     final pinned = _scrollCtrl.offset <= 64;
+    final wasPinned = _pinnedToBottom;
     _pinnedToBottom = pinned;
     final showJump = !pinned;
     if (_showJumpBottomNotifier.value != showJump) {
       _showJumpBottomNotifier.value = showJump;
+    }
+    if (pinned && !wasPinned && _appendedSinceSync >= _appendTrimThreshold) {
+      _applyTimelineFromCache();
+    }
+    // reverse 列表：滚到最大偏移 = 顶部，加载上一页历史
+    final pos = _scrollCtrl.position;
+    if (pos.maxScrollExtent - pos.pixels < 160) {
+      unawaited(_loadOlderPage());
+    }
+  }
+
+  /// 顶部加载上一页（≤500 条总量）。列表 reverse 且锚在底部，older 加到高 index 一端，
+  /// 已显示内容的偏移不变，不需要手动补偿滚动位置。
+  Future<void> _loadOlderPage() async {
+    if (_loadingOlder || _disposed || !mounted) return;
+    final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+    final gameId = _gameId;
+    if (!live.chatHistoryHasMore(gameId)) return;
+    _loadingOlder = true;
+    try {
+      final added = await live.loadOlderChatMessages(gameId);
+      if (_disposed || !mounted || gameId != _gameId) return;
+      if (added > 0) {
+        _lastTimelineSig = null;
+        _syncMessagesFromCache();
+        // 一页没把视口填满（或仍贴着顶）时继续补，直到 500 条 / 没有更多
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_disposed || !mounted || !_scrollCtrl.hasClients) return;
+          final pos = _scrollCtrl.position;
+          if (pos.maxScrollExtent - pos.pixels < 160) unawaited(_loadOlderPage());
+        });
+      }
+    } finally {
+      _loadingOlder = false;
     }
   }
 
@@ -209,86 +254,130 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _jumpToBottomIfPinned();
   }
 
+  /// 记正序下标：尾部追加只需写新增项，不用整表重算；reverse 下标在查询时换算。
   void _rebuildChildIndex(List<ChatMessageModel> messages) {
     _childIndexByKey.clear();
     for (var i = 0; i < messages.length; i++) {
-      _childIndexByKey[stableChatItemKey(messages[messages.length - 1 - i])] = i;
+      _childIndexByKey[stableChatItemKey(messages[i])] = i;
     }
   }
 
   int? _findChildIndex(Key key) {
     if (key is! ValueKey<String>) return null;
-    return _childIndexByKey[key.value];
+    final forward = _childIndexByKey[key.value];
+    if (forward == null) return null;
+    return _messagesNotifier.value.length - 1 - forward;
   }
 
+  /// 长度 + 队尾 + 缓存版本号：缓存里任何内容变化版本都会递增，不再拼整表字符串。
   String _timelineSig(List<ChatMessageModel> messages) {
     if (messages.isEmpty) return '';
-    final buf = StringBuffer();
-    for (final m in messages) {
-      final issue = extractIssue(m);
-      final issueKey =
-          issue != null && issue.isNotEmpty ? issueCompareKey(issue) : 0;
-      buf
-        ..write(m.type.index)
-        ..write(':')
-        ..write(issueKey)
-        ..write(':')
-        ..write(m.content.length)
-        ..write(':')
-        ..write(m.avatarUrl ?? '')
-        ..write(':')
-        ..write(m.drawRanks?.join(',') ?? '')
-        ..write('|');
-    }
-    return buf.toString();
+    final last = messages.last;
+    final version =
+        ChatPushCache.instance.timelineVersion(widget.roomId, _gameId);
+    return '${messages.length}|${last.id}|${last.content.length}|$version';
   }
 
   void _setMessages(List<ChatMessageModel> messages) {
-    final nextIds = messages.map((m) => m.id).toSet();
     final prev = _messagesNotifier.value;
-    if (setEquals(nextIds, _messageIds) && messages.length == prev.length) {
-      var sameOrder = true;
+    if (messages.length == prev.length) {
+      var same = true;
       for (var i = 0; i < messages.length; i++) {
-        if (messages[i].id != prev[i].id) {
-          sameOrder = false;
+        final a = messages[i];
+        final b = prev[i];
+        if (a.id != b.id ||
+            a.content != b.content ||
+            a.issueNo != b.issueNo ||
+            a.avatarUrl != b.avatarUrl ||
+            !listEquals(a.drawRanks, b.drawRanks)) {
+          same = false;
           break;
         }
       }
-      if (sameOrder) {
-        var contentSame = true;
-        for (var i = 0; i < messages.length; i++) {
-          final a = messages[i];
-          final b = prev[i];
-          if (a.content != b.content ||
-              a.issueNo != b.issueNo ||
-              a.avatarUrl != b.avatarUrl ||
-              !listEquals(a.drawRanks, b.drawRanks)) {
-            contentSame = false;
-            break;
-          }
-        }
-        if (contentSame) return;
-      }
+      if (same && _messageIds.length == messages.length) return;
     }
     _messageIds
       ..clear()
-      ..addAll(nextIds);
+      ..addAll(messages.map((m) => m.id));
     _rebuildChildIndex(messages);
+    _appendedSinceSync = 0;
     _messagesNotifier.value = messages;
   }
 
-  /// 立刻上屏：无固定延时。仅把「同一时刻连发」的多条推送合并进下一次 microtask，
-  /// 避免同一帧里反复整表赋值；不是人为等 40ms。
+  /// 请求整表重算（卡片/回执升级/乐观消息等），合并进下一帧。
   void _applyTimelineFromCache() {
     if (_disposed || !mounted) return;
     _lastTimelineSig = null;
-    if (_timelineSyncQueued) return;
-    _timelineSyncQueued = true;
-    scheduleMicrotask(() {
-      _timelineSyncQueued = false;
-      if (_disposed || !mounted) return;
-      _syncMessagesFromCache();
+    _fullSyncRequested = true;
+    _scheduleFrameFlush();
+  }
+
+  /// WS 推送入队，每帧最多处理一次。
+  void _onChatPush(ChatMessageModel message) {
+    if (_disposed || !mounted) return;
+    _pendingPushes.add(message);
+    // 后台没有帧时队列不能无限涨：太多就丢掉，改成帧到时整表重算。
+    if (_pendingPushes.length > 600) {
+      _pendingPushes.clear();
+      _fullSyncRequested = true;
+    }
+    _scheduleFrameFlush();
+  }
+
+  void _scheduleFrameFlush() {
+    if (_frameFlushQueued) return;
+    _frameFlushQueued = true;
+    // scheduleFrameCallback 会确保排一帧，并在该帧 build 之前执行，所以同帧就能上屏。
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _frameFlushQueued = false;
+      _flushChatFrame();
     });
+  }
+
+  void _flushChatFrame() {
+    if (_disposed || !mounted) return;
+    final pushes = List<ChatMessageModel>.of(_pendingPushes);
+    _pendingPushes.clear();
+    var needFull = _fullSyncRequested;
+    _fullSyncRequested = false;
+    var appended = 0;
+    if (!needFull && pushes.isNotEmpty) {
+      final items = _messagesNotifier.value;
+      for (final m in pushes) {
+        if (_messageIds.contains(m.id)) {
+          // 已在列表：内容没变就忽略，变了（核对卡补名次等）整表重算
+          final idx = _childIndexByKey[stableChatItemKey(m)];
+          if (idx == null || idx >= items.length || items[idx].content != m.content) {
+            needFull = true;
+            break;
+          }
+          continue;
+        }
+        if (!appendsAtTimelineTail(items, m)) {
+          needFull = true;
+          break;
+        }
+        items.add(m);
+        _messageIds.add(m.id);
+        _childIndexByKey[stableChatItemKey(m)] = items.length - 1;
+        appended++;
+      }
+      _appendedSinceSync += appended;
+    }
+    if (needFull) {
+      _lastTimelineSig = null;
+      _syncMessagesFromCache();
+      return;
+    }
+    if (appended == 0) return;
+    if (_pinnedToBottom && _appendedSinceSync >= _appendTrimThreshold) {
+      // 回收缓存已淘汰的旧消息（离屏顶部，不影响当前位置）
+      _lastTimelineSig = null;
+      _syncMessagesFromCache();
+      return;
+    }
+    _messagesNotifier.changed();
+    if (_pinnedToBottom) _scrollToBottom();
   }
 
   void _syncMessagesFromCache({
@@ -931,11 +1020,18 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       _chatPushSub?.cancel();
       _chatPushSub = live.chatPushes.listen((push) {
         if (_disposed || !mounted || push.gameId != _gameId) return;
-        _applyTimelineFromCache();
+        _onChatPush(push.message);
+      });
+      _chatResyncSub?.cancel();
+      _chatResyncSub = live.chatResyncs.listen((gameId) {
+        if (_disposed || !mounted) return;
+        if (gameId == '*' || gameId == _gameId) _applyTimelineFromCache();
       });
       if (_disposed || subGen != _chatSubGen) {
         _chatPushSub?.cancel();
         _chatPushSub = null;
+        _chatResyncSub?.cancel();
+        _chatResyncSub = null;
         return;
       }
       // 当前彩种后台核对，永不盖转圈。
@@ -977,6 +1073,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _chatSubGen++;
     _chatPushSub?.cancel();
     _chatPushSub = null;
+    _chatResyncSub?.cancel();
+    _chatResyncSub = null;
     _draftSaveTimer?.cancel();
     _historyRowsDebounce?.cancel();
     _betCtrl.removeListener(_scheduleBetDraftSave);
@@ -1025,6 +1123,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _gameIdNotifier.value = gameId;
     _lastTimelineSig = null;
     _messageIds.clear();
+    _pendingPushes.clear();
+    _fullSyncRequested = false;
     _longDragonLoadedGameId = null;
     _longDragonRowsNotifier.value = null;
     _setPanel(_BottomPanel.none);
@@ -1043,8 +1143,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       _syncMessagesFromCache(forceScroll: true, skipLiveMerge: true);
     } else {
       // 冷切：清空旧彩种列表，勿把上一彩种内容留到新彩种（不转圈）。
-      _messagesNotifier.value = const [];
+      _messagesNotifier.value = <ChatMessageModel>[];
       _messageIds.clear();
+      _childIndexByKey.clear();
     }
     unawaited(
       _loadMessages(
@@ -1430,8 +1531,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     final localId = _publishOptimisticBet(submitCommand);
     try {
       final done = await _betGuard.run((requestId) async {
-        return ref.read(lotteryRepositoryProvider).submitBet(
-              roomId: widget.roomId,
+        // WS 优先、HTTP 兜底；requestId 在网络类失败重试时复用，服务端按它去重
+        return ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .submitBetRouted(
               gameId: _gameId,
               command: submitCommand,
               items: submitItems,
@@ -1470,7 +1573,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 
   /// 不对玩家展示「飞单失败」细节；代理额度不足后端已静默跳过飞单。
   String _betFailToast(Object e) {
-    final msg = e is ApiException ? e.message : e.toString();
+    final msg = e is ApiException ? betErrorMessage(e) : e.toString();
     if (msg.contains('飞单失败') ||
         msg.contains('FLIGHT_CREDIT_INSUFFICIENT') ||
         msg.contains('代理会员可用额度不足')) {
@@ -2855,4 +2958,22 @@ class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
       },
     );
   }
+}
+
+/// 消息列表：持有可原地追加的 List。追加后调用 [changed] 只通知一次，
+/// 整表替换走 [value] setter。
+class _ChatListNotifier extends ChangeNotifier
+    implements ValueListenable<List<ChatMessageModel>> {
+  List<ChatMessageModel> _items = <ChatMessageModel>[];
+
+  @override
+  List<ChatMessageModel> get value => _items;
+
+  set value(List<ChatMessageModel> next) {
+    // 必须是可增长的：帧合并路径会原地 add
+    _items = next.isEmpty ? <ChatMessageModel>[] : next;
+    notifyListeners();
+  }
+
+  void changed() => notifyListeners();
 }

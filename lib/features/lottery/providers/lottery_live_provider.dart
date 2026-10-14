@@ -11,6 +11,7 @@ import '../../../core/network/session_store.dart';
 import '../../../core/testing/regression_test_flags.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
+import '../../../data/repositories/lottery_repository.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
@@ -18,8 +19,10 @@ import '../../host/providers/host_apply_notice_provider.dart';
 import '../../host/providers/host_dash_dirty_provider.dart';
 import '../../room/cs_unread.dart';
 import '../engine/lottery_period_engine.dart';
+import '../services/bet_executor.dart';
 import '../services/chat_push_cache.dart';
 import '../utils/bet_receipt_format.dart';
+import '../utils/check_card_format.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
 import '../utils/chat_timeline.dart';
@@ -131,6 +134,30 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   Future<void>? _wsConnectInflight;
   final Set<String> _wsSubscribedTopics = {};
   final _chatPushController = StreamController<LotteryChatPush>.broadcast();
+  /// RESYNC 后台补拉完成：页面据此整表重算（gameId 或 '*'）。
+  final _chatResyncController = StreamController<String>.broadcast();
+  /// CONNECTED 事件宣告的服务端能力，如 BET。
+  Set<String> _wsFeatures = const {};
+  final Map<String, DateTime> _resyncLastAt = {};
+  final Map<String, Timer> _resyncTimers = {};
+  static const _resyncMinGap = Duration(seconds: 5);
+  final Map<String, _ChatHistoryState> _chatHistory = {};
+  /// CHECK_SELF 先于核对卡到达时暂存。
+  final List<_PendingCheckSelf> _pendingCheckSelf = [];
+  late final BetExecutor _betExecutor = BetExecutor(
+    wsAvailable: () =>
+        _wsConnected &&
+        (_ws?.isConnected ?? false) &&
+        _wsFeatures.contains('BET'),
+    sendWs: (reqId, body) {
+      final ws = _ws;
+      if (ws == null || !ws.isConnected) return false;
+      ws.send({'action': 'BET', 'data': body});
+      return true;
+    },
+    poll: (reqId) =>
+        _ref.read(lotteryRepositoryProvider).pollBetByReqId(reqId),
+  );
   final _csPushController = StreamController<CsChatPush>.broadcast();
   bool _drawHistoryPreloaded = false;
   Future<void>? _drawHistoryPreload;
@@ -158,6 +185,38 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   final Map<String, List<Map<String, dynamic>>> _longDragonByGame = {};
 
   Stream<LotteryChatPush> get chatPushes => _chatPushController.stream;
+
+  Stream<String> get chatResyncs => _chatResyncController.stream;
+
+  /// 一次用户下注：WS 优先（BET_ACK ≤3s）→ HTTP 兜底 → 按 reqId 轮询。
+  /// 同一次下注的重试必须传同一个 [requestId]。
+  Future<BetSubmitResult> submitBetRouted({
+    required String gameId,
+    required String command,
+    String? issueNo,
+    List<Map<String, dynamic>>? items,
+    required String requestId,
+  }) {
+    final repo = _ref.read(lotteryRepositoryProvider);
+    return _betExecutor.submit(
+      requestId,
+      LotteryRepository.buildBetBody(
+        gameId: gameId,
+        command: command,
+        issueNo: issueNo,
+        items: items,
+        requestId: requestId,
+      ),
+      () => repo.submitBet(
+        roomId: roomId,
+        gameId: gameId,
+        command: command,
+        issueNo: issueNo,
+        items: items,
+        requestId: requestId,
+      ),
+    );
+  }
 
   List<Map<String, dynamic>>? longDragonItems(String gameId) {
     final id = gameId.trim();
@@ -602,35 +661,139 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         .isNotEmpty;
   }
 
+  /// 最新一页（≤50 条 + 开奖卡）。会员接口用响应头里的游标记下"往上翻"的起点。
   Future<void> loadChatMessagesFromServer(String gameId) async {
     try {
       final isHost = _ref.read(authSessionProvider).isHostSide;
-      final msgs = await _ref.read(lotteryRepositoryProvider).getChatMessages(
+      final page = await _ref.read(lotteryRepositoryProvider).getChatPage(
             roomId: roomId,
             gameId: gameId,
             asOwner: isHost,
             limit: ChatPushCache.chatHistoryIssueLimit,
           );
       if (!mounted) return;
-      _ingestServerChatMessages(gameId, msgs);
+      _ingestServerChatMessages(gameId, page.messages);
+      if (!isHost) {
+        _noteNewestPage(
+          gameId,
+          page.messages,
+          nextBeforeSeq: page.nextBeforeSeq,
+          hasMore: page.hasMore,
+        );
+      }
       _bumpDrawCache();
     } catch (_) {}
   }
 
+  /// 进房：每彩种只要最新一页。
   Future<void> loadAllChatMessagesFromServer() async {
     try {
       final grouped = await _ref
           .read(lotteryRepositoryProvider)
-          .getAllRoomDrawMessages(
-            roomId: roomId,
-            limit: ChatPushCache.chatHistoryIssueLimit,
-          );
+          .getAllRoomDrawMessages(roomId: roomId);
       if (!mounted) return;
       for (final entry in grouped.entries) {
         _ingestServerChatMessages(entry.key, entry.value);
+        // /all 没有响应头：没有更精确游标时，用本页最小 seq+1（不含卡片）兜底
+        _noteNewestPage(entry.key, entry.value, derivedOnly: true);
       }
       _bumpDrawCache();
     } catch (_) {}
+  }
+
+  int? _minBetSeq(List<ChatMessageModel> msgs) {
+    int? min;
+    for (final m in msgs) {
+      if (m.seq <= 0) continue;
+      if (m.type != ChatMessageType.text &&
+          m.type != ChatMessageType.betReceipt) {
+        continue;
+      }
+      if (min == null || m.seq < min) min = m.seq;
+    }
+    return min;
+  }
+
+  void _noteNewestPage(
+    String gameId,
+    List<ChatMessageModel> msgs, {
+    int? nextBeforeSeq,
+    bool? hasMore,
+    bool derivedOnly = false,
+  }) {
+    final prev = _chatHistory[gameId];
+    // 已经往上翻过：后台最新页不能把游标拨回去
+    if (prev != null && prev.advanced) return;
+    // 有头的精确游标优先；/all 兜底不覆盖已有的精确游标
+    if (derivedOnly && prev != null && prev.exact) return;
+    if (nextBeforeSeq != null) {
+      _chatHistory[gameId] = _ChatHistoryState(
+        nextBeforeSeq: nextBeforeSeq,
+        hasMore: (hasMore ?? nextBeforeSeq > 0) && nextBeforeSeq > 0,
+        exact: true,
+      );
+      return;
+    }
+    final min = _minBetSeq(msgs);
+    final size = LotteryRepository.chatPageSize;
+    final betCount = msgs
+        .where((m) =>
+            m.type == ChatMessageType.text ||
+            m.type == ChatMessageType.betReceipt)
+        .length;
+    // 响应里没有 seq（旧服务端）：不支持翻页，保持现有行为
+    _chatHistory[gameId] = _ChatHistoryState(
+      nextBeforeSeq: min == null ? 0 : min + 1,
+      hasMore: min != null && (hasMore ?? betCount >= size),
+    );
+  }
+
+  bool chatHistoryHasMore(String gameId) {
+    final st = _chatHistory[gameId];
+    if (st == null || !st.hasMore) return false;
+    return ChatPushCache.instance.windowedCount(roomId, gameId) <
+        ChatPushCache.chatWindowSize;
+  }
+
+  /// 滚到顶：加载上一页并并入缓存最前面。返回本次新增条数（0 = 没有更多）。
+  Future<int> loadOlderChatMessages(String gameId) {
+    final st = _chatHistory[gameId];
+    if (st == null || !chatHistoryHasMore(gameId)) return Future.value(0);
+    return st.inflight ??= _loadOlderChat(gameId, st).whenComplete(() {
+      st.inflight = null;
+    });
+  }
+
+  Future<int> _loadOlderChat(String gameId, _ChatHistoryState st) async {
+    try {
+      final page = await _ref.read(lotteryRepositoryProvider).getChatPage(
+            roomId: roomId,
+            gameId: gameId,
+            beforeSeq: st.nextBeforeSeq,
+            size: LotteryRepository.chatPageSize,
+          );
+      if (!mounted) return 0;
+      final tagged = [for (final m in page.messages) _tagSelfBetMessage(m)];
+      final added = ChatPushCache.instance.prependHistory(
+        roomId: roomId,
+        gameId: gameId,
+        older: tagged,
+      );
+      st.advanced = true;
+      final next = page.nextBeforeSeq ?? _minBetSeq(page.messages);
+      st.nextBeforeSeq = next ?? 0;
+      st.hasMore = page.messages.isNotEmpty &&
+          next != null &&
+          next > 0 &&
+          (page.hasMore ?? page.messages.length >= LotteryRepository.chatPageSize);
+      if (ChatPushCache.instance.windowedCount(roomId, gameId) >=
+          ChatPushCache.chatWindowSize) {
+        st.hasMore = false;
+      }
+      return added;
+    } catch (_) {
+      return 0;
+    }
   }
 
   /// 自己的注单文字标 isSelf（靠右）；优先 accountId，其次昵称兜底。
@@ -706,6 +869,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       }
     }
     _dropChatOlderThanServerWindow(gameId, msgs);
+    _drainPendingCheckSelf(gameId);
   }
 
   /// 进房历史以服务器这批期号为准，丢掉更早的本地消息。
@@ -715,6 +879,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   ) {
     String? oldest;
     for (final m in msgs) {
+      // 只拿卡片的期号当窗口：下注页可能全是当前期，不能据此丢更早的开奖/核对卡。
+      if (m.type == ChatMessageType.text ||
+          m.type == ChatMessageType.betReceipt ||
+          m.type == ChatMessageType.image) {
+        continue;
+      }
       final issue = extractIssue(m);
       if (issue == null || issue.isEmpty) continue;
       if (oldest == null || compareIssueNo(issue, oldest) < 0) {
@@ -1156,6 +1326,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsReconnectTimer?.cancel();
       _wsReconnectTimer = null;
       _wsSubscribedTopics.clear();
+      _wsFeatures = const {};
 
       _wsSub = client.events.listen(_onWsEvent);
       _syncWsSubscriptions();
@@ -1182,6 +1353,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   void _markWsTransportDown(int gen) {
     if (gen != _wsConnectGen) return;
     _wsConnected = false;
+    _wsFeatures = const {};
     _wsSub?.cancel();
     _wsSub = null;
     _wsSubscribedTopics.clear();
@@ -1247,6 +1419,24 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    if (type == 'CONNECTED') {
+      final f = payload['features'];
+      _wsFeatures = {
+        if (f is List) for (final e in f) '$e'.toUpperCase(),
+      };
+      return;
+    }
+
+    if (type == 'BET_ACK') {
+      _betExecutor.onAck(payload);
+      return;
+    }
+
+    if (type == 'CHECK_SELF') {
+      _onCheckSelf(event, payload);
+      return;
+    }
+
     // 房间级：彩种开关变更 → 立刻重拉大厅目录
     if (type == 'ROOM_GAMES_CHANGED') {
       unawaited(reloadGamesCatalog());
@@ -1291,13 +1481,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final gameType = _gameTypeFromEvent(event, payload);
     if (gameType == null || gameType.isEmpty) {
       if (type == 'RESYNC') {
-        unawaited(loadAllChatMessagesFromServer());
+        _scheduleResync(null);
       }
       return;
     }
 
     if (type == 'RESYNC') {
-      unawaited(loadChatMessagesFromServer(gameType));
+      _scheduleResync(gameType);
       return;
     }
 
@@ -1494,15 +1684,107 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
   }
 
+  /// 每个彩种（或全部）至多每 5s 处理一次 RESYNC，窗口内多发的合并成一次尾随补拉，
+  /// 只取最新一页并按 id 合并。
+  void _scheduleResync(String? gameType) {
+    final key = gameType ?? '*';
+    if (_resyncTimers.containsKey(key)) return;
+    final last = _resyncLastAt[key];
+    final wait = last == null
+        ? Duration.zero
+        : _resyncMinGap - DateTime.now().difference(last);
+    if (wait <= Duration.zero) {
+      _runResync(key);
+      return;
+    }
+    _resyncTimers[key] = Timer(wait, () {
+      _resyncTimers.remove(key);
+      if (mounted) _runResync(key);
+    });
+  }
+
+  void _runResync(String key) {
+    _resyncLastAt[key] = DateTime.now();
+    final future = key == '*'
+        ? loadAllChatMessagesFromServer()
+        : loadChatMessagesFromServer(key);
+    unawaited(future.then((_) {
+      if (mounted && !_chatResyncController.isClosed) {
+        _chatResyncController.add(key);
+      }
+    }));
+  }
+
+  /// 自己的名次 / 未中奖：按 cardId（或 msgType+gameType+issue 还原出的卡 id）并进核对卡。
+  void _onCheckSelf(Map<String, dynamic> event, Map<String, dynamic> payload) {
+    final gameType = _gameTypeFromEvent(event, payload);
+    if (gameType == null || gameType.isEmpty) return;
+    final msgType = '${payload['msgType'] ?? ''}'.toUpperCase();
+    final issue = '${payload['issueNo'] ?? ''}'.trim();
+    final isWin = msgType.contains('WIN');
+    final ids = <String>[
+      if ('${payload['cardId'] ?? ''}'.isNotEmpty) '${payload['cardId']}',
+      if (issue.isNotEmpty)
+        isWin
+            ? winListChatMessageId(gameType, issue)
+            : betRankChatMessageId(gameType, issue),
+    ];
+    if (ids.isEmpty) return;
+    final rowRaw = payload['row'];
+    final pending = _PendingCheckSelf(
+      gameType: gameType,
+      cardIds: ids,
+      rank: int.tryParse('${payload['rank']}'),
+      row: rowRaw is Map ? Map<String, dynamic>.from(rowRaw) : null,
+      lost: payload['lost'] == true,
+      at: DateTime.now(),
+    );
+    if (!_applyCheckSelf(pending)) {
+      // 卡还没到（或房间缓存还没读盘）：先缓冲，卡上屏后再合并
+      _pendingCheckSelf.add(pending);
+      if (_pendingCheckSelf.length > 32) _pendingCheckSelf.removeAt(0);
+    }
+  }
+
+  bool _applyCheckSelf(_PendingCheckSelf p) {
+    final updated = ChatPushCache.instance.applyCheckSelf(
+      roomId: roomId,
+      gameId: p.gameType,
+      cardIds: p.cardIds,
+      rank: p.rank,
+      row: p.row,
+      lost: p.lost,
+    );
+    if (updated == null) return false;
+    if (!_chatPushController.isClosed) {
+      _chatPushController.add(LotteryChatPush(gameId: p.gameType, message: updated));
+    }
+    return true;
+  }
+
+  void _drainPendingCheckSelf(String gameType) {
+    if (_pendingCheckSelf.isEmpty) return;
+    final now = DateTime.now();
+    _pendingCheckSelf.removeWhere((p) {
+      if (now.difference(p.at) > const Duration(seconds: 60)) return true;
+      if (p.gameType != gameType) return false;
+      return _applyCheckSelf(p);
+    });
+  }
+
   void _onBetRankWs(String gameType, Map<String, dynamic> payload) {
     final issue = (payload['issueNo'] ?? '').toString().trim();
     final content = (payload['content'] ?? payload['text'] ?? '').toString();
     final rankings = payload['rankings'] is List ? payload['rankings'] as List : null;
-    final text = formatBetRankText(
-      issue: issue,
-      content: content,
-      rankings: rankings,
-    ).trim();
+    final card = rankings != null ? parseCheckCard(payload, isWin: false) : null;
+    final text = (card != null
+            ? composeCheckCardText(data: card, issue: issue)
+            : formatBetRankText(
+                issue: issue,
+                content: content,
+                rankings: rankings,
+              ))
+        .trim();
     if (text.isEmpty) return;
     final key = issue.isNotEmpty
         ? betRankChatMessageId(gameType, issue)
@@ -1522,21 +1804,25 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         issueNo: issue.isNotEmpty ? issue : null,
         seq: _seqOf(payload),
         pair: _pairOf(payload),
+        checkCard: card,
       ),
     );
+    _drainPendingCheckSelf(gameType);
   }
 
   void _onWinListWs(String gameType, Map<String, dynamic> payload) {
     final issue = (payload['issueNo'] ?? '').toString().trim();
     final content = (payload['content'] ?? payload['text'] ?? '').toString();
-    final winners = parseWinCheckWinners(
-      payload['winners'] is List ? payload['winners'] as List : null,
-    );
-    final text = formatWinCheckText(
-      issue: issue,
-      content: content,
-      winners: winners,
-    ).trim();
+    final winnersRaw = payload['winners'] is List ? payload['winners'] as List : null;
+    final card = winnersRaw != null ? parseCheckCard(payload, isWin: true) : null;
+    final text = (card != null
+            ? composeCheckCardText(data: card, issue: issue)
+            : formatWinCheckText(
+                issue: issue,
+                content: content,
+                winners: parseWinCheckWinners(winnersRaw),
+              ))
+        .trim();
     if (text.isEmpty) return;
     final key = issue.isNotEmpty
         ? winListChatMessageId(gameType, issue)
@@ -1553,8 +1839,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       issueNo: issue.isNotEmpty ? issue : null,
       seq: _seqOf(payload),
       pair: _pairOf(payload),
+      checkCard: card,
     );
     _pushChatOnce(key, gameType, message);
+    _drainPendingCheckSelf(gameType);
   }
 
   void _flushPendingWinList(String gameType, String issue) {
@@ -1984,6 +2272,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       timer.cancel();
     }
     _reconcileDebounceByGame.clear();
+    for (final timer in _resyncTimers.values) {
+      timer.cancel();
+    }
+    _resyncTimers.clear();
     _pendingWinListByKey.clear();
     _engine.reset();
     _chatBootstrapping.clear();
@@ -1994,9 +2286,46 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _ws = null;
     unawaited(dead?.dispose() ?? Future.value());
     unawaited(_chatPushController.close());
+    unawaited(_chatResyncController.close());
     unawaited(_csPushController.close());
     super.dispose();
   }
+}
+
+class _ChatHistoryState {
+  _ChatHistoryState({
+    required this.nextBeforeSeq,
+    required this.hasMore,
+    this.exact = false,
+  });
+
+  int nextBeforeSeq;
+  bool hasMore;
+
+  /// 游标来自 X-Chat-Next-Before-Seq（不是从本页最小 seq 推的）
+  final bool exact;
+
+  /// 已经向上翻过页：之后的"最新页"刷新不再重置游标
+  bool advanced = false;
+  Future<int>? inflight;
+}
+
+class _PendingCheckSelf {
+  const _PendingCheckSelf({
+    required this.gameType,
+    required this.cardIds,
+    required this.rank,
+    required this.row,
+    required this.lost,
+    required this.at,
+  });
+
+  final String gameType;
+  final List<String> cardIds;
+  final int? rank;
+  final Map<String, dynamic>? row;
+  final bool lost;
+  final DateTime at;
 }
 
 class _PendingWinList {

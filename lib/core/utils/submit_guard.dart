@@ -1,3 +1,6 @@
+import '../network/api_exception.dart';
+import 'request_id.dart';
+
 /// 写操作防抖 + 在途锁 + 幂等键（requestId）。
 ///
 /// - 防抖：短时间内重复点击直接忽略
@@ -12,7 +15,6 @@ class SubmitGuard {
   bool _busy = false;
   DateTime? _lastStartAt;
   String? _requestId;
-  static int _seq = 0;
 
   bool get isBusy => _busy;
 
@@ -65,6 +67,7 @@ class SubmitGuard {
   }
 
   static bool isNetworkRetryable(Object e) {
+    if (e is ApiException && e.isNetwork) return true;
     final msg = e.toString().toLowerCase();
     return msg.contains('timeout') ||
         msg.contains('timed out') ||
@@ -75,9 +78,5 @@ class SubmitGuard {
         msg.contains('connection');
   }
 
-  static String _newRequestId() {
-    final ms = DateTime.now().microsecondsSinceEpoch;
-    _seq = (_seq + 1) & 0xffff;
-    return 'req_${ms.toRadixString(36)}_$_seq';
-  }
+  static String _newRequestId() => newRequestId();
 }

@@ -1,3 +1,5 @@
+import 'check_card_model.dart';
+
 enum ChatMessageType {
   text,
   system,
@@ -25,6 +27,7 @@ class ChatMessageModel {
     this.accountId,
     this.seq = 0,
     this.pair = 0,
+    this.checkCard,
   });
 
   final String id;
@@ -46,6 +49,9 @@ class ChatMessageModel {
   /// 同一序号里的行号。0 下注文字，1 回执。
   final int pair;
 
+  /// BET_RANK / WIN_LIST 的结构化行（正文由它拼出）。
+  final CheckCardData? checkCard;
+
   ChatMessageModel copyWith({
     String? id,
     String? sender,
@@ -60,6 +66,7 @@ class ChatMessageModel {
     String? accountId,
     int? seq,
     int? pair,
+    CheckCardData? checkCard,
   }) {
     return ChatMessageModel(
       id: id ?? this.id,
@@ -75,6 +82,7 @@ class ChatMessageModel {
       accountId: accountId ?? this.accountId,
       seq: seq ?? this.seq,
       pair: pair ?? this.pair,
+      checkCard: checkCard ?? this.checkCard,
     );
   }
 

@@ -84,6 +84,23 @@ class ApiClient {
     }
   }
 
+  /// 需要读响应头（如分页游标 X-Chat-Next-Before-Seq）时使用；header 名统一小写。
+  Future<({dynamic data, Map<String, String> headers})> getWithHeaders(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    try {
+      final res = await _dio.get<dynamic>(path, queryParameters: query);
+      final headers = <String, String>{
+        for (final e in res.headers.map.entries)
+          if (e.value.isNotEmpty) e.key.toLowerCase(): e.value.first,
+      };
+      return (data: unwrapResponse(res), headers: headers);
+    } on DioException catch (e) {
+      throw ApiException.fromDio(e);
+    }
+  }
+
   Future<dynamic> post(
     String path, {
     Object? data,

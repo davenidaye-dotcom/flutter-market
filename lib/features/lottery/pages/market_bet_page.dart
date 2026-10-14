@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../core/network/session_store.dart';
 import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/lottery_game_model.dart';
@@ -17,6 +18,7 @@ import '../../../shared/widgets/lottery_ball.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../providers/lottery_live_provider.dart';
+import '../services/bet_executor.dart';
 import '../widgets/bet_confirm_dialog.dart';
 import '../widgets/live_period_widgets.dart';
 import '../utils/draw_history_rows.dart';
@@ -289,8 +291,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     final localId = widget.onBetStart?.call(submitCommand);
     try {
       final done = await widget.betGuard.run((requestId) async {
-        return ref.read(lotteryRepositoryProvider).submitBet(
-              roomId: widget.roomId,
+        return ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .submitBetRouted(
               gameId: widget.gameId,
               command: submitCommand,
               items: items,
@@ -309,7 +312,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       AppToast.success('重投成功');
     } catch (e) {
       if (localId != null) widget.onBetFailed?.call(localId);
-      AppToast.error(e.toString());
+      AppToast.error(e is ApiException ? betErrorMessage(e) : e.toString());
     } finally {
       _submitLocked = false;
       if (mounted) _submitting.value = false;
@@ -444,8 +447,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     final localId = widget.onBetStart?.call(submitCommand);
     try {
       final done = await widget.betGuard.run((requestId) async {
-        return ref.read(lotteryRepositoryProvider).submitBet(
-              roomId: widget.roomId,
+        return ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .submitBetRouted(
               gameId: widget.gameId,
               // 带可读 command，后端才能广播给同房其他人
               command: submitCommand,
@@ -467,7 +471,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       _reset();
     } catch (e) {
       if (localId != null) widget.onBetFailed?.call(localId);
-      AppToast.error(e.toString());
+      AppToast.error(e is ApiException ? betErrorMessage(e) : e.toString());
     } finally {
       _submitLocked = false;
       if (mounted) _submitting.value = false;

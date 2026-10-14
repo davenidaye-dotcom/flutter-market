@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../data/models/chat_message_model.dart';
+import '../../../data/models/check_card_model.dart';
 import '../utils/chat_timeline.dart';
+import '../utils/check_card_format.dart';
 import '../utils/bet_repeat_helper.dart';
 import '../utils/draw_history_rows.dart';
 import '../widgets/history_draw_panel.dart';
 import 'chat_timeline_codec.dart';
+import 'chat_cache_store.dart';
 import 'chat_push_codec.dart';
 
 /// WS 推送到聊天区的系统消息（封盘/开奖等）
@@ -48,8 +51,10 @@ class _CachedChatPush {
   }
 }
 
-/// 封盘/开奖等聊天推送的本地缓存（内存 + SharedPreferences）。
-/// 不按条数裁剪。进房时由 [dropOlderThanIssue] 丢掉服务器窗口之外的更早期号。
+/// 封盘/开奖等聊天推送的本地缓存（内存 + 文件）。
+/// 开奖/封盘/核对卡按期数保留（不按条数裁剪）；下注原文、回执等其余消息
+/// 每房间每彩种最多留 [chatWindowSize] 条，超出时从最旧的开始淘汰。
+/// 进房时由 [dropOlderThanIssue] 丢掉服务器窗口之外的更早期号。
 class ChatPushCache {
   ChatPushCache._();
 
@@ -60,7 +65,13 @@ class ChatPushCache {
   /// 进房预拉、开奖历史表：每彩种向服务器要的最新开奖条数。
   static const drawHistoryLimit = chatHistoryIssueLimit;
   static const serverDrawLimit = drawHistoryLimit;
-  static const _prefPrefix = 'flyroom_chat_cache_';
+
+  /// 每房间每彩种内存里最多保留的非卡片消息条数。
+  static const chatWindowSize = 500;
+
+  /// 落盘节流间隔：每个房间 5s 内最多写一次（不是可重置的防抖）。
+  @visibleForTesting
+  static Duration persistInterval = const Duration(seconds: 5);
 
   final Map<String, Set<String>> _keysByRoom = {};
   final Map<String, List<_CachedChatPush>> _bufferByRoom = {};
@@ -68,8 +79,15 @@ class ChatPushCache {
   final Map<String, List<_CachedChatPush>> _liveByRoom = {};
   final Set<String> _loadedRooms = {};
   final Map<String, Timer> _saveTimers = {};
+  final Set<String> _dirtyRooms = {};
   final Map<String, Future<void>> _roomLoadInflight = {};
-  final Map<String, List<ChatMessageModel>> _timelineCache = {};
+  final Map<String, _TimelineEntry> _timelineCache = {};
+  /// roomId → gameId → 窗口内非卡片消息，旧在前。淘汰只动队首。
+  final Map<String, Map<String, ListQueue<_CachedChatPush>>> _tailOrder = {};
+  /// 已淘汰、但 buffer 里还没物理删除的 dedupeKey（读取/落盘前批量压缩）。
+  final Map<String, Set<String>> _evictedPending = {};
+  /// roomId:gameId → 变更计数，供页面做廉价签名。
+  final Map<String, int> _versions = {};
   final Map<String, List<HistoryDrawRow>> _historyRowsCache = {};
   int _persistSuspendCount = 0;
 
@@ -77,6 +95,11 @@ class ChatPushCache {
   void suspendPersist() => _persistSuspendCount++;
   void resumePersist() {
     if (_persistSuspendCount > 0) _persistSuspendCount--;
+    if (_persistSuspendCount == 0) {
+      for (final roomId in _dirtyRooms.toList()) {
+        _schedulePersist(roomId);
+      }
+    }
   }
 
   Future<void> preload() async {
@@ -92,19 +115,13 @@ class ChatPushCache {
       await inflight;
       return;
     }
-    final future = _loadRoomFromDisk(roomId);
+    final future = _loadRoom(roomId);
     _roomLoadInflight[roomId] = future;
     try {
       await future;
     } finally {
       _roomLoadInflight.remove(roomId);
     }
-  }
-
-  Future<void> _loadRoomFromDisk(String roomId) async {
-    if (_loadedRooms.contains(roomId)) return;
-    final prefs = await SharedPreferences.getInstance();
-    await _loadRoom(roomId, prefs);
   }
 
   bool hasDedupeKey(String roomId, String dedupeKey) {
@@ -160,6 +177,9 @@ class ChatPushCache {
     final logicalKey = _logicalDedupeKey(gameId, normalized) ??
         _sealLogicalId(gameId, normalized.id.isNotEmpty ? normalized.id : dedupeKey) ??
         dedupeKey;
+    if (_evictedPending[roomId]?.contains(logicalKey) ?? false) {
+      _compactRoom(roomId);
+    }
     _keysByRoom.putIfAbsent(roomId, () => <String>{});
     _bufferByRoom.putIfAbsent(roomId, () => <_CachedChatPush>[]);
     final tailKind = normalized.type == ChatMessageType.text ||
@@ -193,17 +213,192 @@ class ChatPushCache {
     keys.add(logicalKey);
 
     // purge 会替换 buffer list，必须重新取引用再 add
-    _bufferByRoom[roomId]!.add(
-      _CachedChatPush(
-        dedupeKey: logicalKey,
-        push: LotteryChatPush(gameId: gameId, message: normalized),
-      ),
+    final entry = _CachedChatPush(
+      dedupeKey: logicalKey,
+      push: LotteryChatPush(gameId: gameId, message: normalized),
     );
-    if (!_appendTimelineTail(roomId, gameId, normalized)) {
+    _bufferByRoom[roomId]!.add(entry);
+    if (_isWindowed(normalized)) _trackTail(roomId, gameId, entry);
+    if (_appendTimelineTail(roomId, gameId, normalized)) {
+      _bumpVersion(roomId, gameId);
+    } else {
       _invalidateGameCache(roomId, gameId);
     }
     _schedulePersist(roomId);
     return true;
+  }
+
+  /// 下注原文/回执/失败卡等占 [chatWindowSize] 窗口；开奖、封盘、核对卡不占，按期数留。
+  bool _isWindowed(ChatMessageModel m) =>
+      m.type == ChatMessageType.text ||
+      m.type == ChatMessageType.betReceipt ||
+      m.type == ChatMessageType.image;
+
+  ListQueue<_CachedChatPush> _tailQueue(String roomId, String gameId) =>
+      (_tailOrder.putIfAbsent(roomId, () => {}))
+          .putIfAbsent(gameId, () => ListQueue<_CachedChatPush>());
+
+  /// 窗口内条数（供历史翻页判断是否已到 500 上限）。
+  int windowedCount(String roomId, String gameId) =>
+      _tailOrder[roomId]?[gameId]?.length ?? 0;
+
+  void _trackTail(String roomId, String gameId, _CachedChatPush entry) {
+    final queue = _tailQueue(roomId, gameId)..addLast(entry);
+    if (queue.length > chatWindowSize) _evictOverflow(roomId, gameId);
+  }
+
+  /// 只淘汰最旧的；dedupe key 同步移除，buffer/timeline 里的残留批量清理。
+  void _evictOverflow(String roomId, String gameId) {
+    final queue = _tailOrder[roomId]?[gameId];
+    if (queue == null) return;
+    final keys = _keysByRoom[roomId];
+    final pending = _evictedPending.putIfAbsent(roomId, () => <String>{});
+    final timeline = _timelineCache['$roomId:$gameId:syn=true'];
+    while (queue.length > chatWindowSize) {
+      final old = queue.removeFirst();
+      keys?.remove(old.dedupeKey);
+      pending.add(old.dedupeKey);
+      timeline?.evict.add(old.push.message.id);
+    }
+    _timelineCache.remove('$roomId:$gameId:syn=false');
+    _bumpVersion(roomId, gameId);
+  }
+
+  /// 物理删除 buffer 里已淘汰的条目（O(N)，只在读取/落盘/重复键回流时做）。
+  void _compactRoom(String roomId) {
+    final pending = _evictedPending[roomId];
+    if (pending == null || pending.isEmpty) return;
+    _bufferByRoom[roomId]?.removeWhere(
+      (e) => pending.contains(e.dedupeKey) && _isWindowed(e.push.message),
+    );
+    pending.clear();
+  }
+
+  /// buffer 被整体重建后（丢旧期/API 覆盖/清系统消息）重算窗口队列，并按窗口淘汰。
+  void _rebuildTailIndex(String roomId) {
+    _compactRoom(roomId);
+    final buffer = _bufferByRoom[roomId];
+    _tailOrder.remove(roomId);
+    if (buffer == null) return;
+    final games = <String>{};
+    for (final e in buffer) {
+      if (!_isWindowed(e.push.message)) continue;
+      _tailQueue(roomId, e.push.gameId).addLast(e);
+      games.add(e.push.gameId);
+    }
+    for (final g in games) {
+      if ((_tailOrder[roomId]?[g]?.length ?? 0) > chatWindowSize) {
+        _evictOverflow(roomId, g);
+      }
+    }
+    _compactRoom(roomId);
+  }
+
+  /// 历史翻页：older（旧→新）插到窗口最前面，只收窗口剩余容量内最新的那些，
+  /// 不会挤掉已在窗口里的新消息。返回实际收下的条数。
+  int prependHistory({
+    required String roomId,
+    required String gameId,
+    required List<ChatMessageModel> older,
+  }) {
+    if (older.isEmpty) return 0;
+    _compactRoom(roomId);
+    final keys = _keysByRoom.putIfAbsent(roomId, () => <String>{});
+    final buffer = _bufferByRoom.putIfAbsent(roomId, () => <_CachedChatPush>[]);
+    final queue = _tailQueue(roomId, gameId);
+    var room = chatWindowSize - queue.length;
+    final accepted = <_CachedChatPush>[];
+    final cards = <ChatMessageModel>[];
+    for (var i = older.length - 1; i >= 0; i--) {
+      final m = normalizeStoredChatMessage(older[i], gameId: gameId);
+      if (!_isWindowed(m)) {
+        cards.add(m);
+        continue;
+      }
+      if (room <= 0) continue;
+      final key = m.id.isNotEmpty ? m.id : 'api-${m.type.name}-${m.content.hashCode}';
+      if (keys.contains(key)) continue;
+      keys.add(key);
+      accepted.add(_CachedChatPush(
+        dedupeKey: key,
+        push: LotteryChatPush(gameId: gameId, message: m),
+      ));
+      room--;
+    }
+    // accepted 是新→旧；队首要旧的，所以逐个 addFirst（最旧最后加）。
+    for (final e in accepted) {
+      queue.addFirst(e);
+    }
+    buffer.insertAll(0, accepted.reversed);
+    for (final card in cards.reversed) {
+      pushOnce(
+        roomId: roomId,
+        dedupeKey: card.id,
+        gameId: gameId,
+        message: card,
+      );
+    }
+    if (accepted.isNotEmpty) {
+      _invalidateGameCache(roomId, gameId);
+      _schedulePersist(roomId);
+    }
+    return accepted.length;
+  }
+
+  /// 把 CHECK_SELF（自己的名次/未中奖）并进已有核对卡；卡不存在返回 null（调用方先缓冲）。
+  ChatMessageModel? applyCheckSelf({
+    required String roomId,
+    required String gameId,
+    required List<String> cardIds,
+    int? rank,
+    Map<String, dynamic>? row,
+    bool lost = false,
+  }) {
+    final buffer = _bufferByRoom[roomId];
+    if (buffer == null) return null;
+    for (var i = 0; i < buffer.length; i++) {
+      final entry = buffer[i];
+      final message = entry.push.message;
+      if (entry.push.gameId != gameId) continue;
+      if (message.type != ChatMessageType.betListCheck &&
+          message.type != ChatMessageType.winCheck) {
+        continue;
+      }
+      if (!cardIds.contains(entry.dedupeKey) && !cardIds.contains(message.id)) {
+        continue;
+      }
+      final card = message.checkCard ??
+          CheckCardData(isWin: message.type == ChatMessageType.winCheck);
+      final next = card.withSelf(
+        rank: rank,
+        row: row == null ? null : CheckRow(row),
+        lost: lost,
+      );
+      final updated = message.copyWith(
+        checkCard: next,
+        content: composeCheckCardText(
+          data: next,
+          issue: extractIssue(message) ?? '',
+        ),
+      );
+      buffer[i] = _CachedChatPush(
+        dedupeKey: entry.dedupeKey,
+        push: LotteryChatPush(gameId: gameId, message: updated),
+      );
+      _invalidateGameCache(roomId, gameId);
+      _schedulePersist(roomId);
+      return updated;
+    }
+    return null;
+  }
+
+  /// 该房间彩种的变更计数；任何缓存内容变化都会递增。
+  int timelineVersion(String roomId, String gameId) =>
+      _versions['$roomId:$gameId'] ?? 0;
+
+  void _bumpVersion(String roomId, String gameId) {
+    final k = '$roomId:$gameId';
+    _versions[k] = (_versions[k] ?? 0) + 1;
   }
 
   /// `sealed-JS_SC-34163647` 与 `sealed-JS_SC-3647` 视为同一条封盘。
@@ -282,7 +477,16 @@ class ChatPushCache {
       final entry = buffer[i];
       if (entry.dedupeKey != logicalKey) continue;
       final existing = entry.push.message.content;
-      if (incoming.content.trim().length <= existing.trim().length) return false;
+      final incomingCard = incoming.checkCard;
+      if (incomingCard != null) {
+        // 核对卡：以结构化信息为准（带自己名次的、行更多的更全）
+        final existingCard = entry.push.message.checkCard;
+        if (existingCard != null && !incomingCard.richerThan(existingCard)) {
+          return false;
+        }
+      } else if (incoming.content.trim().length <= existing.trim().length) {
+        return false;
+      }
       buffer[i] = _CachedChatPush(
         dedupeKey: logicalKey,
         push: LotteryChatPush(gameId: entry.push.gameId, message: incoming),
@@ -555,6 +759,7 @@ class ChatPushCache {
         kept.add(entry);
       }
       _bufferByRoom[roomId] = kept;
+      _rebuildTailIndex(roomId);
     }
 
     final live = _liveByRoom[roomId];
@@ -575,12 +780,13 @@ class ChatPushCache {
   }
 
   List<ChatMessageModel> bufferedForGame(String roomId, String gameId) {
+    _compactRoom(roomId);
     final buffer = _bufferByRoom[roomId];
     if (buffer == null || buffer.isEmpty) return const [];
-    return List<_CachedChatPush>.from(buffer)
-        .where((e) => e.push.gameId == gameId)
-        .map((e) => e.push.message)
-        .toList(growable: false);
+    return [
+      for (final e in buffer)
+        if (e.push.gameId == gameId) e.push.message,
+    ];
   }
 
   /// buffer 开奖 + live 封盘，供时间线使用。
@@ -683,6 +889,7 @@ class ChatPushCache {
     if (minFull == 1 << 62) minFull = 0;
     if (minKey == 1 << 62) minKey = 0;
 
+    _compactRoom(roomId);
     final kept = <_CachedChatPush>[];
     for (final entry in List<_CachedChatPush>.from(buffer)) {
       if (entry.push.gameId == gameId &&
@@ -747,6 +954,7 @@ class ChatPushCache {
     }
 
     _bufferByRoom[roomId] = kept;
+    _rebuildTailIndex(roomId);
     _invalidateGameCache(roomId, gameId);
     _schedulePersist(roomId);
   }
@@ -758,23 +966,26 @@ class ChatPushCache {
 
   void _invalidateGameCache(String roomId, String gameId) {
     final prefix = '$roomId:$gameId';
+    _versions[prefix] = (_versions[prefix] ?? 0) + 1;
     _timelineCache.removeWhere((k, _) => k == prefix || k.startsWith('$prefix:'));
     _historyRowsCache.removeWhere((k, _) => k.startsWith('$roomId:$gameId:'));
   }
 
-  /// 新消息能排在当前时间线最后时直接接上。返回 false 表示需要整表重排。
+  /// 新消息能排在当前时间线最后时直接接上（原地 add，不复制整表）。
+  /// 返回 false 表示需要整表重排。
   bool _appendTimelineTail(
     String roomId,
     String gameId,
     ChatMessageModel message,
   ) {
     // 与 timelineForGame 默认 syntheticSeals=true 的缓存键一致。
-    final cacheKey = '$roomId:$gameId:syn=true';
-    final cached = _timelineCache[cacheKey];
-    if (cached == null) return false;
-    if (cached.any((m) => m.id == message.id)) return true;
-    if (!appendsAtTimelineTail(cached, message)) return false;
-    _timelineCache[cacheKey] = [...cached, message];
+    final entry = _timelineCache['$roomId:$gameId:syn=true'];
+    if (entry == null) return false;
+    if (entry.ids.contains(message.id)) return true;
+    if (!appendsAtTimelineTail(entry.list, message)) return false;
+    entry.list.add(message);
+    entry.ids.add(message.id);
+    _timelineCache.remove('$roomId:$gameId:syn=false');
     return true;
   }
 
@@ -785,13 +996,8 @@ class ChatPushCache {
   }) {
     _keysByRoom[roomId]?.remove(dedupeKey);
     _bufferByRoom[roomId]?.removeWhere((e) => e.dedupeKey == dedupeKey);
-    final cacheKey = '$roomId:$gameId';
-    final cached = _timelineCache[cacheKey];
-    if (cached == null) return;
-    _timelineCache[cacheKey] = [
-      for (final m in cached)
-        if (m.id != dedupeKey) m,
-    ];
+    _tailOrder[roomId]?[gameId]?.removeWhere((e) => e.dedupeKey == dedupeKey);
+    _invalidateGameCache(roomId, gameId);
   }
 
   /// 本地点发送的下注，在拿到注单号后改成和服务端同一条，避免回声再插一条。
@@ -812,8 +1018,7 @@ class ChatPushCache {
       return true;
     });
     keys.remove(localId);
-    final cacheKey = '$roomId:$gameId';
-    final cached = _timelineCache[cacheKey];
+    _tailOrder[roomId]?[gameId]?.removeWhere((e) => e.dedupeKey == localId);
     if (keys.contains(serverId)) {
       // WS 已占 serverId：把本地头像/isSelf 补上去，避免开确认后头像丢失。
       final fromLocal = local;
@@ -840,43 +1045,30 @@ class ChatPushCache {
           break;
         }
       }
-      if (cached != null) {
-        _timelineCache[cacheKey] = [
-          for (final m in cached)
-            if (m.id != localId)
-              (m.id == serverId && fromLocal != null)
-                  ? m.copyWith(
-                      isSelf: m.isSelf || fromLocal.isSelf,
-                      avatarUrl: (m.avatarUrl?.trim().isNotEmpty == true)
-                          ? m.avatarUrl
-                          : fromLocal.avatarUrl,
-                      accountId: m.accountId ?? fromLocal.accountId,
-                    )
-                  : m,
-        ];
-      }
       _invalidateGameCache(roomId, gameId);
       _schedulePersist(roomId);
       return;
     }
     final kept = local;
-    if (kept == null) return;
+    if (kept == null) {
+      _invalidateGameCache(roomId, gameId);
+      return;
+    }
     final adopted = kept.copyWith(id: serverId);
     keys.add(serverId);
-    buffer.add(
-      _CachedChatPush(
-        dedupeKey: serverId,
-        push: LotteryChatPush(gameId: gameId, message: adopted),
-      ),
+    final entry = _CachedChatPush(
+      dedupeKey: serverId,
+      push: LotteryChatPush(gameId: gameId, message: adopted),
     );
-    if (cached != null) {
-      _timelineCache[cacheKey] = [
-        for (final m in cached) m.id == localId ? adopted : m,
-      ];
-    }
+    buffer.add(entry);
+    if (_isWindowed(adopted)) _trackTail(roomId, gameId, entry);
+    _invalidateGameCache(roomId, gameId);
   }
 
   void _invalidateRoomCache(String roomId) {
+    for (final k in _versions.keys.where((k) => k.startsWith('$roomId:')).toList()) {
+      _versions[k] = (_versions[k] ?? 0) + 1;
+    }
     _timelineCache.removeWhere((k, _) => k.startsWith('$roomId:'));
     _historyRowsCache.removeWhere((k, _) => k.startsWith('$roomId:'));
   }
@@ -900,15 +1092,15 @@ class ChatPushCache {
   }) {
     final cacheKey = '$roomId:$gameId:syn=$syntheticSeals';
     final cached = _timelineCache[cacheKey];
-    if (cached != null) return cached;
+    if (cached != null) return cached.snapshot();
 
     final timeline = buildChatTimeline(
       messagesForGameTimeline(roomId, gameId),
       gameId: gameId,
       syntheticSeals: syntheticSeals,
     );
-    _timelineCache[cacheKey] = timeline;
-    return timeline;
+    final entry = _timelineCache[cacheKey] = _TimelineEntry(timeline);
+    return entry.snapshot();
   }
 
   /// 消息较多时在 isolate 构建时间线，避免进聊天首帧卡死。
@@ -933,8 +1125,8 @@ class ChatPushCache {
       gameId: gameId,
       syntheticSeals: syntheticSeals,
     );
-    _timelineCache[cacheKey] = timeline;
-    return timeline;
+    final entry = _timelineCache[cacheKey] = _TimelineEntry(timeline);
+    return entry.snapshot();
   }
 
   /// 清掉 buffer 里该彩种的封盘系统消息（展示改由 buildChatTimeline 按开奖补全）。
@@ -952,6 +1144,7 @@ class ChatPushCache {
       kept.add(entry);
     }
     _bufferByRoom[roomId] = kept;
+    _rebuildTailIndex(roomId);
     _invalidateGameCache(roomId, gameId);
   }
 
@@ -966,16 +1159,19 @@ class ChatPushCache {
     _liveByRoom.remove(roomId);
     _loadedRooms.remove(roomId);
     _saveTimers.remove(roomId)?.cancel();
+    _dirtyRooms.remove(roomId);
+    _tailOrder.remove(roomId);
+    _evictedPending.remove(roomId);
     _invalidateRoomCache(roomId);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('$_prefPrefix$roomId');
+    await ChatCacheStore.delete(roomId);
   }
 
-  Future<void> _loadRoom(String roomId, SharedPreferences prefs) async {
+  Future<void> _loadRoom(String roomId) async {
     if (_loadedRooms.contains(roomId)) return;
     _loadedRooms.add(roomId);
 
-    final raw = prefs.getString('$_prefPrefix$roomId');
+    final stored = await ChatCacheStore.read(roomId);
+    final raw = stored.payload;
     if (raw == null || raw.isEmpty) {
       _keysByRoom.putIfAbsent(roomId, () => <String>{});
       _bufferByRoom.putIfAbsent(roomId, () => <_CachedChatPush>[]);
@@ -1005,32 +1201,68 @@ class ChatPushCache {
           ),
         );
       }
+      // 读盘期间已经收到的实时推送不能丢
+      final liveBuffer = _bufferByRoom[roomId];
+      if (liveBuffer != null) {
+        for (final e in liveBuffer) {
+          if (keys.add(e.dedupeKey)) buffer.add(e);
+        }
+      }
       _keysByRoom[roomId] = keys;
       _bufferByRoom[roomId] = buffer;
+      _rebuildTailIndex(roomId);
       _invalidateRoomCache(roomId);
+      if (stored.migrated) _schedulePersist(roomId);
     } catch (_) {
       _keysByRoom.putIfAbsent(roomId, () => <String>{});
       _bufferByRoom.putIfAbsent(roomId, () => <_CachedChatPush>[]);
     }
   }
 
-
+  /// 节流落盘：房间脏了就排一个 [persistInterval] 后的写入；已排上则不再顺延。
   void _schedulePersist(String roomId) {
+    _dirtyRooms.add(roomId);
     if (_persistSuspendCount > 0) return;
-    _saveTimers[roomId]?.cancel();
-    _saveTimers[roomId] = Timer(const Duration(seconds: 3), () {
+    if (_saveTimers.containsKey(roomId)) return;
+    _saveTimers[roomId] = Timer(persistInterval, () {
+      _saveTimers.remove(roomId);
       unawaited(_persistRoom(roomId));
     });
   }
 
+  /// 只写窗口内消息（每彩种 ≤500）+ 各类卡片。
   Future<void> _persistRoom(String roomId) async {
     if (_persistSuspendCount > 0) return;
+    _compactRoom(roomId);
     final buffer = _bufferByRoom[roomId];
     if (buffer == null) return;
+    _dirtyRooms.remove(roomId);
     final items = buffer.map((e) => e.toJson()).toList(growable: false);
-    final payload = await compute(encodeChatCachePayload, items);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('$_prefPrefix$roomId', payload);
+    final payload = items.length > 200
+        ? await compute(encodeChatCachePayload, items)
+        : encodeChatCachePayload(items);
+    await ChatCacheStore.write(roomId, payload);
+  }
+}
+
+/// 时间线缓存：原地追加，淘汰的 id 先记账，读取时批量清除。
+class _TimelineEntry {
+  _TimelineEntry(List<ChatMessageModel> source)
+      : list = List<ChatMessageModel>.of(source),
+        ids = {for (final m in source) m.id};
+
+  final List<ChatMessageModel> list;
+  final Set<String> ids;
+  final Set<String> evict = {};
+
+  /// 返回给外部的快照：缓存内部列表会被原地追加，外部不能持有它。
+  List<ChatMessageModel> snapshot() {
+    if (evict.isNotEmpty) {
+      list.removeWhere((m) => evict.contains(m.id));
+      ids.removeAll(evict);
+      evict.clear();
+    }
+    return List<ChatMessageModel>.of(list);
   }
 }
 
@@ -1048,6 +1280,7 @@ Map<String, dynamic> _messageToJson(ChatMessageModel message) => {
       if (message.accountId != null) 'accountId': message.accountId,
       if (message.seq > 0) 'seq': message.seq,
       if (message.pair > 0) 'pair': message.pair,
+      if (message.checkCard != null) 'chk': message.checkCard!.toJson(),
     };
 
 ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
@@ -1079,5 +1312,6 @@ ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
     accountId: (accountId == null || accountId.isEmpty) ? null : accountId,
     seq: int.tryParse('${json['seq']}') ?? 0,
     pair: int.tryParse('${json['pair']}') ?? 0,
+    checkCard: CheckCardData.fromJson(json['chk']),
   );
 }

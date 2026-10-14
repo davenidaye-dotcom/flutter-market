@@ -157,13 +157,15 @@ class FakeLotteryRepository extends LotteryRepository {
       games;
 
   @override
-  Future<List<ChatMessageModel>> getChatMessages({
+  Future<ChatPage> getChatPage({
     required String roomId,
     required String gameId,
     bool asOwner = false,
     int limit = 20,
+    int? beforeSeq,
+    int size = 50,
   }) async =>
-      chatMessages;
+      ChatPage(messages: chatMessages);
 
   @override
   Future<({List<Map<String, dynamic>> rows, int total})> getDrawHistory({
@@ -189,7 +191,8 @@ class FakeLotteryRepository extends LotteryRepository {
   @override
   Future<List<Map<String, dynamic>>> getLongDragon({
     required String gameId,
-    int limit = 100,
+    int limit = 50,
+    bool asOwner = false,
   }) async =>
       const [];
 }

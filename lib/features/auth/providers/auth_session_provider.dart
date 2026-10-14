@@ -1,9 +1,13 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/audio/bgm_prompt.dart';
+import '../../../core/network/api_exception.dart';
 import '../../../data/models/app_role.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/repositories/providers.dart';
 import '../../room/cs_unread.dart';
+import '../device_login_store.dart';
 import '../../../core/network/session_store.dart';
 
 class AuthSession {
@@ -55,6 +59,33 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
     return user;
   }
 
+  /// 启动时用保存的设备令牌静默登录。没有令牌 / 失败返回 null（走密码登录）。
+  /// 令牌被服务端判无效（DEVICE_TOKEN_INVALID）时清掉本地令牌。
+  Future<UserModel?> tryDeviceLogin() async {
+    final saved = await DeviceLoginStore.loadSaved();
+    if (saved == null) return null;
+    try {
+      final user = await _ref.read(authRepositoryProvider).deviceLogin(
+            username: saved.username,
+            deviceToken: saved.token,
+          );
+      if (user.role != AppRole.player) {
+        await SessionStore.instance.clear();
+        return null;
+      }
+      state = AuthSession(user: user);
+      await BgmPrompt.resetForLogin(host: false, player: true);
+      return user;
+    } catch (e) {
+      if (e is ApiException &&
+          (e.bizCode == 'DEVICE_TOKEN_INVALID' ||
+              e.message.contains('DEVICE_TOKEN_INVALID'))) {
+        await DeviceLoginStore.clear(saved.username);
+      }
+      return null;
+    }
+  }
+
   void bindRoomCode(String roomCode) {
     final user = state.user;
     if (user == null) return;
@@ -74,13 +105,18 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
   }
 
   Future<void> logout() async {
+    final username = state.user?.username;
     await _ref.read(authRepositoryProvider).logout();
+    if (username != null) await DeviceLoginStore.clear(username);
     _ref.read(csUnreadCountProvider.notifier).clear();
     state = const AuthSession();
   }
 
   /// 服务端已注销时只清本地会话，不再请求退出接口。
   void dropLocal() {
+    // 被踢/会话失效：不能让登录页立刻拿旧设备令牌又登回去
+    final username = state.user?.username;
+    if (username != null) unawaited(DeviceLoginStore.clear(username));
     _ref.read(csUnreadCountProvider.notifier).clear();
     state = const AuthSession();
   }

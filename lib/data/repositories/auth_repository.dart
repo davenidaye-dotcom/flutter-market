@@ -3,6 +3,7 @@ import '../models/user_model.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/session_store.dart';
+import '../../features/auth/device_login_store.dart';
 
 /// Auth against `/auth/member/*` (player) and `/auth/portal/*` (owner/agent).
 class AuthRepository {
@@ -22,12 +23,39 @@ class AuthRepository {
         ? '/auth/member/login'
         : '/auth/portal/login';
 
+    // 玩家登录带 deviceId，服务端才会下发 deviceToken（用于下次快速登录）
+    final deviceId = expectedRole == AppRole.player
+        ? await DeviceLoginStore.deviceId()
+        : null;
     final data = await _client.post(path, data: {
       'username': username.trim(),
       'password': password,
       'clientType': 'APP',
+      if (deviceId != null) 'deviceId': deviceId,
     });
+    return _finishLogin(data, username: username, expectedRole: expectedRole);
+  }
 
+  /// 设备令牌快速登录：成功返回与密码登录相同的用户，并换存新的 deviceToken。
+  /// 令牌失效（DEVICE_TOKEN_INVALID）时抛出，由调用方清令牌并回到密码登录。
+  Future<UserModel> deviceLogin({
+    required String username,
+    required String deviceToken,
+  }) async {
+    final data = await _client.post('/auth/member/device-login', data: {
+      'username': username.trim(),
+      'deviceId': await DeviceLoginStore.deviceId(),
+      'deviceToken': deviceToken,
+      'clientType': 'APP',
+    });
+    return _finishLogin(data, username: username, expectedRole: AppRole.player);
+  }
+
+  Future<UserModel> _finishLogin(
+    dynamic data, {
+    required String username,
+    required AppRole expectedRole,
+  }) async {
     if (data is! Map) {
       throw const ApiException(message: '\u767b\u5f55\u54cd\u5e94\u5f02\u5e38');
     }
@@ -56,6 +84,11 @@ class AuthRepository {
     // 玩家登录后先回首页手动进房，清掉上次会话残留的房间上下文。
     if (expectedRole == AppRole.player) {
       await SessionStore.instance.setRoom(roomId: null, roomCode: null);
+      // deviceToken 每次登录轮换：立刻换存新的
+      final deviceToken = map['deviceToken']?.toString() ?? '';
+      if (deviceToken.isNotEmpty) {
+        await DeviceLoginStore.saveToken(user.username, deviceToken);
+      }
     } else {
       final room = map['room'];
       if (room is Map) {

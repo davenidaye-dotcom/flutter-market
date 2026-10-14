@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,6 +47,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       await _loadVersion();
       await _applyRemember();
     });
+    unawaited(_tryDeviceLogin());
+  }
+
+  /// 有设备令牌时静默登录（仅玩家入口）；失败静默留在密码登录页。
+  Future<void> _tryDeviceLogin() async {
+    if (_hostMode) return;
+    final user = await ref.read(authSessionProvider.notifier).tryDeviceLogin();
+    if (user == null || !mounted || _hostMode || _loading) return;
+    context.go(RoutePaths.home);
   }
 
   Future<void> _loadVersion() async {

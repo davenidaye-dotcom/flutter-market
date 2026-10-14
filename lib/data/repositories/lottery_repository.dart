@@ -3,16 +3,53 @@ import '../../shared/format/display_number.dart';
 import '../../shared/format/game_series.dart';
 import '../../core/network/session_store.dart';
 import '../../features/lottery/utils/bet_receipt_format.dart';
+import '../../features/lottery/utils/check_card_format.dart';
 import '../../features/lottery/utils/draw_result_parse.dart';
 import '../../features/lottery/utils/lottery_period_ui.dart';
 import '../models/chat_message_model.dart';
 import '../models/lottery_game_model.dart';
 
 class BetSubmitResult {
-  const BetSubmitResult({required this.orderIds, this.content = ''});
+  const BetSubmitResult({
+    required this.orderIds,
+    this.content = '',
+    this.totalAmount,
+    this.available,
+  });
 
   final List<String> orderIds;
   final String content;
+  final Object? totalAmount;
+  final Object? available;
+
+  /// HTTP 下注响应 / WS BET_ACK / 按 reqId 查询结果共用：orderIds 或单个 orderId。
+  factory BetSubmitResult.fromMap(Map<dynamic, dynamic> resp) {
+    final ids = resp['orderIds'];
+    final single = '${resp['orderId'] ?? ''}'.trim();
+    return BetSubmitResult(
+      orderIds: ids is List
+          ? ids.map((e) => '$e').where((e) => e.isNotEmpty).toList()
+          : (single.isNotEmpty ? [single] : const <String>[]),
+      content: '${resp['content'] ?? ''}'.trim(),
+      totalAmount: resp['totalAmount'],
+      available: resp['available'],
+    );
+  }
+}
+
+/// 聊天历史一页（旧→新）。[nextBeforeSeq] 取自响应头 X-Chat-Next-Before-Seq，0 表示没有更多。
+class ChatPage {
+  const ChatPage({
+    required this.messages,
+    this.nextBeforeSeq,
+    this.hasMore,
+  });
+
+  final List<ChatMessageModel> messages;
+
+  /// null = 响应没带头（旧服务端 / 房主接口）
+  final int? nextBeforeSeq;
+  final bool? hasMore;
 }
 
 class LotteryRepository {
@@ -129,45 +166,79 @@ class LotteryRepository {
     }
   }
 
+  static const chatPageSize = 50;
+
+  /// 兼容旧调用：只要消息列表。会员接口 [limit] 已被服务端忽略，翻页用 [beforeSeq] / [size]。
   Future<List<ChatMessageModel>> getChatMessages({
     required String roomId,
     required String gameId,
     bool asOwner = false,
     int limit = 15,
+    int? beforeSeq,
+    int size = chatPageSize,
+  }) async {
+    final page = await getChatPage(
+      roomId: roomId,
+      gameId: gameId,
+      asOwner: asOwner,
+      limit: limit,
+      beforeSeq: beforeSeq,
+      size: size,
+    );
+    return page.messages;
+  }
+
+  /// 会员：`GET /member/rooms/messages?gameType&size&beforeSeq`（beforeSeq 省略 = 最新一页）。
+  Future<ChatPage> getChatPage({
+    required String roomId,
+    required String gameId,
+    bool asOwner = false,
+    int limit = 15,
+    int? beforeSeq,
+    int size = chatPageSize,
   }) async {
     final dynamic data;
+    int? nextBeforeSeq;
+    bool? hasMore;
     if (asOwner) {
       data = await _client.get(
         '/owner/games/$gameId/messages',
         query: {'limit': limit},
       );
     } else {
-      data = await _client.get(
+      final res = await _client.getWithHeaders(
         '/member/rooms/messages',
         query: {
           'gameType': gameId,
-          'limit': limit,
+          'size': size,
+          if (beforeSeq != null && beforeSeq > 0) 'beforeSeq': beforeSeq,
         },
       );
+      data = res.data;
+      nextBeforeSeq = int.tryParse(res.headers['x-chat-next-before-seq'] ?? '');
+      final flag = res.headers['x-chat-has-more']?.toLowerCase();
+      if (flag == 'true' || flag == 'false') hasMore = flag == 'true';
     }
-    if (data is! List) return const [];
+    if (data is! List) return const ChatPage(messages: []);
     final messages = data
         .whereType<Map>()
         .where((e) => _visibleInRoom(e, roomId))
         .map((e) => _parseChatMessage(Map<String, dynamic>.from(e)))
         .toList();
-    return messages;
+    return ChatPage(
+      messages: messages,
+      nextBeforeSeq: nextBeforeSeq,
+      hasMore: hasMore,
+    );
   }
 
-  /// 当前房间全部已启用彩种，各取最近 [limit] 期后按 gameType 分组。顺序与接口一致：旧 → 新。
+  /// 当前房间全部已启用彩种，各取最新一页（≤50 条 + 开奖卡）后按 gameType 分组。顺序：旧 → 新。
   Future<Map<String, List<ChatMessageModel>>> getAllRoomDrawMessages({
     required String roomId,
     int limit = 15,
   }) async {
-    final data = await _client.get(
-      '/member/rooms/messages/all',
-      query: {'limit': limit},
-    );
+    final _ = limit; // 服务端已忽略
+    final data = await _client.get('/member/rooms/messages/all');
     if (data is! List) return const {};
     final grouped = <String, List<ChatMessageModel>>{};
     for (final item in data.whereType<Map>()) {
@@ -222,29 +293,35 @@ class LotteryRepository {
                         ? 'bet-receipt-$gameType-$orderId'
                         : 'bet-chat-$gameType-$orderId')
                     : '')));
-    final displayContent = isReceipt
-        ? formatBetReceiptText(
-            mention: (m['mentionName'] ?? '').toString(),
-            issue: (m['issueNo'] ?? '').toString(),
-            total: m['totalAmount'],
-            items: m['items'] is List ? m['items'] as List : null,
-            fallbackContent: content,
-          )
-        : (isBetRank
-            ? formatBetRankText(
-                issue: issueForId,
-                content: content,
-                rankings: m['rankings'] is List ? m['rankings'] as List : null,
+    final hasCheckRows = (isBetRank && m['rankings'] is List) ||
+        (isWinList && m['winners'] is List);
+    final checkCard =
+        hasCheckRows ? parseCheckCard(m, isWin: isWinList) : null;
+    final displayContent = checkCard != null
+        ? composeCheckCardText(data: checkCard, issue: issueForId)
+        : (isReceipt
+            ? formatBetReceiptText(
+                mention: (m['mentionName'] ?? '').toString(),
+                issue: (m['issueNo'] ?? '').toString(),
+                total: m['totalAmount'],
+                items: m['items'] is List ? m['items'] as List : null,
+                fallbackContent: content,
               )
-            : (isWinList
-                ? formatWinCheckText(
+            : (isBetRank
+                ? formatBetRankText(
                     issue: issueForId,
                     content: content,
-                    winners: parseWinCheckWinners(
-                      m['winners'] is List ? m['winners'] as List : null,
-                    ),
+                    rankings: m['rankings'] is List ? m['rankings'] as List : null,
                   )
-                : content));
+                : (isWinList
+                    ? formatWinCheckText(
+                        issue: issueForId,
+                        content: content,
+                        winners: parseWinCheckWinners(
+                          m['winners'] is List ? m['winners'] as List : null,
+                        ),
+                      )
+                    : content)));
     final accountIdRaw = '${m['accountId'] ?? ''}'.trim();
     return ChatMessageModel(
       id: id,
@@ -276,6 +353,7 @@ class LotteryRepository {
       accountId: accountIdRaw.isEmpty ? null : accountIdRaw,
       seq: int.tryParse('${m['seq']}') ?? 0,
       pair: int.tryParse('${m['pair']}') ?? 0,
+      checkCard: checkCard,
     );
   }
 
@@ -309,18 +387,18 @@ class LotteryRepository {
         .toList(growable: false);
   }
 
-  Future<BetSubmitResult> submitBet({
-    required String roomId,
+  /// HTTP `POST /member/bets` 与 WS `BET` 共用的请求体（WS 再包一层 `{action, data}`）。
+  static Map<String, dynamic> buildBetBody({
     required String gameId,
     required String command,
     String? issueNo,
     List<Map<String, dynamic>>? items,
     String? requestId,
-  }) async {
-    final _ = roomId;
+  }) {
     final body = <String, dynamic>{
       'gameType': gameId,
       if (issueNo != null && issueNo.isNotEmpty) 'issueNo': issueNo,
+      if (requestId != null && requestId.isNotEmpty) 'reqId': requestId,
       if (requestId != null && requestId.isNotEmpty) 'requestId': requestId,
       if (requestId != null && requestId.isNotEmpty) 'request_id': requestId,
     };
@@ -331,6 +409,25 @@ class LotteryRepository {
     if (command.trim().isNotEmpty) {
       body['command'] = command.trim();
     }
+    return body;
+  }
+
+  Future<BetSubmitResult> submitBet({
+    required String roomId,
+    required String gameId,
+    required String command,
+    String? issueNo,
+    List<Map<String, dynamic>>? items,
+    String? requestId,
+  }) async {
+    final _ = roomId;
+    final body = buildBetBody(
+      gameId: gameId,
+      command: command,
+      issueNo: issueNo,
+      items: items,
+      requestId: requestId,
+    );
     final resp = await _client.post(
       '/member/bets',
       data: body,
@@ -341,18 +438,20 @@ class LotteryRepository {
               'X-Request-Id': requestId,
             },
     );
-    if (resp is Map) {
-      final ids = resp['orderIds'];
-      final content = '${resp['content'] ?? ''}'.trim();
-      if (ids is List) {
-        return BetSubmitResult(
-          orderIds: ids.map((e) => '$e').where((e) => e.isNotEmpty).toList(),
-          content: content,
-        );
-      }
-      return BetSubmitResult(orderIds: const [], content: content);
-    }
+    if (resp is Map) return BetSubmitResult.fromMap(resp);
     return const BetSubmitResult(orderIds: []);
+  }
+
+  /// `GET /member/bets/req/{reqId}`：DONE 返回回执；PENDING 返回 null；
+  /// BET_REQ_NOT_FOUND / 404 抛出对应异常（服务端从未收到）。
+  Future<BetSubmitResult?> pollBetByReqId(String reqId) async {
+    final resp = await _client.get('/member/bets/req/$reqId');
+    if (resp is! Map) return null;
+    final status = '${resp['status'] ?? ''}'.toUpperCase();
+    if (status == 'PENDING') return null;
+    final result = BetSubmitResult.fromMap(resp);
+    if (status == 'DONE' || result.orderIds.isNotEmpty) return result;
+    return null;
   }
 
   Future<int> cancelIssueBets({
