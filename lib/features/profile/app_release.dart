@@ -65,14 +65,13 @@ class AppRelease {
     final minName = (release['minVersion'] ?? '').toString().trim();
     final level = (release['updateLevel'] ?? '').toString().toUpperCase();
     final notes = (release['notes'] ?? '').toString().trim();
-    final belowLatest = latestCode > 0
-        ? EnvConfig.appVersionCode < latestCode
-        : _cmp(EnvConfig.appVersion, latestName) < 0;
+    final nameCmp = _cmp(_norm(EnvConfig.appVersion), _norm(latestName));
+    final belowLatest = nameCmp < 0 || (latestCode > EnvConfig.appVersionCode);
     if (!belowLatest) {
       if (!quiet) AppToast.info('已是最新版本 ${EnvConfig.appVersion}');
       return;
     }
-    final belowMin = minName.isNotEmpty && _cmp(EnvConfig.appVersion, minName) < 0;
+    final belowMin = minName.isNotEmpty && _cmp(_norm(EnvConfig.appVersion), _norm(minName)) < 0;
     final force = belowMin || level == 'FORCE';
     final updateUrl = (release['updateUrl'] ?? '').toString().trim();
     _showing = true;
@@ -178,6 +177,12 @@ class AppRelease {
         ],
       ),
     );
+  }
+
+  static String _norm(String raw) {
+    var s = raw.trim();
+    if (s.startsWith('v') || s.startsWith('V')) s = s.substring(1);
+    return s;
   }
 
   static int _int(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;

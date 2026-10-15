@@ -35,6 +35,7 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with AutomaticKeepAliveClientMixin {
   bool _bgMusic = false;
+  String _version = EnvConfig.appVersion;
 
   @override
   bool get wantKeepAlive => true;
@@ -43,6 +44,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   void initState() {
     super.initState();
     Future.microtask(_loadBgm);
+    Future.microtask(_loadVersion);
+  }
+
+  Future<void> _loadVersion() async {
+    final version = await AppRelease.footerVersion();
+    if (!mounted) return;
+    setState(() => _version = version);
   }
 
   Future<void> _loadBgm() async {
@@ -195,7 +203,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text('当前版本', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
-                                Text(EnvConfig.appVersion, style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                                Text(_version, style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
                               ],
                             ),
                             Icon(Icons.chevron_right, color: AppColors.textHint),
