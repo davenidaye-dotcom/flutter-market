@@ -332,7 +332,7 @@ class _PublishedVersionState extends State<_PublishedVersion> {
   @override
   Widget build(BuildContext context) {
     return Text(
-      'v$_version',
+      AppRelease.displayVersion(_version),
       textAlign: TextAlign.center,
       style: TextStyle(fontSize: 12.sp, color: Colors.white70),
     );

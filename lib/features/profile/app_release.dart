@@ -57,21 +57,19 @@ class AppRelease {
     }
     if (!context.mounted) return;
     if (release == null || release['published'] != true) {
-      if (!quiet) AppToast.info('已是最新版本 ${EnvConfig.appVersion}');
+      if (!quiet) AppToast.info('已是最新版本 ${displayVersion(EnvConfig.appVersion)}');
       return;
     }
     final latestName = (release['version'] ?? '').toString();
-    final latestCode = _int(release['versionCode']);
     final minName = (release['minVersion'] ?? '').toString().trim();
     final level = (release['updateLevel'] ?? '').toString().toUpperCase();
     final notes = (release['notes'] ?? '').toString().trim();
-    final nameCmp = _cmp(_norm(EnvConfig.appVersion), _norm(latestName));
-    final belowLatest = nameCmp < 0 || (latestCode > EnvConfig.appVersionCode);
+    final belowLatest = _cmp(EnvConfig.appVersion, latestName) < 0;
     if (!belowLatest) {
-      if (!quiet) AppToast.info('已是最新版本 ${EnvConfig.appVersion}');
+      if (!quiet) AppToast.info('已是最新版本 ${displayVersion(EnvConfig.appVersion)}');
       return;
     }
-    final belowMin = minName.isNotEmpty && _cmp(_norm(EnvConfig.appVersion), _norm(minName)) < 0;
+    final belowMin = minName.isNotEmpty && _cmp(EnvConfig.appVersion, minName) < 0;
     final force = belowMin || level == 'FORCE';
     final updateUrl = (release['updateUrl'] ?? '').toString().trim();
     _showing = true;
@@ -97,7 +95,7 @@ class AppRelease {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('当前 ${EnvConfig.appVersion}', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
+                Text('当前 ${displayVersion(EnvConfig.appVersion)}', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
                 SizedBox(height: 8.h),
                 Text(notes.isEmpty ? '请更新到最新版本' : notes),
               ],
@@ -179,23 +177,29 @@ class AppRelease {
     );
   }
 
-  static String _norm(String raw) {
-    var s = raw.trim();
-    if (s.startsWith('v') || s.startsWith('V')) s = s.substring(1);
-    return s;
+  /// 展示成 v1.0。已带 v 时不再加一个。
+  static String displayVersion(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return 'v${EnvConfig.appVersion}';
+    if (s.startsWith('v') || s.startsWith('V')) return 'v${s.substring(1)}';
+    return 'v$s';
   }
 
-  static int _int(dynamic v) => v is num ? v.toInt() : int.tryParse('$v') ?? 0;
-
+  /// 从左到右比数字段。前面相同则段更多的更大：1.1 > 1.0，1.100.1 > 1.100，1.100.2 > 1.100.1。
   static int _cmp(String a, String b) {
-    final as = a.split('.');
-    final bs = b.split('.');
-    final n = as.length > bs.length ? as.length : bs.length;
+    final as = _parts(a);
+    final bs = _parts(b);
+    final n = as.length < bs.length ? as.length : bs.length;
     for (var i = 0; i < n; i++) {
-      final ai = i < as.length ? int.tryParse(as[i]) ?? 0 : 0;
-      final bi = i < bs.length ? int.tryParse(bs[i]) ?? 0 : 0;
-      if (ai != bi) return ai.compareTo(bi);
+      if (as[i] != bs[i]) return as[i].compareTo(bs[i]);
     }
-    return 0;
+    return as.length.compareTo(bs.length);
+  }
+
+  static List<int> _parts(String raw) {
+    var s = raw.trim();
+    if (s.startsWith('v') || s.startsWith('V')) s = s.substring(1);
+    if (s.isEmpty) return const [0];
+    return s.split('.').map((p) => int.tryParse(p.trim()) ?? 0).toList();
   }
 }

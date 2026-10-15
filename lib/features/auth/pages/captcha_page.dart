@@ -71,7 +71,7 @@ class _CaptchaPageState extends ConsumerState<CaptchaPage> {
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
-                    child: Text('v$_version', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                    child: Text(AppRelease.displayVersion(_version), style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
                   ),
                 ),
               ),

@@ -203,7 +203,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text('当前版本', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
-                                Text(_version, style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                                Text(AppRelease.displayVersion(_version), style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
                               ],
                             ),
                             Icon(Icons.chevron_right, color: AppColors.textHint),

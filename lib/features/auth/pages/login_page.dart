@@ -274,7 +274,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
                     child: Text(
-                      'v$_version',
+                      AppRelease.displayVersion(_version),
                       style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
                     ),
                   ),
