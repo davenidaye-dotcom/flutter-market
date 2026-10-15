@@ -10,6 +10,7 @@ class RoomModel {
     this.enterApproved = false,
     this.status,
     this.betConfirm = false,
+    this.showQuick = true,
     this.playMode = 'REAL',
   });
 
@@ -34,6 +35,9 @@ class RoomModel {
 
   /// 房主开启「下注确认」后，玩家下注前需二次确认
   final bool betConfirm;
+
+  /// 房主「显示快捷」。关则聊天页不显示盘口入口。
+  final bool showQuick;
 
   /// 当前账号在该房的玩法：REAL / TRIAL / ATMOSPHERE
   final String playMode;
@@ -62,6 +66,7 @@ class RoomModel {
         enterApproved: json['enterApproved'] == true || json['enterApproved'] == 1,
         status: json['status']?.toString(),
         betConfirm: json['betConfirm'] == true || json['betConfirm'] == 1,
+        showQuick: json['showQuick'] != false && json['showQuick'] != 0,
         playMode: json['playMode']?.toString() ?? 'REAL',
       );
 

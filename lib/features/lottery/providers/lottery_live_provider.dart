@@ -47,6 +47,7 @@ class RoomLotteryLiveState {
     this.uiTick = 0,
     this.interactionPaused = false,
     this.betConfirm = false,
+    this.showQuick = true,
     this.longDragonEpoch = 0,
   });
 
@@ -69,6 +70,8 @@ class RoomLotteryLiveState {
   final bool interactionPaused;
   /// 房主「下注确认」开关
   final bool betConfirm;
+  /// 房主「显示快捷」。关则聊天页不显示盘口入口。
+  final bool showQuick;
   /// 长龙 WS/HTTP 更新代次
   final int longDragonEpoch;
 
@@ -94,6 +97,7 @@ class RoomLotteryLiveState {
     int? uiTick,
     bool? interactionPaused,
     bool? betConfirm,
+    bool? showQuick,
     int? longDragonEpoch,
   }) {
     return RoomLotteryLiveState(
@@ -110,13 +114,15 @@ class RoomLotteryLiveState {
       uiTick: uiTick ?? this.uiTick,
       interactionPaused: interactionPaused ?? this.interactionPaused,
       betConfirm: betConfirm ?? this.betConfirm,
+      showQuick: showQuick ?? this.showQuick,
       longDragonEpoch: longDragonEpoch ?? this.longDragonEpoch,
     );
   }
 }
 
 class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
-  RoomLotteryLiveNotifier(this._ref, this.roomId) : super(const RoomLotteryLiveState());
+  RoomLotteryLiveNotifier(this._ref, this.roomId)
+      : super(RoomLotteryLiveState(showQuick: SessionStore.instance.showQuick));
 
   final Ref _ref;
   final String roomId;
@@ -320,13 +326,19 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   bool isGameWsSynced(String gameId) => _engine.isGameWsSynced(gameId);
 
+  void applyShowQuick(bool on) {
+    if (state.showQuick == on) return;
+    state = state.copyWith(showQuick: on);
+    unawaited(SessionStore.instance.setShowQuick(on));
+  }
+
   Future<void> retryLoad() async {
     _loading = null;
     _drawHistoryPreload = null;
     _drawHistoryPreloaded = false;
     _gameTimelinePreloadByGame.clear();
     _engine.reset();
-    state = const RoomLotteryLiveState();
+    state = RoomLotteryLiveState(showQuick: SessionStore.instance.showQuick);
     await ensureLoaded();
   }
 
@@ -1019,9 +1031,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       unawaited(_enrichSealFromPublic(games));
     } catch (_) {
       if (!mounted) return;
-      state = const RoomLotteryLiveState(
+      state = RoomLotteryLiveState(
         ready: true,
         loadError: '彩种加载失败，请重试',
+        showQuick: state.showQuick,
+        betConfirm: state.betConfirm,
       );
     } finally {
       _loading = null;
@@ -1044,6 +1058,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     var rebate = state.rebate;
     var isTrialAccount = state.isTrialAccount;
     var betConfirm = state.betConfirm;
+    var showQuick = state.showQuick;
 
     if (isHost) {
       try {
@@ -1068,6 +1083,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       try {
         final room = await _ref.read(ownerRepositoryProvider).getRoom();
         betConfirm = room['betConfirm'] == true || room['betConfirm'] == 1;
+        showQuick = room['showQuick'] != false && room['showQuick'] != 0;
+        unawaited(SessionStore.instance.setShowQuick(showQuick));
       } catch (_) {}
     } else {
       // 必须 await：若 unawaited 先写回积分，随后再用初始 0 的 copyWith 会覆盖掉真实余额
@@ -1085,8 +1102,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           betConfirm = ann['betConfirm'] == true || ann['betConfirm'] == 1;
           SessionStore.instance.betConfirm = betConfirm;
         }
+        if (ann.containsKey('showQuick')) {
+          showQuick = ann['showQuick'] != false && ann['showQuick'] != 0;
+          unawaited(SessionStore.instance.setShowQuick(showQuick));
+        }
       } catch (_) {
         betConfirm = SessionStore.instance.betConfirm;
+        showQuick = SessionStore.instance.showQuick;
       }
     }
 
@@ -1099,6 +1121,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       rebate: rebate,
       isTrialAccount: isTrialAccount,
       betConfirm: betConfirm,
+      showQuick: showQuick,
     );
   }
 
@@ -1410,6 +1433,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final roomNumeric = SessionStore.instance.roomId ?? roomId;
     final desired = <String>{
       'room:$roomNumeric:sys',
+      'room:$roomNumeric:apply',
       for (final g in state.games)
         if (g.id.isNotEmpty) 'room:$roomNumeric:game:${g.id}',
     };
@@ -1498,6 +1522,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
 
+    if (type == 'ROOM_FLAGS') {
+      if (payload.containsKey('showQuick')) {
+        final on = payload['showQuick'] != false && payload['showQuick'] != 0;
+        state = state.copyWith(showQuick: on);
+        unawaited(SessionStore.instance.setShowQuick(on));
+      }
+      return;
+    }
+
     // 房主：上下分/进房申请 WS 推送 → 全局审核提醒
     if (type == 'APPLY_NOTICE' && _wsIsHost) {
       unawaited(_forwardApplyNotice(payload));
@@ -1512,6 +1545,29 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
     if (type == 'UNREAD_CS') {
       _onCsUnread(payload);
+      return;
+    }
+
+    if (type == 'SITE_NOTICE') {
+      final text = payload['content']?.toString() ?? '';
+      final removed = payload['removed'] == true;
+      if (removed) {
+        if (text.isNotEmpty && state.announcement.contains(text)) {
+          var next = state.announcement
+              .replaceFirst(text, '')
+              .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
+              .trim();
+          if (next.isEmpty) next = '欢迎进入本房间';
+          state = state.copyWith(announcement: next);
+        }
+        return;
+      }
+      if (text.isNotEmpty && !state.announcement.contains(text)) {
+        final current = state.announcement.trim();
+        state = state.copyWith(
+          announcement: current.isEmpty ? text : '$current  $text',
+        );
+      }
       return;
     }
 

@@ -76,6 +76,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       setState(() {
         _room = room;
         _betConfirm = room['betConfirm'] == true || room['betConfirm'] == 1;
+        _showQuick = room['showQuick'] != false && room['showQuick'] != 0;
         final enterMode = '${room['enterMode'] ?? ''}'.trim().toUpperCase();
         _joinAudit = room['joinAudit'] == true ||
             room['joinAudit'] == 1 ||
@@ -142,6 +143,21 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       AppToast.success(v ? '已开启下注确认' : '已关闭下注确认');
     } catch (e) {
       if (mounted) setState(() => _betConfirm = prev);
+      AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _toggleShowQuick(bool v) async {
+    final prev = _showQuick;
+    setState(() => _showQuick = v);
+    try {
+      await ref.read(ownerRepositoryProvider).updateRoomFlags(showQuick: v);
+      ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .applyShowQuick(v);
+      AppToast.success(v ? '已开启显示快捷' : '已关闭显示快捷');
+    } catch (e) {
+      if (mounted) setState(() => _showQuick = prev);
       AppToast.error(e.toString());
     }
   }
@@ -343,7 +359,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                               _switchTile(
                                 '\u663e\u793a\u5feb\u6377',
                                 _showQuick,
-                                (v) => setState(() => _showQuick = v),
+                                _toggleShowQuick,
                               ),
                               Padding(
                                 padding:

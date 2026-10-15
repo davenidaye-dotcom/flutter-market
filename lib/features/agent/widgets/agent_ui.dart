@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/env/env_config.dart';
+import '../../profile/app_release.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../shared/format/display_number.dart';
@@ -301,15 +302,39 @@ class AgentDrawer extends ConsumerWidget {
               ),
             ),
             SizedBox(height: 16.h),
-            Text(
-              'v${EnvConfig.appVersion}',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12.sp, color: Colors.white70),
-            ),
+            const _PublishedVersion(),
             SizedBox(height: 20.h),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PublishedVersion extends StatefulWidget {
+  const _PublishedVersion();
+
+  @override
+  State<_PublishedVersion> createState() => _PublishedVersionState();
+}
+
+class _PublishedVersionState extends State<_PublishedVersion> {
+  String _version = EnvConfig.appVersion;
+
+  @override
+  void initState() {
+    super.initState();
+    AppRelease.footerVersion().then((version) {
+      if (mounted) setState(() => _version = version);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'v$_version',
+      textAlign: TextAlign.center,
+      style: TextStyle(fontSize: 12.sp, color: Colors.white70),
     );
   }
 }

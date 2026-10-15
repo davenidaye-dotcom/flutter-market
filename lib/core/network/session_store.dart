@@ -11,6 +11,7 @@ class SessionStore {
   static const _kRoomName = 'flyroom_room_name';
   static const _kOwnerNickname = 'flyroom_owner_nickname';
   static const _kBetConfirm = 'flyroom_bet_confirm';
+  static const _kShowQuick = 'flyroom_show_quick';
 
   String? accessToken;
   String? roomId;
@@ -18,6 +19,8 @@ class SessionStore {
   String? roomName;
   String? ownerNickname;
   bool betConfirm = false;
+  /// 房主「显示快捷」。关则聊天页不显示盘口入口。默认开。
+  bool showQuick = true;
 
   bool get hasToken => accessToken != null && accessToken!.isNotEmpty;
 
@@ -36,6 +39,7 @@ class SessionStore {
     roomName = prefs.getString(_kRoomName);
     ownerNickname = prefs.getString(_kOwnerNickname);
     betConfirm = prefs.getBool(_kBetConfirm) ?? false;
+    showQuick = prefs.getBool(_kShowQuick) ?? true;
   }
 
   Future<void> setToken(String? token) async {
@@ -54,12 +58,14 @@ class SessionStore {
     String? roomName,
     String? ownerNickname,
     bool? betConfirm,
+    bool? showQuick,
   }) async {
     this.roomId = roomId;
     this.roomCode = roomCode;
     if (roomName != null) this.roomName = roomName;
     if (ownerNickname != null) this.ownerNickname = ownerNickname;
     if (betConfirm != null) this.betConfirm = betConfirm;
+    if (showQuick != null) this.showQuick = showQuick;
     final prefs = await SharedPreferences.getInstance();
     if (roomId == null || roomId.isEmpty) {
       await prefs.remove(_kRoomId);
@@ -86,6 +92,15 @@ class SessionStore {
     if (betConfirm != null) {
       await prefs.setBool(_kBetConfirm, betConfirm);
     }
+    if (showQuick != null) {
+      await prefs.setBool(_kShowQuick, showQuick);
+    }
+  }
+
+  Future<void> setShowQuick(bool value) async {
+    showQuick = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kShowQuick, value);
   }
 
   Future<void> clear() async {
@@ -95,6 +110,7 @@ class SessionStore {
     roomName = null;
     ownerNickname = null;
     betConfirm = false;
+    showQuick = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kToken);
     await prefs.remove(_kRoomId);
@@ -102,5 +118,6 @@ class SessionStore {
     await prefs.remove(_kRoomName);
     await prefs.remove(_kOwnerNickname);
     await prefs.remove(_kBetConfirm);
+    await prefs.remove(_kShowQuick);
   }
 }

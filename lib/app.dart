@@ -14,6 +14,7 @@ import 'config/theme/app_theme.dart';
 import 'core/network/session_kick.dart';
 import 'core/network/session_store.dart';
 import 'features/auth/providers/auth_session_provider.dart';
+import 'features/profile/app_release.dart';
 
 class LetouApp extends ConsumerStatefulWidget {
   const LetouApp({super.key});
@@ -35,7 +36,19 @@ class _LetouAppState extends ConsumerState<LetouApp> {
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FlutterNativeSplash.remove();
+      unawaited(_promptUpdate());
     });
+  }
+
+  Future<void> _promptUpdate() async {
+    for (var i = 0; i < 10; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final ctx = rootNavigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) {
+        await AppRelease.promptOnColdStart(ctx);
+        return;
+      }
+    }
   }
 
   @override

@@ -39,6 +39,7 @@ class RoomRepository {
       enterApproved: map['enterApproved'] == true || map['enterApproved'] == 1,
       status: map['status']?.toString(),
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
+      showQuick: _showQuickOn(map['showQuick']),
     );
   }
 
@@ -67,6 +68,7 @@ class RoomRepository {
       roomName: roomName,
       ownerNickname: ownerNickname,
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
+      showQuick: _showQuickOn(map['showQuick']),
     );
     return RoomModel(
       id: code,
@@ -75,8 +77,11 @@ class RoomRepository {
       thumbnailUrl: map['coverUrl']?.toString(),
       numericId: roomId,
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
+      showQuick: _showQuickOn(map['showQuick']),
     );
   }
+
+  static bool _showQuickOn(dynamic v) => v != false && v != 0;
 
   Future<List<RoomModel>> getHistoryRooms({int limit = 20}) async {
     final data = await _client.get(

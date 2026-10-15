@@ -1797,6 +1797,21 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     final isTrialAccount = ref.watch(
       roomLotteryLiveProvider(widget.roomId).select((s) => s.isTrialAccount),
     );
+    final showQuick = ref.watch(
+      roomLotteryLiveProvider(widget.roomId).select((s) => s.showQuick),
+    );
+    ref.listen<bool>(
+      roomLotteryLiveProvider(widget.roomId).select((s) => s.showQuick),
+      (prev, next) {
+        if (_disposed || !mounted || next || prev == next) return;
+        if (_panel == _BottomPanel.quickBet) {
+          _setPanel(_BottomPanel.none);
+        }
+        if (_fabSelectedNotifier.value == 2) {
+          _fabSelectedNotifier.value = null;
+        }
+      },
+    );
     ref.listen<String?>(
       roomLotteryLiveProvider(widget.roomId).select((s) {
         final g = s.gameById(_gameId);
@@ -2156,6 +2171,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                     builder: (_, fabSelected, __) {
                       return _FloatingActions(
                         selectedIndex: fabSelected,
+                        showMarket: showQuick,
                         onSwitchGame: () async {
                           _fabSelectedNotifier.value = 0;
                           if (_panel == _BottomPanel.quickBet) {
@@ -2723,12 +2739,14 @@ class _FloatingActions extends StatelessWidget {
     required this.onService,
     required this.onMarket,
     this.selectedIndex,
+    this.showMarket = true,
   });
 
   final VoidCallback onSwitchGame;
   final VoidCallback onService;
   final VoidCallback onMarket;
   final int? selectedIndex;
+  final bool showMarket;
 
   @override
   Widget build(BuildContext context) {
@@ -2738,8 +2756,10 @@ class _FloatingActions extends StatelessWidget {
         _fab(0, Icons.swap_vert, AppColors.navBlue, onSwitchGame),
         SizedBox(height: 10.h),
         _fab(1, Icons.headset_mic, AppColors.navBlue, onService),
-        SizedBox(height: 10.h),
-        _fab(2, Icons.grid_view, AppColors.navBlue, onMarket),
+        if (showMarket) ...[
+          SizedBox(height: 10.h),
+          _fab(2, Icons.grid_view, AppColors.navBlue, onMarket),
+        ],
       ],
     );
   }
