@@ -21,7 +21,6 @@ import '../providers/host_dash_dirty_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
 import '../widgets/host_ui.dart';
 import 'fly/fly_hub_page.dart';
-import 'host_shell_page.dart';
 import 'reports/rebate_report_page.dart';
 import 'reports/room_report_page.dart';
 import 'reports/score_flow_page.dart';
@@ -139,7 +138,7 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
             children: [
               PageAppBar(
                 title: '\u7ba1\u7406\u4e2d\u5fc3',
-                onBack: () => goHostLottery(context, roomId),
+                onBack: () => appHandleBack(context),
               ),
               Expanded(
                 child: _loading

@@ -23,8 +23,7 @@ import '../../../shared/widgets/input_dialog.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../utils/bet_receipt_format.dart';
-import '../../host/pages/host_shell_page.dart';
-import '../../room/pages/room_shell_page.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../room/pages/customer_service_page.dart';
 import '../../wallet/pages/apply_records_page.dart';
 import '../../wallet/pages/bet_records_page.dart';
@@ -105,6 +104,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   final _messagesLoadingNotifier = ValueNotifier(false);
   _BottomPanel _panel = _BottomPanel.none;
   bool _overlayWasVisible = true;
+  late final AppBackLayer _backLayer = AppBackLayer(_consumeBackStep, overlay: true);
   final _panelNotifier = ValueNotifier<_BottomPanel>(_BottomPanel.none);
   final _topPanelNotifier = ValueNotifier<_TopPanel>(_TopPanel.none);
   final _historyExpandedNotifier = ValueNotifier(false);
@@ -1041,6 +1041,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     super.didChangeDependencies();
     _syncDockLayout();
     final visible = ChatOverlayVisibility.maybeOf(context)?.visible ?? true;
+    _syncBackLayer(visible);
     if (_overlayWasVisible && !visible) {
       if (_panel != _BottomPanel.none) {
         _setPanel(_BottomPanel.none);
@@ -1060,8 +1061,48 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     }
   }
 
+  /// 一次返回只关一层：子页和弹窗在最上面，然后才是面板，最后关聊天。
+  bool _consumeBackStep() {
+    if (!mounted || widget.onClose == null) return false;
+    if (!appBackLayerActive(context)) return false;
+    final nav = Navigator.of(context);
+    if (popNavigatorPopup(nav)) return true;
+    if (nav.canPop() && tryAppBackLayers(overlay: false, onlyNavigator: nav)) {
+      return true;
+    }
+    if (nav.canPop()) {
+      nav.pop();
+      return true;
+    }
+    if (_topPanelNotifier.value != _TopPanel.none) {
+      _topPanelNotifier.value = _TopPanel.none;
+      _fabSelectedNotifier.value = null;
+      return true;
+    }
+    if (_historyExpandedNotifier.value) {
+      _historyExpandedNotifier.value = false;
+      return true;
+    }
+    if (_panel != _BottomPanel.none) {
+      _setPanel(_BottomPanel.none);
+      return true;
+    }
+    unregisterAppBackLayer(_backLayer);
+    widget.onClose!.call();
+    return true;
+  }
+
+  void _syncBackLayer(bool visible) {
+    if (widget.onClose != null && visible) {
+      registerAppBackLayer(_backLayer);
+    } else {
+      unregisterAppBackLayer(_backLayer);
+    }
+  }
+
   @override
   void dispose() {
+    unregisterAppBackLayer(_backLayer);
     _disposed = true;
     _chatSubGen++;
     _chatPushSub?.cancel();
@@ -1860,30 +1901,13 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                 gameName: gameName,
                 roomId: widget.roomId,
                 onBack: () {
-                  // Overlay 保活：离开前必须收起盘口，否则再进仍停在快捷下单
-                  if (_panel == _BottomPanel.quickBet) {
-                    _setPanel(_BottomPanel.none);
-                    return;
-                  }
-                  if (_panel != _BottomPanel.none) {
-                    _setPanel(_BottomPanel.none);
-                  }
-                  final close = widget.onClose;
-                  if (close != null) {
-                    close();
-                    return;
-                  }
+                  if (_consumeBackStep()) return;
                   final nav = Navigator.of(context);
                   if (nav.canPop()) {
                     nav.pop();
                     return;
                   }
-                  final isHost = ref.read(authSessionProvider).isHostSide;
-                  if (isHost) {
-                    goHostLottery(context, widget.roomId);
-                  } else {
-                    goRoomLottery(context, widget.roomId);
-                  }
+                  appHandleBack(context);
                 },
                 onTapTitle: _openSwitchGame,
               );

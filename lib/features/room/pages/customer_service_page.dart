@@ -36,6 +36,15 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
   StreamSubscription<CsChatPush>? _csSub;
   bool _sharePrompting = false;
   bool _attachOpen = false;
+  late final AppBackLayer _attachBack = AppBackLayer(
+    () {
+      if (!mounted || !_attachOpen || !appBackLayerActive(context)) return false;
+      setState(() => _attachOpen = false);
+      unregisterAppBackLayer(_attachBack);
+      return true;
+    },
+    navigatorOf: () => mounted ? Navigator.of(context) : null,
+  );
 
   @override
   void initState() {
@@ -47,8 +56,17 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
     Future.microtask(_load);
   }
 
+  void _syncAttachBack() {
+    if (_attachOpen) {
+      registerAppBackLayer(_attachBack);
+    } else {
+      unregisterAppBackLayer(_attachBack);
+    }
+  }
+
   @override
   void dispose() {
+    unregisterAppBackLayer(_attachBack);
     _csSub?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
@@ -264,6 +282,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
       _messagesNotifier.value = [];
       unawaited(_load());
     });
+    _syncAttachBack();
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(

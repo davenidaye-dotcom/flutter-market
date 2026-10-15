@@ -3,6 +3,9 @@ import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import '../../config/env/env_config.dart';
 import 'api_exception.dart';
+import 'client_cert_refresh.dart';
+import 'client_cert_store.dart';
+import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
 import 'session_kick.dart';
 import 'session_store.dart';
 import '../security/api_request_signer.dart';
@@ -24,10 +27,7 @@ class ApiClient {
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) {
-          final token = SessionStore.instance.accessToken;
-          if (token != null && token.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $token';
-          }
+          SessionKick.attach(options);
           final roomId = SessionStore.instance.roomId;
           if (roomId != null && roomId.isNotEmpty) {
             options.headers['X-Room-Id'] = roomId;
@@ -37,29 +37,25 @@ class ApiClient {
           handler.next(options);
         },
         onResponse: (response, handler) {
-          if (_unauthorized(response.data, response.statusCode)) {
-            SessionKick.signal();
-          }
+          SessionKick.consider(
+            response.requestOptions,
+            response.data,
+            response.statusCode,
+          );
           handler.next(response);
         },
         onError: (error, handler) {
-          if (_unauthorized(error.response?.data, error.response?.statusCode)) {
-            SessionKick.signal();
-          }
+          SessionKick.consider(
+            error.requestOptions,
+            error.response?.data,
+            error.response?.statusCode,
+          );
           handler.next(error);
         },
       ),
     );
-  }
-
-  static bool _unauthorized(dynamic data, int? status) {
-    if (status == 401) return true;
-    if (data is Map) {
-      final code = data['code'];
-      final n = code is int ? code : int.tryParse('$code');
-      if (n == 401) return true;
-    }
-    return false;
+    ClientCertStore.instance.addListener(rebindTls);
+    rebindTls();
   }
 
   static final ApiClient instance = ApiClient._();
@@ -70,6 +66,42 @@ class ApiClient {
   /// OSS 引导拿到新地址后刷新 Dio baseUrl
   void syncBaseUrl() {
     _dio.options.baseUrl = EnvConfig.apiBaseUrl;
+    rebindTls();
+  }
+
+  void rebindTls() {
+    bindMtlsClient(_dio, presentClientCert: true);
+  }
+
+  Future<Response<T>> _send<T>(
+    Future<Response<T>> Function() send,
+  ) async {
+    await ensureMtlsMaterialLoaded();
+    if (ClientCertStore.instance.shouldRenew) {
+      await ClientCertRefresh.refresh();
+    }
+    try {
+      return await send();
+    } on DioException catch (e) {
+      if (!await _recover(e)) rethrow;
+      return await send();
+    }
+  }
+
+  Future<bool> _recover(DioException error) async {
+    if (!_needsFreshCert(error)) return false;
+    final result = await ClientCertRefresh.refresh();
+    return result == CertRefreshResult.installed ||
+        result == CertRefreshResult.disabled;
+  }
+
+  bool _needsFreshCert(DioException error) {
+    final data = error.response?.data;
+    if (data is Map && bizCodeOf(data) == 'MTLS_REQUIRED') return true;
+    final kind = error.error?.runtimeType.toString() ?? '';
+    final text = '${error.error ?? ''} ${error.message ?? ''}';
+    return kind.contains('HandshakeException') ||
+        text.contains('HandshakeException');
   }
 
   Future<dynamic> get(
@@ -77,7 +109,7 @@ class ApiClient {
     Map<String, dynamic>? query,
   }) async {
     try {
-      final res = await _dio.get<dynamic>(path, queryParameters: query);
+      final res = await _send(() => _dio.get<dynamic>(path, queryParameters: query));
       return unwrapResponse(res);
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
@@ -90,7 +122,7 @@ class ApiClient {
     Map<String, dynamic>? query,
   }) async {
     try {
-      final res = await _dio.get<dynamic>(path, queryParameters: query);
+      final res = await _send(() => _dio.get<dynamic>(path, queryParameters: query));
       final headers = <String, String>{
         for (final e in res.headers.map.entries)
           if (e.value.isNotEmpty) e.key.toLowerCase(): e.value.first,
@@ -108,13 +140,15 @@ class ApiClient {
     Map<String, dynamic>? headers,
   }) async {
     try {
-      final res = await _dio.post<dynamic>(
-        path,
-        data: data,
-        queryParameters: query,
-        options: headers == null || headers.isEmpty
-            ? null
-            : Options(headers: headers),
+      final res = await _send(
+        () => _dio.post<dynamic>(
+          path,
+          data: data,
+          queryParameters: query,
+          options: headers == null || headers.isEmpty
+              ? null
+              : Options(headers: headers),
+        ),
       );
       return unwrapResponse(res);
     } on DioException catch (e) {
@@ -126,10 +160,19 @@ class ApiClient {
     String path, {
     Object? data,
     Map<String, dynamic>? query,
+    bool ignoreUnauthorized = false,
   }) async {
     try {
-      final res =
-          await _dio.put<dynamic>(path, data: data, queryParameters: query);
+      final res = await _send(
+        () => _dio.put<dynamic>(
+          path,
+          data: data,
+          queryParameters: query,
+          options: ignoreUnauthorized
+              ? Options(extra: {SessionKick.skipExtra: true})
+              : null,
+        ),
+      );
       return unwrapResponse(res);
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
@@ -141,7 +184,9 @@ class ApiClient {
     Map<String, dynamic>? query,
   }) async {
     try {
-      final res = await _dio.delete<dynamic>(path, queryParameters: query);
+      final res = await _send(
+        () => _dio.delete<dynamic>(path, queryParameters: query),
+      );
       return unwrapResponse(res);
     } on DioException catch (e) {
       throw ApiException.fromDio(e);
@@ -151,9 +196,11 @@ class ApiClient {
   /// 二进制下载（客服图片等）；走同一套签名/鉴权，不走 JSON unwrap。
   Future<Uint8List> getBytes(String path) async {
     try {
-      final res = await _dio.get<List<int>>(
-        path,
-        options: Options(responseType: ResponseType.bytes),
+      final res = await _send(
+        () => _dio.get<List<int>>(
+          path,
+          options: Options(responseType: ResponseType.bytes),
+        ),
       );
       final data = res.data;
       if (data == null || data.isEmpty) {

@@ -1480,7 +1480,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       if (reason == 'MAINT' || message.contains('维护')) {
         AppToast.info('系统维护中');
       }
-      SessionKick.signal();
+      final token = _ws?.sessionToken;
+      if (token != null && token.isNotEmpty) SessionKick.signal(token);
       return;
     }
 
@@ -2066,10 +2067,17 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     } catch (_) {}
   }
 
+  void _applyShowQuickPayload(Map<String, dynamic> payload) {
+    if (!payload.containsKey('showQuick')) return;
+    final on = payload['showQuick'] != false && payload['showQuick'] != 0;
+    applyShowQuick(on);
+  }
+
   /// 上分/下分/回水/结算等入账：即时写顶栏四字段（payload 已带 available/turnover/winLoss/rebate）。
   void _onWalletDelta(Map<String, dynamic> payload) {
     final rid = '${payload['roomId'] ?? ''}'.trim();
     if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
+    _applyShowQuickPayload(payload);
     // 房主顶栏等 ROOM_WALLET_SUMMARY（全房合计），不套用个人 available。
     if (_wsIsHost || _ref.read(authSessionProvider).isHostSide) {
       return;
@@ -2094,13 +2102,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   }
 
   /// 房主「玩家总*」扩展 payload：balance/turnover/winLoss/rebate（多别名），零 HTTP。
+  /// 同一条也带 showQuick：房主和房间内玩家都收，用来立刻显隐快捷入口。
   void _onRoomWalletSummary(Map<String, dynamic> payload) {
     final rid = '${payload['roomId'] ?? ''}'.trim();
     if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
+    _applyShowQuickPayload(payload);
     if (!_wsIsHost && !_ref.read(authSessionProvider).isHostSide) {
       return;
     }
-    _bumpHostDashDirty();
     final balRaw = payload['balance'] ?? payload['available'] ?? payload['points'];
     final turnRaw = payload['turnover'];
     final wlRaw = payload['playerWinLoss'] ?? payload['winLoss'];
@@ -2110,9 +2119,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final hasWinLoss = wlRaw != null;
     final hasRebate = rbRaw != null;
     if (!hasBalance && !hasTurnover && !hasWinLoss && !hasRebate) {
-      unawaited(refreshWallet());
+      if (!payload.containsKey('showQuick')) {
+        unawaited(refreshWallet());
+      }
       return;
     }
+    _bumpHostDashDirty();
     state = state.copyWith(
       points: hasBalance ? _toNum(balRaw) : null,
       turnover: hasTurnover ? _toNum(turnRaw) : null,

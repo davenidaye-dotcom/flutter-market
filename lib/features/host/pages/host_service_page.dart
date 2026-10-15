@@ -11,9 +11,9 @@ import '../../room/cs_rich.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/keyboard_input_lift.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/host_ui.dart';
-import 'host_shell_page.dart';
 
 class _CsSession {
   _CsSession({
@@ -75,6 +75,10 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   List<_CsSession> _sessions = [];
   bool _loading = true;
   StreamSubscription<CsChatPush>? _csSub;
+  late final AppBackLayer _sessionBack = AppBackLayer(
+    _closeOpenSession,
+    navigatorOf: () => mounted ? Navigator.of(context) : null,
+  );
 
   @override
   void initState() {
@@ -86,8 +90,29 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
     Future.microtask(_bootstrap);
   }
 
+  bool _fromMemberChat() => (widget.openAccountId ?? '').trim().isNotEmpty;
+
+  /// 底栏里的会话不是路由。系统返回先退回会话列表，再退 Tab。
+  bool _closeOpenSession() {
+    if (!mounted || _open == null || _fromMemberChat()) return false;
+    if (!appBackLayerActive(context)) return false;
+    setState(() => _open = null);
+    unregisterAppBackLayer(_sessionBack);
+    _loadSessions();
+    return true;
+  }
+
+  void _syncSessionBack() {
+    if (_open != null && !_fromMemberChat()) {
+      registerAppBackLayer(_sessionBack);
+    } else {
+      unregisterAppBackLayer(_sessionBack);
+    }
+  }
+
   @override
   void dispose() {
+    unregisterAppBackLayer(_sessionBack);
     _csSub?.cancel();
     super.dispose();
   }
@@ -178,28 +203,12 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
 
   @override
   Widget build(BuildContext context) {
+    _syncSessionBack();
     if (_open != null) {
-      final fromMember = (widget.openAccountId ?? '').trim().isNotEmpty;
       return _ChatView(
         roomId: widget.roomId,
         session: _open!,
-        onBack: () {
-          // 会员详情发起私聊：返回直接关页回到详情；底栏进客服：退回会话列表
-          if (fromMember) {
-            final nav = Navigator.of(context);
-            if (nav.canPop()) {
-              nav.pop();
-              return;
-            }
-            final closer = ShellCoverCloser.maybeOf(context);
-            if (closer != null) {
-              closer.close();
-              return;
-            }
-          }
-          setState(() => _open = null);
-          _loadSessions();
-        },
+        onBack: () => appHandleBack(context),
       );
     }
 
@@ -210,20 +219,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
             children: [
               PageAppBar(
                 title: '在线客服',
-                onBack: () {
-                  // 从会员详情「发起私聊」压栈/盖层进来：必须 pop/关盖层回到详情，不能 goHostLottery 把栈冲掉
-                  final nav = Navigator.of(context);
-                  if (nav.canPop()) {
-                    nav.pop();
-                    return;
-                  }
-                  final closer = ShellCoverCloser.maybeOf(context);
-                  if (closer != null) {
-                    closer.close();
-                    return;
-                  }
-                  goHostLottery(context, widget.roomId);
-                },
+                onBack: () => appHandleBack(context),
               ),
               Expanded(
                 child: _loading
@@ -347,6 +343,15 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   bool _loading = true;
   bool _attachOpen = false;
   StreamSubscription<CsChatPush>? _csSub;
+  late final AppBackLayer _attachBack = AppBackLayer(
+    () {
+      if (!mounted || !_attachOpen || !appBackLayerActive(context)) return false;
+      setState(() => _attachOpen = false);
+      unregisterAppBackLayer(_attachBack);
+      return true;
+    },
+    navigatorOf: () => mounted ? Navigator.of(context) : null,
+  );
 
   @override
   void initState() {
@@ -358,8 +363,17 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     Future.microtask(_loadMessages);
   }
 
+  void _syncAttachBack() {
+    if (_attachOpen) {
+      registerAppBackLayer(_attachBack);
+    } else {
+      unregisterAppBackLayer(_attachBack);
+    }
+  }
+
   @override
   void dispose() {
+    unregisterAppBackLayer(_attachBack);
     _csSub?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
@@ -526,6 +540,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
 
   @override
   Widget build(BuildContext context) {
+    _syncAttachBack();
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(

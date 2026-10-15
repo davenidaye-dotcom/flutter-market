@@ -27,10 +27,12 @@ void main(List<String> args) {
   var signKid = '1';
   var signSecret = ApiRequestSigner.materializeBakedSecret();
   var cfgKid = '1';
+  String? auth;
   for (final a in args) {
     if (a.startsWith('--env=')) env = a.substring(6);
     if (a.startsWith('--api=')) api = a.substring(6);
     if (a.startsWith('--ws=')) ws = a.substring(5);
+    if (a.startsWith('--auth=')) auth = a.substring(7);
     if (a.startsWith('--sign-kid=')) signKid = a.substring(11);
     if (a.startsWith('--sign-secret=')) signSecret = a.substring(14);
     if (a.startsWith('--cfg-kid=')) cfgKid = a.substring(10);
@@ -40,6 +42,7 @@ void main(List<String> args) {
     env: env,
     apiBaseUrl: api,
     wsBaseUrl: ws,
+    authBaseUrl: auth,
     ts: DateTime.now().millisecondsSinceEpoch,
     signKid: signKid,
     signSecret: signSecret,

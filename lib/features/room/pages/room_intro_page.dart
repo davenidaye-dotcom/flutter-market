@@ -7,7 +7,7 @@ import '../../lottery/providers/lottery_live_provider.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
-import 'room_shell_page.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 
 /// Room intro — GET /member/rooms/intro
@@ -112,7 +112,6 @@ class _RoomIntroPageState extends ConsumerState<RoomIntroPage> {
 
   @override
   Widget build(BuildContext context) {
-    final roomId = widget.roomId ?? '';
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(
@@ -121,13 +120,7 @@ class _RoomIntroPageState extends ConsumerState<RoomIntroPage> {
             children: [
               PageAppBar(
                 title: '房间介绍',
-                onBack: () {
-                  if (roomId.isNotEmpty) {
-                    goRoomLottery(context, roomId);
-                  } else {
-                    appSafePop(context);
-                  }
-                },
+                onBack: () => appHandleBack(context),
               ),
               Expanded(
                 child: SingleChildScrollView(

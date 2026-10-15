@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../config/env/env_config.dart';
+import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
 import 'session_store.dart';
 import 'ws_message_codec.dart';
 
@@ -32,6 +33,9 @@ class FlyroomWsClient {
   bool _closing = false;
   bool _disconnectNotified = false;
 
+  /// 建连时的 token。旧连接上的 SESSION_KICKED 不能踢掉后来登录的会话。
+  String? sessionToken;
+
   Stream<Map<String, dynamic>> get events => _controller.stream;
   bool get isConnected => _channel != null;
 
@@ -44,7 +48,8 @@ class FlyroomWsClient {
   Future<void> connect() async {
     await disconnect();
     _disconnectNotified = false;
-    final ch = WebSocketChannel.connect(_uri);
+    sessionToken = SessionStore.instance.accessToken;
+    final ch = await connectFlyroomSocket(_uri);
     _channel = ch;
     _sub = ch.stream.listen(
       (raw) {

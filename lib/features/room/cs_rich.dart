@@ -24,14 +24,21 @@ Future<CsMsgMenuAction?> showCsMsgActionChip(
 
   final done = Completer<CsMsgMenuAction?>();
   late OverlayEntry entry;
+  late final AppBackLayer backLayer;
   var closed = false;
 
   void finish(CsMsgMenuAction? action) {
     if (closed) return;
     closed = true;
+    unregisterAppBackLayer(backLayer);
     entry.remove();
     if (!done.isCompleted) done.complete(action);
   }
+
+  backLayer = AppBackLayer(() {
+    finish(null);
+    return true;
+  }, overlay: true);
 
   final screen = MediaQuery.sizeOf(context);
   const menuW = 132.0;
@@ -90,6 +97,7 @@ Future<CsMsgMenuAction?> showCsMsgActionChip(
     ),
   );
   overlay.insert(entry);
+  registerAppBackLayer(backLayer);
   return done.future;
 }
 

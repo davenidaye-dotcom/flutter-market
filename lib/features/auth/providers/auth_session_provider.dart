@@ -28,7 +28,33 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
 
   final Ref _ref;
 
+  /// 密码登录进行中。这段时间开出来的登录页不能再跑快登，避免共用同一次代际。
+  int? _passwordEpoch;
+
   Future<UserModel> login({
+    required String username,
+    required String password,
+    required String captchaToken,
+    required AppRole expectedRole,
+  }) async {
+    // 先占代际，在途快登和上一次密码登录都不能再写 token。
+    final epoch = SessionStore.instance.bumpEpoch();
+    _passwordEpoch = epoch;
+    try {
+      return await _loginWithEpoch(
+        epoch: epoch,
+        username: username,
+        password: password,
+        captchaToken: captchaToken,
+        expectedRole: expectedRole,
+      );
+    } finally {
+      if (_passwordEpoch == epoch) _passwordEpoch = null;
+    }
+  }
+
+  Future<UserModel> _loginWithEpoch({
+    required int epoch,
     required String username,
     required String password,
     required String captchaToken,
@@ -39,7 +65,11 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
           password: password,
           captchaToken: captchaToken,
           expectedRole: expectedRole,
+          commitEpoch: epoch,
         );
+    if (SessionStore.instance.epoch != epoch) {
+      throw const ApiException(message: '\u767b\u5f55\u5df2\u53d6\u6d88', bizCode: 'LOGIN_SUPERSEDED');
+    }
     if (expectedRole == AppRole.player) {
       if (user.role != AppRole.player) {
         await SessionStore.instance.clear();
@@ -52,31 +82,46 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
       }
     }
     state = AuthSession(user: user);
-    await BgmPrompt.resetForLogin(
+    // 提示音同步失败不能挡跳转，更不能在读用户之前把会话踢掉。
+    unawaited(BgmPrompt.resetForLogin(
       host: user.isHostSide,
       player: user.role == AppRole.player,
-    );
+    ));
     return user;
   }
 
   /// 启动时用保存的设备令牌静默登录。没有令牌 / 失败返回 null（走密码登录）。
   /// 令牌被服务端判无效（DEVICE_TOKEN_INVALID）时清掉本地令牌。
   Future<UserModel?> tryDeviceLogin() async {
+    if (_passwordEpoch != null) return null;
+    final seen = SessionStore.instance.epoch;
     final saved = await DeviceLoginStore.loadSaved();
-    if (saved == null) return null;
+    if (saved == null ||
+        _passwordEpoch != null ||
+        SessionStore.instance.epoch != seen) {
+      return null;
+    }
+    // 单独占一代，不能和已经开始的密码登录写进同一次代际。
+    final epoch = SessionStore.instance.bumpEpoch();
     try {
       final user = await _ref.read(authRepositoryProvider).deviceLogin(
             username: saved.username,
             deviceToken: saved.token,
+            epoch: epoch,
           );
+      if (SessionStore.instance.epoch != epoch) return null;
       if (user.role != AppRole.player) {
-        await SessionStore.instance.clear();
+        if (SessionStore.instance.epoch == epoch) {
+          await SessionStore.instance.clear();
+        }
         return null;
       }
+      if (SessionStore.instance.epoch != epoch) return null;
       state = AuthSession(user: user);
-      await BgmPrompt.resetForLogin(host: false, player: true);
+      unawaited(BgmPrompt.resetForLogin(host: false, player: true));
       return user;
     } catch (e) {
+      if (e is ApiException && e.bizCode == 'LOGIN_SUPERSEDED') return null;
       if (e is ApiException &&
           (e.bizCode == 'DEVICE_TOKEN_INVALID' ||
               e.message.contains('DEVICE_TOKEN_INVALID'))) {
@@ -106,9 +151,15 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
 
   Future<void> logout() async {
     final username = state.user?.username;
-    await _ref.read(authRepositoryProvider).logout();
+    final cleared = await _ref.read(authRepositoryProvider).logout();
+    if (!cleared) return;
     if (username != null) await DeviceLoginStore.clear(username);
     _ref.read(csUnreadCountProvider.notifier).clear();
+    state = const AuthSession();
+  }
+
+  /// 还停在登录页时切到房主/代理：丢掉已经写上的玩家会话，但不删设备快登令牌。
+  void abandonLocal() {
     state = const AuthSession();
   }
 

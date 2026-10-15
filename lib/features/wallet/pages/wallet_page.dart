@@ -10,7 +10,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/input_dialog.dart';
 import '../../../shared/widgets/page_app_bar.dart';
-import '../../room/pages/room_shell_page.dart';
+import '../../../shared/widgets/app_back.dart';
 import 'agent_info_page.dart';
 import 'apply_records_page.dart';
 import 'bet_records_page.dart';
@@ -129,7 +129,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
             children: [
               PageAppBar(
                 title: '钱包中心',
-                onBack: () => goRoomLottery(context, widget.roomId),
+                onBack: () => appHandleBack(context),
               ),
               SizedBox(height: 12.h),
               Expanded(

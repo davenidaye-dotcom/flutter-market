@@ -27,14 +27,21 @@ Future<void> showHostApplyNoticeDialog(
 
   final done = Completer<void>();
   late OverlayEntry entry;
+  late final AppBackLayer backLayer;
   var closed = false;
 
   void close() {
     if (closed) return;
     closed = true;
+    unregisterAppBackLayer(backLayer);
     entry.remove();
     if (!done.isCompleted) done.complete();
   }
+
+  backLayer = AppBackLayer(() {
+    close();
+    return true;
+  }, overlay: true);
 
   entry = OverlayEntry(
     builder: (ctx) => Material(
@@ -60,6 +67,7 @@ Future<void> showHostApplyNoticeDialog(
     ),
   );
   overlay.insert(entry);
+  registerAppBackLayer(backLayer);
   await done.future;
 }
 

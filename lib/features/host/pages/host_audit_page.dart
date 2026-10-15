@@ -8,12 +8,12 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../wallet/widgets/date_range_filter.dart';
 import '../data/host_mock.dart';
 import '../providers/host_pending_audit_provider.dart';
 import '../widgets/host_ui.dart';
-import 'host_shell_page.dart';
 
 /// 审核列表 — 1:1 竞品「申请记录」
 class HostAuditPage extends ConsumerStatefulWidget {
@@ -136,7 +136,7 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
             children: [
               PageAppBar(
                 title: '申请记录',
-                onBack: () => goHostLottery(context, widget.roomId),
+                onBack: () => appHandleBack(context),
               ),
               Padding(
                 padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 0),

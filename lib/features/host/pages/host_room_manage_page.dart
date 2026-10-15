@@ -9,11 +9,11 @@ import '../../../shared/format/game_series.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
+import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../profile/pages/change_password_page.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../widgets/host_ui.dart';
-import 'host_shell_page.dart';
 import 'room/host_agents_page.dart';
 import 'room/host_announcements_page.dart';
 import 'room/host_basic_settings_page.dart';
@@ -266,7 +266,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
             children: [
               PageAppBar(
                 title: '\u623f\u95f4\u7ba1\u7406',
-                onBack: () => goHostLottery(context, widget.roomId),
+                onBack: () => appHandleBack(context),
               ),
               Expanded(
                 child: AppPullRefresh(

@@ -32,6 +32,9 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
   Timer? _csTimer;
   /// 底栏浏览历史（不含当前），返回时回到上一 Tab
   final List<int> _tabHistory = <int>[];
+  int _prevBranch = -1;
+  /// 这次返回要去的分支，避免再记成新的一页
+  int? _backTo;
 
   @override
   void initState() {
@@ -75,16 +78,28 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
     // 底栏 0~3 → 分支 1~4；勿 initialLocation:true，否则会重置分支丢掉保活 State
     final branch = index + 1;
     if (branch == widget.navigationShell.currentIndex) return;
-    final from = widget.navigationShell.currentIndex;
-    if (_tabHistory.isEmpty || _tabHistory.last != from) {
-      _tabHistory.add(from);
-    }
     widget.navigationShell.goBranch(branch);
+  }
+
+  /// 底栏、goBranch、路由切分支都记上一页，返回时按进入顺序退。
+  void _noteBranch(int branch) {
+    if (_prevBranch >= 0 && branch != _prevBranch) {
+      if (_backTo == branch) {
+        _backTo = null;
+      } else {
+        _backTo = null;
+        if (_tabHistory.isEmpty || _tabHistory.last != _prevBranch) {
+          _tabHistory.add(_prevBranch);
+        }
+      }
+    }
+    _prevBranch = branch;
   }
 
   bool _tryTabBack() {
     if (_tabHistory.isEmpty) return false;
     final prev = _tabHistory.removeLast();
+    _backTo = prev;
     widget.navigationShell.goBranch(prev);
     return true;
   }
@@ -92,9 +107,10 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
   @override
   Widget build(BuildContext context) {
     final unread = ref.watch(csUnreadCountProvider);
-    return AppBackScope(
-      child: ShellTabBack(
-        tryBack: _tryTabBack,
+    _noteBranch(widget.navigationShell.currentIndex);
+    return ShellTabBack(
+      tryBack: _tryTabBack,
+      child: AppBackScope(
         child: AppPageScaffold(
           body: widget.navigationShell,
           bottomNavigationBar: UserBottomNavBar(

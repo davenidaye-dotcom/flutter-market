@@ -297,7 +297,8 @@ class _HomePageState extends ConsumerState<HomePage> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authSessionProvider.select((s) => s.user));
-    return AppPageScaffold(
+    return AppBackScope(
+      child: AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(
           child: AppPullRefresh(
@@ -353,6 +354,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             ),
           ),
         ),
+      ),
       ),
     );
   }

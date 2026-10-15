@@ -13,6 +13,7 @@ class EndpointConfig {
     required this.env,
     required this.apiBaseUrl,
     required this.wsBaseUrl,
+    this.authBaseUrl,
     this.ts,
     this.signKid,
     this.signSecret,
@@ -23,6 +24,7 @@ class EndpointConfig {
   final String env;
   final String apiBaseUrl;
   final String wsBaseUrl;
+  final String? authBaseUrl;
   final int? ts;
 
   /// API 验签密钥版本（热轮换，无需重打包）
@@ -35,6 +37,7 @@ class EndpointConfig {
   factory EndpointConfig.fromJson(Map<String, dynamic> json, {String cfgKid = '1'}) {
     final api = (json['apiBaseUrl'] ?? json['api'] ?? '').toString().trim();
     final ws = (json['wsBaseUrl'] ?? json['ws'] ?? '').toString().trim();
+    final auth = (json['authBaseUrl'] ?? json['auth'] ?? '').toString().trim();
     if (api.isEmpty || ws.isEmpty) {
       throw const FormatException('endpoint config missing api/ws');
     }
@@ -46,6 +49,7 @@ class EndpointConfig {
       env: (json['env'] ?? '').toString(),
       apiBaseUrl: api.replaceAll(RegExp(r'/+$'), ''),
       wsBaseUrl: ws.replaceAll(RegExp(r'/+$'), ''),
+      authBaseUrl: auth.isEmpty ? null : auth.replaceAll(RegExp(r'/+$'), ''),
       ts: int.tryParse('${json['ts'] ?? ''}'),
       signKid: signKid.isEmpty ? null : signKid,
       signSecret: signSecret.isEmpty ? null : signSecret,
@@ -58,6 +62,7 @@ class EndpointConfig {
         'env': env,
         'apiBaseUrl': apiBaseUrl,
         'wsBaseUrl': wsBaseUrl,
+        if (authBaseUrl != null && authBaseUrl!.isNotEmpty) 'authBaseUrl': authBaseUrl,
         if (ts != null) 'ts': ts,
         if (signKid != null && signKid!.isNotEmpty) 'signKid': signKid,
         if (signSecret != null && signSecret!.isNotEmpty) 'signSecret': signSecret,

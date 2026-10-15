@@ -29,8 +29,12 @@ class MemberRepository {
     return data['bgmEnabled'] == true;
   }
 
-  Future<void> updateBgm(bool enabled) async {
-    await _client.put('/member/profile/bgm', data: {'enabled': enabled});
+  Future<void> updateBgm(bool enabled, {bool ignoreUnauthorized = false}) async {
+    await _client.put(
+      '/member/profile/bgm',
+      data: {'enabled': enabled},
+      ignoreUnauthorized: ignoreUnauthorized,
+    );
   }
 
   Future<List<Map<String, dynamic>>> getRedpacks({String status = 'AVAILABLE'}) async {

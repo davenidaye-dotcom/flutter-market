@@ -3,8 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:go_router/go_router.dart';
-import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/session_store.dart';
 import '../../../data/repositories/providers.dart';
@@ -184,7 +182,6 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
   @override
   Widget build(BuildContext context) {
     super.build(context);
-    final isHost = ref.watch(authSessionProvider.select((s) => s.isHostSide));
     final liveProvider = roomLotteryLiveProvider(widget.roomId);
     final ready = ref.watch(liveProvider.select((s) => s.ready));
     final loadError = ref.watch(liveProvider.select((s) => s.loadError));
@@ -239,20 +236,7 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
               children: [
                 _HallHeader(
                   roomCode: widget.roomId,
-                  onBack: isHost
-                      ? () async {
-                          ref.invalidate(roomLotteryLiveProvider(widget.roomId));
-                          await ref.read(authSessionProvider.notifier).logout();
-                          if (context.mounted) appGoLoginClearingStack(context);
-                        }
-                      : () {
-                          dismissAllShellCovers();
-                          if (context.canPop()) {
-                            context.pop();
-                          } else {
-                            context.go(RoutePaths.home);
-                          }
-                        },
+                  onBack: () => appHandleBack(context),
                 ),
                 AnnouncementMarquee(
                   text: announcement,

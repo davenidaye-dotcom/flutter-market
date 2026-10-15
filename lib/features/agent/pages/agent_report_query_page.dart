@@ -97,8 +97,27 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     });
   }
 
+  late final AppBackLayer _drillBack = AppBackLayer(
+    () {
+      if (!mounted || (_drill.isEmpty && _ticketMemberId == null)) return false;
+      if (!appBackLayerActive(context)) return false;
+      _popDrill();
+      return true;
+    },
+    navigatorOf: () => mounted ? Navigator.of(context) : null,
+  );
+
+  void _syncDrillBack() {
+    if (_drill.isNotEmpty || _ticketMemberId != null) {
+      registerAppBackLayer(_drillBack);
+    } else {
+      unregisterAppBackLayer(_drillBack);
+    }
+  }
+
   @override
   void dispose() {
+    unregisterAppBackLayer(_drillBack);
     _scroll.removeListener(_onTicketScroll);
     _scroll.dispose();
     super.dispose();
@@ -419,6 +438,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
 
   @override
   Widget build(BuildContext context) {
+    _syncDrillBack();
     final inTickets = _ticketMemberId != null;
     return AgentPageFrame(
       // 去掉「报表查询」「注单明细」标题条

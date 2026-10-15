@@ -138,6 +138,82 @@ void appSafePop(BuildContext context) {
   }
 }
 
+/// 系统返回要先处理的一层（后注册的在最上，先消费）。
+/// 聊天浮层、壳盖层、审核弹窗都登记在这里，因为它们不在路由栈上。
+class AppBackLayer {
+  AppBackLayer(this.tryStep, {this.overlay = false, this.navigatorOf});
+
+  /// 返回 true 表示这一下返回已经用掉。
+  final bool Function() tryStep;
+
+  /// 盖在壳上面（聊天、全屏盖层、弹窗）。页内下钻为 false，排在分支弹层之后。
+  final bool overlay;
+
+  /// 这一层挂在哪个 Navigator 上。盖层只处理自己栈里的页内层。
+  final NavigatorState? Function()? navigatorOf;
+}
+
+/// 页面还在屏幕上：分支没被收起，且是所在 Navigator 的当前页。
+bool appBackLayerActive(BuildContext context) {
+  var visible = true;
+  context.visitAncestorElements((el) {
+    final widget = el.widget;
+    if (widget is Offstage && widget.offstage) {
+      visible = false;
+      return false;
+    }
+    if (widget is TickerMode && !widget.enabled) {
+      visible = false;
+      return false;
+    }
+    return true;
+  });
+  if (!visible) return false;
+  final route = ModalRoute.of(context);
+  if (route != null && !route.isCurrent) return false;
+  return true;
+}
+
+/// 栈顶是弹窗时弹掉它。普通页面留给页内层。
+bool popNavigatorPopup(NavigatorState nav) {
+  if (!nav.canPop()) return false;
+  Route<dynamic>? top;
+  nav.popUntil((route) {
+    top = route;
+    return true;
+  });
+  if (top is! PopupRoute) return false;
+  nav.pop();
+  return true;
+}
+
+final List<AppBackLayer> _appBackLayers = <AppBackLayer>[];
+
+void registerAppBackLayer(AppBackLayer layer) {
+  if (_appBackLayers.contains(layer)) return;
+  _appBackLayers.add(layer);
+}
+
+void unregisterAppBackLayer(AppBackLayer layer) {
+  _appBackLayers.remove(layer);
+}
+
+/// 从最上层开始尝试消费一次返回。
+/// [overlay] 为 true 只试浮层，false 只试页内下钻，null 两种都试。
+/// [onlyNavigator] 只试挂在这个 Navigator 上的页内层。
+bool tryAppBackLayers({bool? overlay, NavigatorState? onlyNavigator}) {
+  for (var i = _appBackLayers.length - 1; i >= 0; i--) {
+    final layer = _appBackLayers[i];
+    if (overlay != null && layer.overlay != overlay) continue;
+    if (onlyNavigator != null) {
+      final owner = layer.navigatorOf?.call();
+      if (!identical(owner, onlyNavigator)) continue;
+    }
+    if (layer.tryStep()) return true;
+  }
+  return false;
+}
+
 /// Overlay 全屏盖层的关闭句柄（不走 go_router / 根 Navigator，Shell 保活）
 class ShellCoverCloser extends InheritedWidget {
   const ShellCoverCloser({
@@ -157,7 +233,15 @@ class ShellCoverCloser extends InheritedWidget {
 }
 
 /// 全屏盖住底部 Tab：用 Overlay，禁止 go_router / 根 Navigator（二者会卸 Shell）
-final List<OverlayEntry> _shellCoverEntries = <OverlayEntry>[];
+class _ShellCover {
+  _ShellCover(this.layer);
+
+  OverlayEntry? entry;
+  final AppBackLayer layer;
+  bool closed = false;
+}
+
+final List<_ShellCover> _shellCovers = <_ShellCover>[];
 
 void _safeRemoveOverlayEntry(OverlayEntry entry) {
   if (!entry.mounted) return;
@@ -169,10 +253,13 @@ void _safeRemoveOverlayEntry(OverlayEntry entry) {
 }
 
 void dismissAllShellCovers() {
-  final entries = List<OverlayEntry>.from(_shellCoverEntries);
-  _shellCoverEntries.clear();
-  for (final e in entries) {
-    _safeRemoveOverlayEntry(e);
+  final covers = List<_ShellCover>.from(_shellCovers);
+  _shellCovers.clear();
+  for (final cover in covers) {
+    cover.closed = true;
+    unregisterAppBackLayer(cover.layer);
+    final entry = cover.entry;
+    if (entry != null) _safeRemoveOverlayEntry(entry);
   }
 }
 
@@ -195,25 +282,43 @@ Future<void> pushHostPage(BuildContext context, Widget page) {
 
 Future<void> pushShellCover(BuildContext context, Widget page) {
   final overlay = Overlay.of(context, rootOverlay: true);
+  final navKey = GlobalKey<NavigatorState>();
   late OverlayEntry entry;
-  var closed = false;
+  late final _ShellCover cover;
 
   void close() {
-    if (closed) return;
-    closed = true;
+    if (cover.closed) return;
+    cover.closed = true;
     FocusManager.instance.primaryFocus?.unfocus();
     SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
-    _shellCoverEntries.remove(entry);
-    // 等 IME 收起一两帧再拆 Overlay，避免 viewport metrics 风暴卡死
+    _shellCovers.remove(cover);
+    // 等 IME 收起再拆。这段时间返回层仍占着，避免底下页面被连着退掉。
     Future<void>.delayed(const Duration(milliseconds: 80), () {
+      unregisterAppBackLayer(cover.layer);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _safeRemoveOverlayEntry(entry);
       });
-      // 若当前无帧调度（已卡死边缘），再兜底一帧
       WidgetsBinding.instance.scheduleFrame();
     });
   }
 
+  bool tryStep() {
+    if (cover.closed) return true;
+    final nav = navKey.currentState;
+    if (nav != null && popNavigatorPopup(nav)) return true;
+    // 盖层里的附件栏、下钻先退，再弹子页，最后才关盖层。
+    if (nav != null && tryAppBackLayers(overlay: false, onlyNavigator: nav)) {
+      return true;
+    }
+    if (nav != null && nav.canPop()) {
+      nav.pop();
+      return true;
+    }
+    close();
+    return true;
+  }
+
+  cover = _ShellCover(AppBackLayer(tryStep, overlay: true));
   entry = OverlayEntry(
     builder: (ctx) => StableScreenMetrics(
       child: Material(
@@ -223,6 +328,7 @@ Future<void> pushShellCover(BuildContext context, Widget page) {
             close: close,
             child: HeroControllerScope.none(
               child: Navigator(
+                key: navKey,
                 onGenerateRoute: (_) => MaterialPageRoute<void>(
                   builder: (_) => page,
                 ),
@@ -233,7 +339,9 @@ Future<void> pushShellCover(BuildContext context, Widget page) {
       ),
     ),
   );
-  _shellCoverEntries.add(entry);
+  cover.entry = entry;
+  _shellCovers.add(cover);
+  registerAppBackLayer(cover.layer);
   overlay.insert(entry);
   return Future<void>.value();
 }

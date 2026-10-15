@@ -52,8 +52,26 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     Future.microtask(_load);
   }
 
+  late final AppBackLayer _drillBack = AppBackLayer(
+    () {
+      if (!mounted || _drill.isEmpty || !appBackLayerActive(context)) return false;
+      _popDrill();
+      return true;
+    },
+    navigatorOf: () => mounted ? Navigator.of(context) : null,
+  );
+
+  void _syncDrillBack() {
+    if (_drill.isNotEmpty) {
+      registerAppBackLayer(_drillBack);
+    } else {
+      unregisterAppBackLayer(_drillBack);
+    }
+  }
+
   @override
   void dispose() {
+    unregisterAppBackLayer(_drillBack);
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -442,6 +460,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
 
   @override
   Widget build(BuildContext context) {
+    _syncDrillBack();
     return AgentPageFrame(
       title: '账户管理',
       child: Column(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/router/route_paths.dart';
+import '../../shared/widgets/app_back.dart';
 import '../../features/auth/pages/captcha_page.dart';
 import '../../features/auth/pages/login_page.dart';
 import '../../features/auth/pages/register_page.dart';
@@ -107,10 +108,19 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: RoutePaths.login, builder: (_, _) => const LoginPage()),
-      GoRoute(path: RoutePaths.register, builder: (_, _) => const RegisterPage()),
-      GoRoute(path: RoutePaths.captcha, builder: (_, _) => const CaptchaPage()),
+      GoRoute(
+        path: RoutePaths.register,
+        builder: (_, _) => const AppBackScope(child: RegisterPage()),
+      ),
+      GoRoute(
+        path: RoutePaths.captcha,
+        builder: (_, _) => const AppBackScope(child: CaptchaPage()),
+      ),
       GoRoute(path: RoutePaths.home, builder: (_, _) => const HomePage()),
-      GoRoute(path: RoutePaths.personalSettings, builder: (_, _) => const PersonalSettingsPage()),
+      GoRoute(
+        path: RoutePaths.personalSettings,
+        builder: (_, _) => const AppBackScope(child: PersonalSettingsPage()),
+      ),
       GoRoute(
         path: RoutePaths.changePassword,
         builder: (_, state) => ChangePasswordPage(

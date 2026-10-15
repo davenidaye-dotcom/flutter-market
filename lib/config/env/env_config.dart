@@ -28,6 +28,7 @@ class EnvConfig {
   /// OSS/CDN 下发或缓存覆盖；未就绪时用 [builtinApiBaseUrl]
   static String? _apiBaseUrlOverride;
   static String? _wsBaseUrlOverride;
+  static String? _authBaseUrlOverride;
 
   static String get builtinApiBaseUrl => switch (environment) {
         // 走 80 反代 → Java 9080；不要写成后台 Vue 的 8088/8098
@@ -54,14 +55,31 @@ class EnvConfig {
           ? _wsBaseUrlOverride!.trim().replaceAll(RegExp(r'/+$'), '')
           : builtinWsBaseUrl;
 
-  static void applyEndpoint({required String apiBaseUrl, required String wsBaseUrl}) {
+  /// 登录 / 换证。未单独下发时与 [apiBaseUrl] 相同。
+  static String get authBaseUrl {
+    final auth = _authBaseUrlOverride?.trim();
+    if (auth != null && auth.isNotEmpty) {
+      return auth.replaceAll(RegExp(r'/+$'), '');
+    }
+    return apiBaseUrl;
+  }
+
+  static void applyEndpoint({
+    required String apiBaseUrl,
+    required String wsBaseUrl,
+    String? authBaseUrl,
+  }) {
     _apiBaseUrlOverride = apiBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     _wsBaseUrlOverride = wsBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
+    final auth = authBaseUrl?.trim();
+    _authBaseUrlOverride =
+        (auth == null || auth.isEmpty) ? null : auth.replaceAll(RegExp(r'/+$'), '');
   }
 
   static void clearEndpointOverride() {
     _apiBaseUrlOverride = null;
     _wsBaseUrlOverride = null;
+    _authBaseUrlOverride = null;
   }
 
   static const clientId = 'flyroom';

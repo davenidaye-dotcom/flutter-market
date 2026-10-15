@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import '../../../config/env/env_config.dart';
 import '../../profile/app_release.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/sdk/dingxiang/dingxiang_provider.dart';
@@ -21,18 +20,11 @@ class CaptchaPage extends ConsumerStatefulWidget {
 
 class _CaptchaPageState extends ConsumerState<CaptchaPage> {
   double _sliderValue = 0;
-  String _version = EnvConfig.appVersion;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(_loadVersion);
-  }
-
-  Future<void> _loadVersion() async {
-    final version = await AppRelease.footerVersion();
-    if (!mounted) return;
-    setState(() => _version = version);
+    Future.microtask(AppRelease.localVersion);
   }
 
   void _verify() {
@@ -71,7 +63,13 @@ class _CaptchaPageState extends ConsumerState<CaptchaPage> {
                   behavior: HitTestBehavior.opaque,
                   child: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
-                    child: Text(AppRelease.displayVersion(_version), style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                    child: ListenableBuilder(
+                      listenable: AppRelease.builtinVersion,
+                      builder: (context, _) => Text(
+                        AppRelease.displayVersion(AppRelease.builtinVersion.value),
+                        style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                      ),
+                    ),
                   ),
                 ),
               ),

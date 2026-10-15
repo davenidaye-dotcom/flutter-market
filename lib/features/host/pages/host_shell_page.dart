@@ -37,6 +37,8 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
   int _prevBranch = -1;
   /// 底栏浏览历史（不含当前），返回时回到上一 Tab
   final List<int> _tabHistory = <int>[];
+  /// 这次返回要去的分支，避免再记成新的一页
+  int? _backTo;
 
   @override
   void initState() {
@@ -92,19 +94,31 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       if (index == 3) _bumpAuditListRefresh();
       return;
     }
-    final from = widget.navigationShell.currentIndex;
-    if (_tabHistory.isEmpty || _tabHistory.last != from) {
-      _tabHistory.add(from);
-    }
     widget.navigationShell.goBranch(branch);
     if (index == 2 || index == 3) {
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
     }
   }
 
+  /// 底栏、goBranch、路由切分支都记上一页，返回时按进入顺序退。
+  void _noteBranch(int branch) {
+    if (_prevBranch >= 0 && branch != _prevBranch) {
+      if (_backTo == branch) {
+        _backTo = null;
+      } else {
+        _backTo = null;
+        if (_tabHistory.isEmpty || _tabHistory.last != _prevBranch) {
+          _tabHistory.add(_prevBranch);
+        }
+      }
+    }
+    _prevBranch = branch;
+  }
+
   bool _tryTabBack() {
     if (_tabHistory.isEmpty) return false;
     final prev = _tabHistory.removeLast();
+    _backTo = prev;
     widget.navigationShell.goBranch(prev);
     return true;
   }
@@ -142,7 +156,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
         _bumpAuditListRefresh();
       });
     }
-    _prevBranch = branch;
+    _noteBranch(branch);
 
     final badge = ref.watch(hostPendingAuditProvider).total;
     final csUnread = ref.watch(csUnreadCountProvider);
@@ -150,9 +164,9 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       if (next == null) return;
       unawaited(_maybeShowApplyDialog(next));
     });
-    return AppBackScope(
-      child: ShellTabBack(
-        tryBack: _tryTabBack,
+    return ShellTabBack(
+      tryBack: _tryTabBack,
+      child: AppBackScope(
         child: AppPageScaffold(
           body: widget.navigationShell,
           bottomNavigationBar: HostBottomNavBar(

@@ -5,13 +5,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import '../../../config/env/env_config.dart';
 import '../../profile/app_release.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/session_store.dart';
 import '../../../data/models/app_role.dart';
-import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/auth_card.dart';
 import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/gradient_background.dart';
@@ -35,7 +34,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _passwordFocus = FocusNode();
   bool _remember = false;
   bool _loading = false;
-  String _version = EnvConfig.appVersion;
 
   /// 登录入口模式：玩家 / 经营端（房主+代理 portal）
   bool _hostMode = false;
@@ -44,7 +42,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   void initState() {
     super.initState();
     Future.microtask(() async {
-      await _loadVersion();
+      await AppRelease.localVersion();
       await _applyRemember();
     });
     unawaited(_tryDeviceLogin());
@@ -55,13 +53,13 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (_hostMode) return;
     final user = await ref.read(authSessionProvider.notifier).tryDeviceLogin();
     if (user == null || !mounted || _hostMode || _loading) return;
+    final live = ref.read(authSessionProvider).user;
+    if (live == null ||
+        live.role != AppRole.player ||
+        live.username != user.username) {
+      return;
+    }
     context.go(RoutePaths.home);
-  }
-
-  Future<void> _loadVersion() async {
-    final version = await AppRelease.footerVersion();
-    if (!mounted) return;
-    setState(() => _version = version);
   }
 
   Future<void> _applyRemember() async {
@@ -81,6 +79,16 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _switchHostMode(bool hostMode) async {
     if (_hostMode == hostMode) return;
+    // 切到房主/代理时，作废已经发出的玩家设备快登。快登若已写上玩家会话，一并丢掉。
+    if (hostMode) {
+      final live = ref.read(authSessionProvider).user;
+      if (live != null && live.role == AppRole.player) {
+        ref.read(authSessionProvider.notifier).abandonLocal();
+        unawaited(SessionStore.instance.clear());
+      } else {
+        SessionStore.instance.bumpEpoch();
+      }
+    }
     setState(() => _hostMode = hostMode);
     await _applyRemember();
   }
@@ -105,7 +113,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
     try {
-      await ref.read(authSessionProvider.notifier).login(
+      final user = await ref.read(authSessionProvider.notifier).login(
             username: username,
             password: password,
             captchaToken: '',
@@ -118,24 +126,31 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         username: username,
         password: password,
       );
-      final user = ref.read(authSessionProvider).user;
       FocusManager.instance.primaryFocus?.unfocus();
       SystemChannels.textInput.invokeMethod<void>('TextInput.hide');
       // 等键盘收起再跳转，避免 IME viewport 风暴把进房页打卡死
       await Future<void>.delayed(const Duration(milliseconds: 80));
       if (!mounted) return;
+      final live = ref.read(authSessionProvider).user;
+      if (live == null ||
+          live.id != user.id ||
+          live.username != user.username ||
+          live.role != user.role) {
+        return;
+      }
       // 仅房主首次登录强制改密
-      if (user?.isHostSide == true && user?.forceChangePassword == true) {
+      if (live.isHostSide && live.forceChangePassword) {
         context.go('${RoutePaths.changePassword}?force=1');
         return;
       }
-      final dest = user?.isAgentSide == true
-          ? RoutePaths.agentPersonalInfo(user?.roomId ?? '1001')
-          : user?.isHostSide == true
-              ? RoutePaths.hostLottery(user?.roomId ?? '1001')
+      final dest = live.isAgentSide
+          ? RoutePaths.agentPersonalInfo(live.roomId ?? '1001')
+          : live.isHostSide
+              ? RoutePaths.hostLottery(live.roomId ?? '1001')
               : RoutePaths.home;
       context.go(dest);
     } catch (e) {
+      if (e is ApiException && e.bizCode == 'LOGIN_SUPERSEDED') return;
       final msg = e is ApiException ? e.message : e.toString();
       AppToast.error(msg.isEmpty ? '系统维护中' : msg);
     } finally {
@@ -145,27 +160,26 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    // 登录页栈底：系统返回 / 侧滑 → 再按一次退出
+    // 登录页栈底：系统返回直接退出软件
     return AppBackScope(
       child: AppPageScaffold(
-      // 键盘盖住底部即可，不要 resize 触发 ScreenUtil 全树重建
+      // 不让 Scaffold 缩高度，避免 ScreenUtil 整树重建。键盘高度用来把白框上移。
       resizeToAvoidBottomInset: false,
       body: GradientBackground(
         child: SafeArea(
-          child: Stack(
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(horizontal: 28.w),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+              final cardHeight = (constraints.maxHeight - keyboard).clamp(0.0, constraints.maxHeight);
+              return Stack(
+                children: [
+                  SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(28.w, 0, 28.w, keyboard),
                     child: ConstrainedBox(
-                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      constraints: BoxConstraints(minHeight: cardHeight),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          SizedBox(height: 24.h),
-                          const AppLogoHeader(),
-                          SizedBox(height: 28.h),
                           AuthCard(
                             tabText: _hostMode ? '房主/代理登录' : '玩家登录',
                             child: Column(
@@ -258,29 +272,32 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                               ],
                             ),
                           ),
-                          SizedBox(height: 48.h),
                         ],
                       ),
                     ),
-                  );
-                },
-              ),
-              Positioned(
-                right: 16.w,
-                bottom: 12.h,
-                child: GestureDetector(
-                  onTap: () => AppRelease.check(context),
-                  behavior: HitTestBehavior.opaque,
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
-                    child: Text(
-                      AppRelease.displayVersion(_version),
-                      style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
-                    ),
                   ),
-                ),
-              ),
-            ],
+                  if (keyboard == 0)
+                    Positioned(
+                      right: 16.w,
+                      bottom: 12.h,
+                      child: GestureDetector(
+                        onTap: () => AppRelease.check(context),
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
+                          child: ListenableBuilder(
+                            listenable: AppRelease.builtinVersion,
+                            builder: (context, _) => Text(
+                              AppRelease.displayVersion(AppRelease.builtinVersion.value),
+                              style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         ),
       ),

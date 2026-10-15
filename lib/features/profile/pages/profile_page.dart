@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../core/audio/bgm_prompt.dart';
-import '../../../config/env/env_config.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
@@ -16,7 +15,6 @@ import '../../../shared/widgets/user_avatar.dart';
 import '../../../data/repositories/providers.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
-import '../../room/pages/room_shell_page.dart';
 import '../../room/cs_pending_share.dart';
 import '../../room/cs_rich.dart';
 import '../app_release.dart';
@@ -35,7 +33,6 @@ class ProfilePage extends ConsumerStatefulWidget {
 class _ProfilePageState extends ConsumerState<ProfilePage>
     with AutomaticKeepAliveClientMixin {
   bool _bgMusic = false;
-  String _version = EnvConfig.appVersion;
 
   @override
   bool get wantKeepAlive => true;
@@ -44,13 +41,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
   void initState() {
     super.initState();
     Future.microtask(_loadBgm);
-    Future.microtask(_loadVersion);
-  }
-
-  Future<void> _loadVersion() async {
-    final version = await AppRelease.footerVersion();
-    if (!mounted) return;
-    setState(() => _version = version);
+    Future.microtask(AppRelease.localVersion);
   }
 
   Future<void> _loadBgm() async {
@@ -92,9 +83,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
             children: [
               PageAppBar(
                 title: '个人中心',
-                onBack: roomId == null
-                    ? () => appSafePop(context)
-                    : () => goRoomLottery(context, roomId),
+                onBack: () => appHandleBack(context),
               ),
               Expanded(
                 child: SingleChildScrollView(
@@ -198,13 +187,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage>
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text('当前版本', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
-                                Text(AppRelease.displayVersion(_version), style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
-                              ],
+                            ListenableBuilder(
+                              listenable: AppRelease.builtinVersion,
+                              builder: (context, _) => Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text('当前版本', style: TextStyle(fontSize: 11.sp, color: AppColors.textHint)),
+                                  Text(
+                                    AppRelease.displayVersion(AppRelease.builtinVersion.value),
+                                    style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                                  ),
+                                ],
+                              ),
                             ),
                             Icon(Icons.chevron_right, color: AppColors.textHint),
                           ],

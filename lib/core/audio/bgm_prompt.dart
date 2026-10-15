@@ -57,9 +57,9 @@ class BgmPrompt {
     if (!host && !player) return;
     try {
       if (host) {
-        await OwnerRepository().updateBgm(false);
+        await OwnerRepository().updateBgm(false, ignoreUnauthorized: true);
       } else {
-        await MemberRepository().updateBgm(false);
+        await MemberRepository().updateBgm(false, ignoreUnauthorized: true);
       }
     } catch (e) {
       if (kDebugMode) {

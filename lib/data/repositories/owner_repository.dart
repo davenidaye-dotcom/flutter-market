@@ -337,8 +337,12 @@ class OwnerRepository {
     return data['enabled'] == true;
   }
 
-  Future<void> updateBgm(bool enabled) async {
-    await _client.put('/owner/profile/bgm', data: {'enabled': enabled});
+  Future<void> updateBgm(bool enabled, {bool ignoreUnauthorized = false}) async {
+    await _client.put(
+      '/owner/profile/bgm',
+      data: {'enabled': enabled},
+      ignoreUnauthorized: ignoreUnauthorized,
+    );
   }
 
   Future<Map<String, dynamic>> getDashboard() async {

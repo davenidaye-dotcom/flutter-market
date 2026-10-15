@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/env/env_config.dart';
 import '../network/api_client.dart';
+import '../network/auth_api_client.dart';
 import '../security/sign_credential_store.dart';
 import 'bootstrap_seeds.dart';
 import 'config_crypto.dart';
@@ -148,8 +149,13 @@ class RemoteEndpointBootstrap {
     required bool cacheRaw,
     String? raw,
   }) async {
-    EnvConfig.applyEndpoint(apiBaseUrl: cfg.apiBaseUrl, wsBaseUrl: cfg.wsBaseUrl);
+    EnvConfig.applyEndpoint(
+      apiBaseUrl: cfg.apiBaseUrl,
+      wsBaseUrl: cfg.wsBaseUrl,
+      authBaseUrl: cfg.authBaseUrl,
+    );
     ApiClient.instance.syncBaseUrl();
+    AuthApiClient.instance.syncBaseUrl();
     if (cfg.hasSignCredential) {
       SignCredentialStore.instance.applyRemote(
         kid: cfg.signKid!,
@@ -166,7 +172,8 @@ class RemoteEndpointBootstrap {
       await prefs.setString(_cacheKey, raw);
     }
     debugPrint(
-      '[bootstrap] source=$source api=${cfg.apiBaseUrl} ws=${cfg.wsBaseUrl} '
+      '[bootstrap] source=$source api=${cfg.apiBaseUrl} auth=${cfg.authBaseUrl ?? cfg.apiBaseUrl} '
+      'ws=${cfg.wsBaseUrl} '
       'signKid=${cfg.signKid ?? SignCredentialStore.bakedKid}',
     );
   }
