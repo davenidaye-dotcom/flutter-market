@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../config/theme/app_colors.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../core/network/session_store.dart';
@@ -28,6 +29,11 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
   List<Map<String, dynamic>> _rows = [];
   double? _totalAssets;
   bool _loading = false;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _page = 1;
+  int _total = 0;
+  static const _pageSize = 20;
 
   @override
   void initState() {
@@ -40,13 +46,25 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
     _load();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _page = 1;
+        _hasMore = true;
+      });
+    }
+    final page = reset ? 1 : _page + 1;
     try {
       final roomId = SessionStore.instance.roomId ?? '';
       final appsFuture = ref.read(walletRepositoryProvider).getApplications(
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
+            pageNum: page,
+            pageSize: _pageSize,
           );
       final summaryFuture =
           ref.read(walletRepositoryProvider).getSummary(roomId);
@@ -65,15 +83,25 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
               .toList()
           : <Map<String, dynamic>>[];
       if (!mounted) return;
+      final total = int.tryParse('${data['total'] ?? list.length}') ?? list.length;
       setState(() {
-        _rows = list;
-        _totalAssets = summary?.totalAssets;
+        _rows = reset ? list : [..._rows, ...list];
+        _page = page;
+        _total = total;
+        _hasMore = _rows.length < total && list.isNotEmpty;
+        if (reset) _totalAssets = summary?.totalAssets;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
       AppToast.error(e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
+      }
     }
   }
 
@@ -138,9 +166,26 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                         ? const Center(child: AppEmptyHint())
                         : ListView.separated(
                             padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 12.h),
-                            itemCount: _rows.length,
-                            separatorBuilder: (_, _) => SizedBox(height: 10.h),
+                            itemCount: _rows.length + 1,
+                            separatorBuilder: (_, i) =>
+                                i >= _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 10.h),
                             itemBuilder: (_, i) {
+                              if (i == _rows.length) {
+                                if (_hasMore && !_loadingMore) {
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (mounted) _load(reset: false);
+                                  });
+                                }
+                                return Padding(
+                                  padding: EdgeInsets.only(top: 8.h),
+                                  child: Center(
+                                    child: Text(
+                                      _hasMore ? '加载中' : '没有更多了，共 $_total 条',
+                                      style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                                    ),
+                                  ),
+                                );
+                              }
                               final r = _rows[i];
                               final type =
                                   '${r['applyType'] ?? r['type'] ?? ''}';

@@ -26,8 +26,14 @@ class WelfareReportPage extends ConsumerStatefulWidget {
 class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
     with DateRangePageMixin {
   Map<String, dynamic> _data = {};
+  List<Map<String, dynamic>> _detailRows = [];
   bool _loading = false;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _page = 1;
+  int _detailTotal = 0;
   String _type = 'COMMISSION';
+  static const _pageSize = 20;
 
   static const _chips = <(String, String)>[
     ('COMMISSION', '回水'),
@@ -43,21 +49,48 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
   @override
   void onQuery() => _load();
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _page = 1;
+        _hasMore = true;
+      });
+    }
+    final page = reset ? 1 : _page + 1;
     try {
       final data = await ref.read(walletRepositoryProvider).getWelfare(
             type: _type,
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
+            pageNum: page,
+            pageSize: _pageSize,
           );
       if (!mounted) return;
-      setState(() => _data = data);
+      final raw = data['detail'];
+      final list = raw is List
+          ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
+          : <Map<String, dynamic>>[];
+      final total = int.tryParse('${data['detailTotal'] ?? list.length}') ?? list.length;
+      setState(() {
+        _data = data;
+        _detailRows = reset ? list : [..._detailRows, ...list];
+        _page = page;
+        _detailTotal = total;
+        _hasMore = _detailRows.length < total && list.isNotEmpty;
+        _loading = false;
+        _loadingMore = false;
+      });
     } catch (e) {
       if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
       AppToast.error(e.toString());
-    } finally {
-      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -69,14 +102,7 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
     return 0;
   }
 
-  List<Map<String, dynamic>> get _detail {
-    final raw = _data['detail'];
-    if (raw is! List) return const [];
-    return raw
-        .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
-  }
+  List<Map<String, dynamic>> get _detail => _detailRows;
 
   String _detailTypeLabel(String changeType) => ledgerChangeLabel(changeType);
 
@@ -185,6 +211,19 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
                                 },
                               ),
                             ],
+                          if (detail.isNotEmpty)
+                            Padding(
+                              padding: EdgeInsets.only(top: 12.h),
+                              child: Center(
+                                child: GestureDetector(
+                                  onTap: _hasMore ? () => _load(reset: false) : null,
+                                  child: Text(
+                                    _hasMore ? '加载更多' : '没有更多了，共 $_detailTotal 条',
+                                    style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                                  ),
+                                ),
+                              ),
+                            ),
                         ],
                       ),
               ),

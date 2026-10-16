@@ -35,6 +35,11 @@ class _HostAgentDownlinesPageState extends ConsumerState<HostAgentDownlinesPage>
   final _search = TextEditingController();
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _page = 1;
+  int _total = 0;
+  static const _pageSize = 50;
   late String _commissionText;
 
   @override
@@ -56,27 +61,47 @@ class _HostAgentDownlinesPageState extends ConsumerState<HostAgentDownlinesPage>
     super.dispose();
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _page = 1;
+        _hasMore = true;
+      });
+    }
+    final page = reset ? 1 : _page + 1;
     try {
       final repo = ref.read(ownerRepositoryProvider);
-      final list = await repo.getAgentDownlines(
+      final data = await repo.getAgentDownlines(
         widget.agentAccountId,
         keyword: _search.text.trim(),
-        pageSize: 100,
+        pageNum: page,
+        pageSize: _pageSize,
       );
-      // 抽佣比例在代理成员上，见成员详情
-      final detail = await repo.getMemberDetail(widget.agentAccountId);
-      final c = detail['commissionRatio'];
-      final ratio = c is num ? c : num.tryParse('$c');
+      num? ratio;
+      if (reset) {
+        final detail = await repo.getMemberDetail(widget.agentAccountId);
+        final c = detail['commissionRatio'];
+        ratio = c is num ? c : num.tryParse('$c');
+      }
       if (!mounted) return;
+      final list = hostRowsOf(data);
+      final total = int.tryParse('${data['total'] ?? list.length}') ?? list.length;
       setState(() {
-        _rows = list;
+        _rows = reset ? list : [..._rows, ...list];
+        _page = page;
+        _total = total;
+        _hasMore = _rows.length < total && list.isNotEmpty;
         if (ratio != null) _commissionText = hostNumStr(ratio);
         _loading = false;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
+      setState(() => _loadingMore = false);
       setState(() => _loading = false);
       AppToast.error(e.toString());
     }
@@ -323,11 +348,16 @@ class _HostAgentDownlinesPageState extends ConsumerState<HostAgentDownlinesPage>
                             i >= _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 10.h),
                         itemBuilder: (_, i) {
                           if (i == _rows.length) {
+                            if (_hasMore && !_loadingMore) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) _load(reset: false);
+                              });
+                            }
                             return Padding(
                               padding: EdgeInsets.only(top: 12.h),
                               child: Center(
                                 child: Text(
-                                  '没有更多了，共 ${_rows.length} 条',
+                                  _hasMore ? '加载中' : '没有更多了，共 $_total 条',
                                   style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
                                 ),
                               ),

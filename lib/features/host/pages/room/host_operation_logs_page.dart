@@ -28,7 +28,12 @@ class _Filter {
 class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _page = 1;
+  int _total = 0;
   int _filter = 0;
+  static const _pageSize = 50;
 
   static const _filters = <_Filter>[
     _Filter('全部'),
@@ -57,22 +62,42 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
     Future.microtask(_load);
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _page = 1;
+        _hasMore = true;
+      });
+    }
+    final page = reset ? 1 : _page + 1;
     try {
       final f = _filters[_filter.clamp(0, _filters.length - 1)];
       final data = await ref.read(ownerRepositoryProvider).getOpLogs(
             action: f.action,
-            pageSize: 100,
+            pageNum: page,
+            pageSize: _pageSize,
           );
       if (!mounted) return;
+      final list = hostRowsOf(data);
+      final total = int.tryParse('${data['total'] ?? list.length}') ?? list.length;
       setState(() {
-        _rows = hostRowsOf(data);
+        _rows = reset ? list : [..._rows, ...list];
+        _page = page;
+        _total = total;
+        _hasMore = _rows.length < total && list.isNotEmpty;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
       AppToast.error(e.toString());
     }
   }
@@ -129,9 +154,26 @@ class _HostOperationLogsPageState extends ConsumerState<HostOperationLogsPage> {
                       )
                     : ListView.separated(
                         padding: EdgeInsets.all(16.w),
-                        itemCount: _rows.length,
-                        separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                        itemCount: _rows.length + 1,
+                        separatorBuilder: (_, i) =>
+                            i >= _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 8.h),
                         itemBuilder: (_, i) {
+                          if (i == _rows.length) {
+                            if (_hasMore && !_loadingMore) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) _load(reset: false);
+                              });
+                            }
+                            return Padding(
+                              padding: EdgeInsets.only(top: 8.h),
+                              child: Center(
+                                child: Text(
+                                  _hasMore ? '加载中' : '没有更多了，共 $_total 条',
+                                  style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                                ),
+                              ),
+                            );
+                          }
                           final r = _rows[i];
                           final action = (r['action'] ?? '').toString();
                           final content = hostOpContentLabel(

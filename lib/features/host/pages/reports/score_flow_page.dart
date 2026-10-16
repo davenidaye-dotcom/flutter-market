@@ -20,9 +20,13 @@ class ScoreFlowPage extends ConsumerStatefulWidget {
 
 class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
     with DateRangePageMixin {
+  static const _pageSize = 20;
   List<Map<String, dynamic>> _rows = [];
   String _summary = '';
   bool _loading = false;
+  bool _loadingMore = false;
+  bool _hasMore = false;
+  int _page = 1;
 
   @override
   void initState() {
@@ -33,40 +37,44 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
   @override
   void onQuery() => _load();
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _page = 1;
+        _hasMore = false;
+      });
+    }
+    final page = reset ? 1 : _page + 1;
     try {
-      final rows = await ref.read(ownerRepositoryProvider).getUpDownApplications(
+      final pageData = await ref.read(ownerRepositoryProvider).getUpDownApplications(
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
+            pageNum: page,
+            pageSize: _pageSize,
           );
       if (!mounted) return;
       setState(() {
-        _rows = rows;
-        _summary = _summaryText(rows);
+        _rows = reset ? pageData.rows : [..._rows, ...pageData.rows];
+        _rows.sort((a, b) => '${b['createdAt']}'.compareTo('${a['createdAt']}'));
+        _page = page;
+        _hasMore = pageData.hasMore;
+        _summary =
+            '总上分 ${hostNumStr(pageData.upApproved, fraction: 2)}  总下分 ${hostNumStr(pageData.downApproved, fraction: 2)}';
         _loading = false;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
       AppToast.error(e.toString());
     }
-  }
-
-  String _summaryText(List<Map<String, dynamic>> rows) {
-    double approved(String type) {
-      var sum = 0.0;
-      for (final row in rows) {
-        if ('${row['changeType']}'.toUpperCase() != type) continue;
-        if ('${row['status']}'.toUpperCase() != 'APPROVED') continue;
-        final n = row['amount'];
-        final v = n is num ? n.toDouble() : double.tryParse('$n') ?? 0;
-        sum += v.abs();
-      }
-      return sum;
-    }
-
-    return '总上分 ${hostNumStr(approved('UP'), fraction: 2)}  总下分 ${hostNumStr(approved('DOWN'), fraction: 2)}';
   }
 
   @override
@@ -107,9 +115,26 @@ class _ScoreFlowPageState extends ConsumerState<ScoreFlowPage>
                       )
                     : ListView.separated(
                         padding: EdgeInsets.symmetric(horizontal: 16.w),
-                        itemCount: _rows.length,
-                        separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                        itemCount: _rows.length + 1,
+                        separatorBuilder: (_, i) =>
+                            i >= _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 8.h),
                         itemBuilder: (_, i) {
+                          if (i == _rows.length) {
+                            if (_hasMore && !_loadingMore) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) _load(reset: false);
+                              });
+                            }
+                            return Padding(
+                              padding: EdgeInsets.only(top: 8.h, bottom: 12.h),
+                              child: Center(
+                                child: Text(
+                                  _hasMore ? '加载中' : '没有更多了',
+                                  style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                                ),
+                              ),
+                            );
+                          }
                           final r = _rows[i];
                           final type = '${r['changeType'] ?? ''}';
                           final who = '${r['nickname'] ?? r['username'] ?? ''}'.trim();

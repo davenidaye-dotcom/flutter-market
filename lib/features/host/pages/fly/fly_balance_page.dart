@@ -44,8 +44,13 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
     with DateRangePageMixin {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
   bool _unbound = false;
+  int _page = 1;
+  int _total = 0;
   int _typeIndex = 0;
+  static const _pageSize = 50;
 
   static const _types = [
     '全部',
@@ -77,11 +82,19 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
   @override
   void onQuery() => _load();
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _unbound = false;
-    });
+  Future<void> _load({bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _unbound = false;
+        _page = 1;
+        _hasMore = true;
+      });
+    }
+    final page = reset ? 1 : _page + 1;
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final status = await repo.getFeipanStatus();
@@ -98,12 +111,19 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
         changeType: _typeKeys[_typeIndex],
         startDate: DateRangeFilter.format(start),
         endDate: DateRangeFilter.format(end),
-        pageSize: 50,
+        pageNum: page,
+        pageSize: _pageSize,
       );
       if (!mounted) return;
+      final list = hostRowsOf(data);
+      final total = int.tryParse('${data['total'] ?? list.length}') ?? list.length;
       setState(() {
-        _rows = hostRowsOf(data);
+        _rows = reset ? list : [..._rows, ...list];
+        _page = page;
+        _total = total;
+        _hasMore = _rows.length < total && list.isNotEmpty;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
@@ -188,9 +208,26 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
                           )
                         : ListView.separated(
                             padding: EdgeInsets.all(16.w),
-                            itemCount: _rows.length,
-                            separatorBuilder: (_, _) => SizedBox(height: 8.h),
+                            itemCount: _rows.length + 1,
+                            separatorBuilder: (_, i) =>
+                                i >= _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 8.h),
                             itemBuilder: (_, i) {
+                              if (i == _rows.length) {
+                                if (_hasMore && !_loadingMore) {
+                                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                                    if (mounted) _load(reset: false);
+                                  });
+                                }
+                                return Padding(
+                                  padding: EdgeInsets.only(top: 8.h),
+                                  child: Center(
+                                    child: Text(
+                                      _hasMore ? '加载中' : '没有更多了，共 $_total 条',
+                                      style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                                    ),
+                                  ),
+                                );
+                              }
                               final r = _rows[i];
                               final type = '${r['changeType'] ?? ''}';
                               final amount = r['amount'] ?? '';

@@ -22,8 +22,14 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   bool _loading = false;
+  bool _loadingMore = false;
   List<Map<String, dynamic>> _loginRows = [];
   List<Map<String, dynamic>> _opRows = [];
+  int _loginPage = 1;
+  int _opPage = 1;
+  bool _loginMore = true;
+  bool _opMore = true;
+  static const _pageSize = 50;
 
   @override
   void initState() {
@@ -38,23 +44,62 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool reset = true, int? tab}) async {
     final id = agentRowAccountId(widget.row);
     if (id == null) return;
-    setState(() => _loading = true);
+    final which = tab ?? _tabs.index;
+    if (!reset) {
+      if (_loadingMore || _loading) return;
+      if (which == 0 && !_loginMore) return;
+      if (which == 1 && !_opMore) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _loginPage = 1;
+        _opPage = 1;
+        _loginMore = true;
+        _opMore = true;
+      });
+    }
+    final loginPage = reset || which != 0 ? _loginPage : _loginPage + 1;
+    final opPage = reset || which != 1 ? _opPage : _opPage + 1;
     try {
       final repo = ref.read(agentRepositoryProvider);
-      final login = await repo.getLoginLogs(accountId: id, pageSize: 50);
-      final ops = await repo.getOpLogs(accountId: id, pageSize: 50);
-      if (!mounted) return;
-      setState(() {
-        _loginRows = _rowsOf(login);
-        _opRows = _rowsOf(ops);
-        _loading = false;
-      });
+      if (reset || which == 0) {
+        final login = await repo.getLoginLogs(accountId: id, pageNum: reset ? 1 : loginPage, pageSize: _pageSize);
+        if (!mounted) return;
+        final rows = _rowsOf(login);
+        final total = int.tryParse('${login['total'] ?? rows.length}') ?? rows.length;
+        setState(() {
+          _loginRows = reset ? rows : [..._loginRows, ...rows];
+          _loginPage = reset ? 1 : loginPage;
+          _loginMore = _loginRows.length < total && rows.isNotEmpty;
+        });
+      }
+      if (reset || which == 1) {
+        final ops = await repo.getOpLogs(accountId: id, pageNum: reset ? 1 : opPage, pageSize: _pageSize);
+        if (!mounted) return;
+        final rows = _rowsOf(ops);
+        final total = int.tryParse('${ops['total'] ?? rows.length}') ?? rows.length;
+        setState(() {
+          _opRows = reset ? rows : [..._opRows, ...rows];
+          _opPage = reset ? 1 : opPage;
+          _opMore = _opRows.length < total && rows.isNotEmpty;
+        });
+      }
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _loadingMore = false;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
       AppToast.error(e.toString());
     }
   }
@@ -106,9 +151,20 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
     }
     return ListView.separated(
       padding: EdgeInsets.all(12.w),
-      itemCount: _loginRows.length,
-      separatorBuilder: (_, _) => SizedBox(height: 8.h),
+      itemCount: _loginRows.length + 1,
+      separatorBuilder: (_, i) => i >= _loginRows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 8.h),
       itemBuilder: (_, i) {
+        if (i == _loginRows.length) {
+          if (_loginMore && !_loadingMore) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _load(reset: false, tab: 0);
+            });
+          }
+          return Padding(
+            padding: EdgeInsets.only(top: 8.h),
+            child: Center(child: Text(_loginMore ? '加载中' : '没有更多了', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint))),
+          );
+        }
         final r = _loginRows[i];
         return AgentSurface(
           child: Column(
@@ -135,9 +191,20 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
     }
     return ListView.separated(
       padding: EdgeInsets.all(12.w),
-      itemCount: _opRows.length,
-      separatorBuilder: (_, _) => SizedBox(height: 8.h),
+      itemCount: _opRows.length + 1,
+      separatorBuilder: (_, i) => i >= _opRows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 8.h),
       itemBuilder: (_, i) {
+        if (i == _opRows.length) {
+          if (_opMore && !_loadingMore) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _load(reset: false, tab: 1);
+            });
+          }
+          return Padding(
+            padding: EdgeInsets.only(top: 8.h),
+            child: Center(child: Text(_opMore ? '加载中' : '没有更多了', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint))),
+          );
+        }
         final r = _opRows[i];
         return AgentSurface(
           child: Column(

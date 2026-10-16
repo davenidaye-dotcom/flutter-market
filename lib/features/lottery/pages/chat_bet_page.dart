@@ -885,6 +885,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     if (issue.isEmpty) return;
     try {
       final data = await ref.read(walletRepositoryProvider).getBets(
+            issueNo: issue,
             pageSize: 100,
           );
       final raw = data['rows'];

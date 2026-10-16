@@ -31,6 +31,7 @@ class HostShellPage extends ConsumerStatefulWidget {
 
 class _HostShellPageState extends ConsumerState<HostShellPage> {
   Timer? _badgeTimer;
+  Timer? _applyTimer;
   int _prevBranch = -1;
   /// 底栏浏览历史（不含当前），返回时回到上一 Tab
   final List<int> _tabHistory = <int>[];
@@ -51,12 +52,15 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       unawaited(ref.read(hostApplyNoticeProvider.notifier).syncRecentPending());
       unawaited(_refreshCsUnread());
     });
-    // 角标、以及 WS 漏掉的近期待审弹窗
+    // 角标和未读。审核弹窗另走更短的补拉，WS 漏掉时不要干等半分钟。
     _badgeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
-      unawaited(ref.read(hostApplyNoticeProvider.notifier).syncRecentPending());
       unawaited(_refreshCsUnread());
+    });
+    _applyTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted) return;
+      unawaited(ref.read(hostApplyNoticeProvider.notifier).syncRecentPending());
     });
   }
 
@@ -71,6 +75,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
   @override
   void dispose() {
     _badgeTimer?.cancel();
+    _applyTimer?.cancel();
     super.dispose();
   }
 

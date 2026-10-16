@@ -217,7 +217,7 @@ class OwnerRepository {
     return {};
   }
 
-  Future<List<Map<String, dynamic>>> getAgents({
+  Future<Map<String, dynamic>> getAgents({
     String? keyword,
     int pageNum = 1,
     int pageSize = 20,
@@ -227,10 +227,10 @@ class OwnerRepository {
       'pageNum': pageNum,
       'pageSize': pageSize,
     });
-    return _asMapList(data is Map ? (data['rows'] ?? data) : data);
+    return _asMap(data);
   }
 
-  Future<List<Map<String, dynamic>>> getAgentDownlines(
+  Future<Map<String, dynamic>> getAgentDownlines(
     String accountId, {
     String? keyword,
     int pageNum = 1,
@@ -244,7 +244,7 @@ class OwnerRepository {
         'pageSize': pageSize,
       },
     );
-    return _asMapList(data is Map ? (data['rows'] ?? data) : data);
+    return _asMap(data);
   }
 
   Future<void> addAgentDownline({
@@ -376,11 +376,13 @@ class OwnerRepository {
   }
 
   /// 玩家申请的上分、下分。不含进房、下注、派彩。
-  Future<List<Map<String, dynamic>>> getUpDownApplications({
+  /// 已通过金额是全量合计，不随当前页变化。
+  Future<UpDownPage> getUpDownApplications({
     String? startDate,
     String? endDate,
     String? accountId,
-    int pageSize = 100,
+    int pageNum = 1,
+    int pageSize = 20,
   }) async {
     final results = await Future.wait([
       getApplications(
@@ -388,6 +390,7 @@ class OwnerRepository {
         startDate: startDate,
         endDate: endDate,
         accountId: accountId,
+        pageNum: pageNum,
         pageSize: pageSize,
       ),
       getApplications(
@@ -395,15 +398,24 @@ class OwnerRepository {
         startDate: startDate,
         endDate: endDate,
         accountId: accountId,
+        pageNum: pageNum,
         pageSize: pageSize,
       ),
     ]);
+    final upRows = _applicationRows(results[0]);
+    final downRows = _applicationRows(results[1]);
     final rows = <Map<String, dynamic>>[
-      for (final raw in _applicationRows(results[0])) _asUpDownRow(raw, 'UP'),
-      for (final raw in _applicationRows(results[1])) _asUpDownRow(raw, 'DOWN'),
+      for (final raw in upRows) _asUpDownRow(raw, 'UP'),
+      for (final raw in downRows) _asUpDownRow(raw, 'DOWN'),
     ];
     rows.sort((a, b) => '${b['createdAt']}'.compareTo('${a['createdAt']}'));
-    return rows;
+    return (
+      rows: rows,
+      upApproved: _money(results[0]['approvedAmount']),
+      downApproved: _money(results[1]['approvedAmount']),
+      hasMore: (upRows.length >= pageSize && upRows.isNotEmpty) ||
+          (downRows.length >= pageSize && downRows.isNotEmpty),
+    );
   }
 
   Future<void> approveApplication(String applicationId, {String? remark}) async {
@@ -510,12 +522,16 @@ class OwnerRepository {
     String? startDate,
     String? endDate,
     String? accountId,
+    int pageNum = 1,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/manage/welfare', query: {
       'type': type,
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       if (accountId != null && accountId.isNotEmpty) 'accountId': accountId,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
     });
     return _asMap(data);
   }
@@ -1015,6 +1031,18 @@ List<Map<String, dynamic>> _asMapList(dynamic data) {
       .whereType<Map>()
       .map((e) => Map<String, dynamic>.from(e))
       .toList();
+}
+
+typedef UpDownPage = ({
+  List<Map<String, dynamic>> rows,
+  double upApproved,
+  double downApproved,
+  bool hasMore,
+});
+
+double _money(Object? raw) {
+  if (raw is num) return raw.toDouble();
+  return double.tryParse('$raw') ?? 0;
 }
 
 List<Map<String, dynamic>> _applicationRows(Map<String, dynamic> page) {

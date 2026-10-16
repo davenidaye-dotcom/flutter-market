@@ -52,11 +52,15 @@ class WalletRepository {
     required String type,
     String? startDate,
     String? endDate,
+    int pageNum = 1,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/member/welfare', query: {
       'type': type,
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
     });
     return _asMap(data);
   }

@@ -30,7 +30,11 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
   int _status = 1; // 全部 / 未审核 / 已通过 / 已拒绝
   List<HostAuditItem> _items = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = true;
   bool _acting = false;
+  int _page = 1;
+  static const _pageSize = 50;
   List<DateRangeQuickItem> _dayItems = [];
   int _loadGen = 0;
   DateTime? _lastLoadAt;
@@ -48,17 +52,30 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  Future<void> _load({bool fromPull = false}) async {
-    final now = DateTime.now();
-    // 进 Tab 时 initState + shell tick 可能连打两次，合并
-    if (_lastLoadAt != null &&
-        now.difference(_lastLoadAt!) < const Duration(milliseconds: 400)) {
-      return;
+  Future<void> _load({bool fromPull = false, bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+    } else {
+      final now = DateTime.now();
+      // 进 Tab 时 initState + shell tick 可能连打两次，合并
+      if (_lastLoadAt != null &&
+          now.difference(_lastLoadAt!) < const Duration(milliseconds: 400)) {
+        return;
+      }
+      _lastLoadAt = now;
     }
-    _lastLoadAt = now;
+    final page = reset ? 1 : _page + 1;
     final gen = ++_loadGen;
     _dayItems = _buildDayItems();
-    final silent = fromPull || _items.isNotEmpty;
+    final silent = !reset || fromPull || _items.isNotEmpty;
+    if (!reset && mounted) {
+      setState(() => _loadingMore = true);
+    } else if (reset && mounted) {
+      setState(() {
+        _page = 1;
+        _hasMore = true;
+      });
+    }
     if (!silent && mounted) setState(() => _loading = true);
     try {
       final repo = ref.read(ownerRepositoryProvider);
@@ -68,11 +85,11 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
       final status = _statusKeys[_status.clamp(0, 3)];
       final results = await Future.wait([
         repo.getApplications('up',
-            startDate: start, endDate: end, status: status, pageSize: 50),
+            startDate: start, endDate: end, status: status, pageNum: page, pageSize: _pageSize),
         repo.getApplications('down',
-            startDate: start, endDate: end, status: status, pageSize: 50),
+            startDate: start, endDate: end, status: status, pageNum: page, pageSize: _pageSize),
         repo.getApplications('enter',
-            startDate: start, endDate: end, status: status, pageSize: 50),
+            startDate: start, endDate: end, status: status, pageNum: page, pageSize: _pageSize),
       ]);
       if (gen != _loadGen || !mounted) return;
       final merged = <HostAuditItem>[
@@ -81,15 +98,27 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
         ...hostRowsOf(results[2]).map((e) => hostAuditFromMap(e, AuditType.join)),
       ];
       merged.sort((a, b) => b.time.compareTo(a.time));
+      final more = results.any((raw) {
+        final rows = hostRowsOf(raw);
+        final total = int.tryParse('${raw['total'] ?? rows.length}') ?? rows.length;
+        return page * _pageSize < total && rows.isNotEmpty;
+      });
       setState(() {
-        _items = merged;
+        _items = reset ? merged : [..._items, ...merged];
+        _items.sort((a, b) => b.time.compareTo(a.time));
+        _page = page;
+        _hasMore = more;
         _loading = false;
+        _loadingMore = false;
       });
       // 同步底部 Tab / 标题角标
       await ref.read(hostPendingAuditProvider.notifier).refresh();
     } catch (e) {
       if (gen != _loadGen || !mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
       AppToast.error(e.toString());
     }
   }
@@ -219,10 +248,29 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                               : ListView.separated(
                                   physics: const AlwaysScrollableScrollPhysics(),
                                   padding: EdgeInsets.all(12.w),
-                                  itemCount: _items.length,
-                                  separatorBuilder: (_, _) =>
-                                      SizedBox(height: 8.h),
-                                  itemBuilder: (_, i) => _card(_items[i]),
+                                  itemCount: _items.length + 1,
+                                  separatorBuilder: (_, i) => i >= _items.length - 1
+                                      ? const SizedBox.shrink()
+                                      : SizedBox(height: 8.h),
+                                  itemBuilder: (_, i) {
+                                    if (i == _items.length) {
+                                      if (_hasMore && !_loadingMore) {
+                                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                                          if (mounted) _load(reset: false);
+                                        });
+                                      }
+                                      return Padding(
+                                        padding: EdgeInsets.only(top: 8.h),
+                                        child: Center(
+                                          child: Text(
+                                            _hasMore ? '加载中' : '没有更多了',
+                                            style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return _card(_items[i]);
+                                  },
                                 ),
                     ),
                   ),

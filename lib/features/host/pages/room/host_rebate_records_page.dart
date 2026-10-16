@@ -29,6 +29,10 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
   List<Map<String, dynamic>> _rows = [];
   int _total = 0;
   bool _loading = false;
+  bool _loadingMore = false;
+  bool _hasMore = true;
+  int _page = 1;
+  static const _pageSize = 50;
 
   @override
   void initState() {
@@ -39,31 +43,50 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
   @override
   void onQuery() => _load();
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool reset = true}) async {
+    if (!reset) {
+      if (!_hasMore || _loadingMore || _loading) return;
+      setState(() => _loadingMore = true);
+    } else {
+      setState(() {
+        _loading = true;
+        _page = 1;
+        _hasMore = true;
+      });
+    }
+    final page = reset ? 1 : _page + 1;
     try {
       final repo = ref.read(ownerRepositoryProvider);
       final data = widget.commission
           ? await repo.getCommissionRecords(
               startDate: DateRangeFilter.format(start),
               endDate: DateRangeFilter.format(end),
-              pageSize: 200,
+              pageNum: page,
+              pageSize: _pageSize,
             )
           : await repo.getRebateRecords(
               startDate: DateRangeFilter.format(start),
               endDate: DateRangeFilter.format(end),
-              pageSize: 200,
+              pageNum: page,
+              pageSize: _pageSize,
             );
       if (!mounted) return;
       final rows = hostRowsOf(data);
+      final total = int.tryParse('${data['total'] ?? rows.length}') ?? rows.length;
       setState(() {
-        _rows = rows;
-        _total = int.tryParse('${data['total'] ?? rows.length}') ?? rows.length;
+        _rows = reset ? rows : [..._rows, ...rows];
+        _page = page;
+        _total = total;
+        _hasMore = _rows.length < total && rows.isNotEmpty;
         _loading = false;
+        _loadingMore = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _loadingMore = false;
+      });
       AppToast.error(e.toString());
     }
   }
@@ -139,11 +162,16 @@ class _HostRebateRecordsPageState extends ConsumerState<HostRebateRecordsPage>
                             : SizedBox(height: 10.h),
                         itemBuilder: (_, i) {
                           if (i == _rows.length) {
+                            if (_hasMore && !_loadingMore) {
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (mounted) _load(reset: false);
+                              });
+                            }
                             return Padding(
                               padding: EdgeInsets.only(top: 12.h, bottom: 8.h),
                               child: Center(
                                 child: Text(
-                                  '没有更多了，共 $_total 条',
+                                  _hasMore ? '加载中' : '没有更多了，共 $_total 条',
                                   style: TextStyle(
                                     fontSize: 12.sp,
                                     color: AppColors.textHint,
