@@ -692,12 +692,72 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   String _cancelSuccessText({required String mention, required String issue}) {
+    return _cancelNoticeText(mention: mention, issue: issue, amount: '', detail: '');
+  }
+
+  /// 房间里的取消卡：跟在已有注单后面，不再插一条会排到下注前面的「取消」。
+  void _publishCancelNotices(List<BetSlipRow> rows) {
+    final user = ref.read(authSessionProvider).user;
+    final mention =
+        (user?.nickname.isNotEmpty == true) ? user!.nickname : '我';
+    for (final row in rows) {
+      final issue = row.issue.trim();
+      final orderId = row.orderId?.trim() ?? '';
+      final id = orderId.isNotEmpty
+          ? 'bet-cancel-$_gameId-$orderId'
+          : 'bet-cancel-$_gameId-${issue.isEmpty ? 'x' : issue}-${DateTime.now().microsecondsSinceEpoch}';
+      _publishChatMessage(
+        ChatMessageModel(
+          id: id,
+          sender: '机器人',
+          content: _cancelNoticeText(
+            mention: mention,
+            issue: issue,
+            amount: row.amount,
+            detail: row.detail,
+          ),
+          time: _hhmm(),
+          type: ChatMessageType.betReceipt,
+          issueNo: issue.isNotEmpty ? issue : null,
+          seq: _tailChatSeq(),
+        ),
+        dedupeKey: id,
+      );
+    }
+  }
+
+  String _cancelNoticeText({
+    required String mention,
+    required String issue,
+    required String amount,
+    required String detail,
+  }) {
     final lines = <String>[];
     final name = mention.trim();
     if (name.isNotEmpty && name != '机器人') lines.add('@$name');
     final iss = issue.trim();
     lines.add(iss.isEmpty ? '取消成功' : '$iss期取消成功');
+    final amt = amount.trim();
+    if (amt.isNotEmpty && amt != '—') lines.add('总金额:$amt');
+    final extra = detail.trim();
+    if (extra.isNotEmpty && extra != amt && !extra.contains('期取消成功')) {
+      lines.add(extra);
+    }
     return lines.join('\n');
+  }
+
+  int _tailChatSeq() {
+    var maxSeq = 0;
+    for (final m
+        in ChatPushCache.instance.bufferedForGame(widget.roomId, _gameId)) {
+      if (m.seq > maxSeq) maxSeq = m.seq;
+    }
+    return maxSeq + 1;
+  }
+
+  String _hhmm() {
+    final n = DateTime.now();
+    return '${n.hour.toString().padLeft(2, '0')}:${n.minute.toString().padLeft(2, '0')}';
   }
 
   void _appendBetSlip(String command, {List<String> orderIds = const []}) {
@@ -775,6 +835,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       unawaited(
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
+      final pending = _betSlipsNotifier.value
+          .where((r) => r.issue == issueNo)
+          .toList();
       _betSlipsNotifier.value = _betSlipsNotifier.value
           .where((r) => r.issue != issueNo)
           .toList();
@@ -783,7 +846,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         AppToast.info('当前期暂无可取消注单');
         return;
       }
-      _appendLocalMessage('取消');
+      _publishCancelNotices(
+        pending.isEmpty
+            ? [BetSlipRow(issue: issueNo, amount: '—')]
+            : pending,
+      );
       AppToast.success('已取消 $cancelled 笔注单');
     } catch (e) {
       AppToast.error(e.toString());
@@ -819,6 +886,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       );
       final next = List<BetSlipRow>.from(rows)..removeAt(index);
       _betSlipsNotifier.value = next;
+      _publishCancelNotices([row]);
       AppToast.success('已取消注单');
     } catch (e) {
       AppToast.error(e.toString());

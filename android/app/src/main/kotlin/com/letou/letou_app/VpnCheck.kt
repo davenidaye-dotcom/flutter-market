@@ -2,7 +2,9 @@ package com.letou.letou_app
 
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import java.net.NetworkInterface
 
 /**
@@ -15,8 +17,51 @@ object VpnCheck {
 
     private val vpnInterfacePrefixes = listOf("tun", "tap", "ppp", "ipsec", "utun")
 
+    @Volatile
+    private var vpnUp = false
+
+    private var listening = false
+
+    /** VPN 网卡一出现就回调。比下一次 Dart 来问要早，用来挡住开关瞬间的那一两个请求。 */
+    var onChanged: ((Boolean) -> Unit)? = null
+
+    fun start(context: Context) {
+        val app = context.applicationContext
+        vpnUp = hasVpnTransport(app) || hasVpnInterface()
+        if (listening) return
+        listening = true
+        val cm = app.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return
+        val request = NetworkRequest.Builder()
+            .addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+            .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                mark(true)
+            }
+
+            override fun onLost(network: Network) {
+                mark(hasVpnTransport(app) || hasVpnInterface())
+            }
+        }
+        try {
+            cm.registerNetworkCallback(request, callback)
+        } catch (_: Exception) {
+            listening = false
+        }
+    }
+
     fun isActive(context: Context): Boolean {
-        return hasVpnTransport(context) || hasVpnInterface()
+        if (vpnUp) return true
+        val now = hasVpnTransport(context) || hasVpnInterface()
+        if (now) vpnUp = true
+        return now
+    }
+
+    private fun mark(active: Boolean) {
+        val changed = vpnUp != active
+        vpnUp = active
+        if (changed) onChanged?.invoke(active)
     }
 
     @Suppress("DEPRECATION")

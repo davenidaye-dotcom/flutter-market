@@ -174,17 +174,22 @@ int _systemPhase(ChatMessageModel message) {
 bool _isBettingMessage(ChatMessageModel m) =>
     m.type == ChatMessageType.text || m.type == ChatMessageType.betReceipt;
 
-/// 从 `bet-chat-{game}-{orderId}` / `bet-receipt-{game}-{orderId}` 取注单键。
+/// 从 `bet-chat|receipt|cancel-{game}-{orderId}` 取注单键。
+/// 13 位毫秒时间戳不是订单号，不能拿来和雪花订单号比大小，否则「取消」会排到下注前面。
 String? _betOrderKey(ChatMessageModel m) {
-  final match =
-      RegExp(r'^bet-(?:chat|receipt)-[^-]+-(.+)$').firstMatch(m.id.trim());
+  final match = RegExp(r'^bet-(?:chat|receipt|cancel)-[^-]+-(.+)$')
+      .firstMatch(m.id.trim());
   if (match == null) return null;
   final raw = match.group(1)?.trim();
-  return (raw == null || raw.isEmpty) ? null : raw;
+  if (raw == null || raw.isEmpty) return null;
+  if (RegExp(r'^\d{12,13}$').hasMatch(raw)) return null;
+  return raw;
 }
 
-int _betTypeRank(ChatMessageModel m) =>
-    m.type == ChatMessageType.betReceipt ? 1 : 0;
+int _betTypeRank(ChatMessageModel m) {
+  if (m.id.startsWith('bet-cancel-') || m.content.contains('取消成功')) return 2;
+  return m.type == ChatMessageType.betReceipt ? 1 : 0;
+}
 
 /// 同相位稳定次序：下注区按注单成对(CHAT→RECEIPT)；其余按时间再按 id。
 int _stableTieBreak(ChatMessageModel a, ChatMessageModel b) {

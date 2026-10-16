@@ -17,6 +17,7 @@ import android.widget.ImageView
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
@@ -27,6 +28,7 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        VpnCheck.start(applicationContext)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/security")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -34,6 +36,24 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/security/vpn")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {
+                    VpnCheck.onChanged = { active ->
+                        runOnUiThread {
+                            try {
+                                sink.success(active)
+                            } catch (_: Exception) {
+                            }
+                        }
+                    }
+                    sink.success(VpnCheck.isActive(applicationContext))
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    VpnCheck.onChanged = null
+                }
+            })
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
