@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -18,6 +20,7 @@ import 'points_change_page.dart';
 import 'welfare_report_page.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/format/display_number.dart';
+import '../../lottery/providers/lottery_live_provider.dart';
 
 class WalletPage extends ConsumerStatefulWidget {
   const WalletPage({super.key, required this.roomId});
@@ -96,6 +99,8 @@ class _WalletPageState extends ConsumerState<WalletPage>
         return;
       }
       _applyBusy.value = true;
+      final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+      final pointsRev = live.pointsRev;
       final done = await _applyGuard.run((requestId) async {
         await ref.read(walletRepositoryProvider).submitApplication(
               applyType: applyType,
@@ -107,6 +112,10 @@ class _WalletPageState extends ConsumerState<WalletPage>
       });
       if (done != true || !mounted) return;
       AppToast.success('$label申请已提交');
+      if (applyType == 'DOWN') {
+        final nudged = live.applyAvailableDeltaIfUnchanged(pointsRev, -amount);
+        if (nudged) unawaited(live.refreshWallet());
+      }
       await _load(fromPull: true);
     } catch (e) {
       AppToast.error(e.toString());

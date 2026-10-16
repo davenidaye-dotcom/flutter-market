@@ -1392,6 +1392,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
         AppToast.info('请输入有效金额');
         return;
       }
+      final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+      final pointsRev = live.pointsRev;
       final done = await _walletGuard.run((requestId) async {
         await ref.read(walletRepositoryProvider).submitApplication(
               applyType: applyType,
@@ -1403,10 +1405,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       });
       if (done != true || !mounted) return;
       AppToast.success('$label申请已提交');
-      // 下分已冻结：立刻拉可用积分，避免只靠 WALLET_DELTA 时顶栏滞后
-      unawaited(
-        ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
-      );
+      // 上分要等房主通过才入账。下分提交即冻结：推送没到就先减顶栏，旧查询不能盖回去。
+      if (applyType == 'DOWN') {
+        final nudged = live.applyAvailableDeltaIfUnchanged(pointsRev, -amount);
+        if (nudged) unawaited(live.refreshWallet());
+      }
     } catch (e) {
       AppToast.error(e.toString());
     } finally {

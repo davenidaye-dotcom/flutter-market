@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
@@ -28,23 +29,30 @@ Future<void> _load() async {
 }
 
 void bindMtlsClient(Dio dio, {required bool presentClientCert}) {
-  dio.httpClientAdapter = IOHttpClientAdapter(
-    createHttpClient: () => _httpClient(dio.options.baseUrl, presentClientCert),
+  final old = dio.httpClientAdapter;
+  dio.httpClientAdapter = _TlsOnlyAdapter(
+    IOHttpClientAdapter(
+      createHttpClient: () => _httpClient(presentClientCert),
+    ),
   );
+  old.close();
 }
 
 Future<WebSocketChannel> connectFlyroomSocket(Uri uri) async {
-  await ensureMtlsMaterialLoaded();
-  if (uri.scheme != 'wss') {
-    return IOWebSocketChannel.connect(uri);
+  if (uri.scheme.toLowerCase() != 'wss') {
+    throw const TlsException('refuse cleartext websocket');
   }
-  final client = _httpClient(uri.toString(), true);
-  return IOWebSocketChannel.connect(uri, customClient: client);
+  await ensureMtlsMaterialLoaded();
+  final channel = IOWebSocketChannel.connect(
+    uri,
+    customClient: _httpClient(true),
+  );
+  await channel.ready;
+  return channel;
 }
 
-HttpClient _httpClient(String url, bool presentClientCert) {
-  final secure = url.startsWith('https://') || url.startsWith('wss://');
-  if (!secure) return HttpClient();
+/// 只信包内根证书，不信系统和用户装的证书（含抓包软件的根证书），不走系统代理。
+HttpClient _httpClient(bool presentClientCert) {
   final context = SecurityContext(withTrustedRoots: false);
   final ca = _caBytes;
   if (ca != null && ca.isNotEmpty) {
@@ -57,5 +65,32 @@ HttpClient _httpClient(String url, bool presentClientCert) {
   }
   final client = HttpClient(context: context);
   client.findProxy = (_) => 'DIRECT';
+  client.badCertificateCallback = (_, _, _) => false;
   return client;
+}
+
+/// 明文地址在发出前就拒掉，不会退回 HTTP。
+class _TlsOnlyAdapter implements HttpClientAdapter {
+  _TlsOnlyAdapter(this._inner);
+
+  final HttpClientAdapter _inner;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) {
+    if (options.uri.scheme.toLowerCase() != 'https') {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+        error: const TlsException('refuse cleartext'),
+      );
+    }
+    return _inner.fetch(options, requestStream, cancelFuture);
+  }
+
+  @override
+  void close({bool force = false}) => _inner.close(force: force);
 }

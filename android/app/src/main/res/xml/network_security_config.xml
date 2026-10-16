@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 当前 API 为明文 HTTP（207.148.105.182:80），Android 9+ 默认禁止 cleartext -->
+<!-- 业务只走 443 / 8443 TLS。禁明文，只信系统根证书，不信用户自装证书（抓包软件装的根证书属于用户证书）。
+     业务连接在 Dart 里另外只信包内 FlyRoom 根证书。 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="true" />
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
 </network-security-config>

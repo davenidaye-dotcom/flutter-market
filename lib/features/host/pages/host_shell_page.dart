@@ -13,7 +13,6 @@ import '../../lottery/providers/lottery_live_provider.dart';
 import '../../room/cs_unread.dart';
 import '../providers/host_apply_notice_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
-import '../widgets/host_apply_notice_dialog.dart';
 
 /// Host shell with pending audit badge from API
 class HostShellPage extends ConsumerStatefulWidget {
@@ -32,8 +31,6 @@ class HostShellPage extends ConsumerStatefulWidget {
 
 class _HostShellPageState extends ConsumerState<HostShellPage> {
   Timer? _badgeTimer;
-  bool _dialogShowing = false;
-  String? _dialogForId;
   int _prevBranch = -1;
   /// 底栏浏览历史（不含当前），返回时回到上一 Tab
   final List<int> _tabHistory = <int>[];
@@ -51,12 +48,14 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
       if (!mounted) return;
       unawaited(live.ensureDrawHistoryPreloaded());
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
+      unawaited(ref.read(hostApplyNoticeProvider.notifier).syncRecentPending());
       unawaited(_refreshCsUnread());
     });
-    // 待审角标、客服未读定时刷新（审核弹窗仅 WS APPLY_NOTICE）
+    // 角标、以及 WS 漏掉的近期待审弹窗
     _badgeTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
+      unawaited(ref.read(hostApplyNoticeProvider.notifier).syncRecentPending());
       unawaited(_refreshCsUnread());
     });
   }
@@ -123,29 +122,6 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
     return true;
   }
 
-  Future<void> _maybeShowApplyDialog(HostApplyNotice? notice) async {
-    if (!mounted || notice == null) return;
-    if (_dialogShowing && _dialogForId == notice.applicationId) return;
-    if (_dialogShowing) return;
-    _dialogShowing = true;
-    _dialogForId = notice.applicationId;
-    try {
-      await showHostApplyNoticeDialog(context, ref, notice);
-    } finally {
-      _dialogShowing = false;
-      _dialogForId = null;
-      // 队列下一条
-      if (mounted) {
-        final next = ref.read(hostApplyNoticeProvider);
-        if (next != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            unawaited(_maybeShowApplyDialog(next));
-          });
-        }
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final branch = widget.navigationShell.currentIndex;
@@ -160,10 +136,6 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
 
     final badge = ref.watch(hostPendingAuditProvider).total;
     final csUnread = ref.watch(csUnreadCountProvider);
-    ref.listen<HostApplyNotice?>(hostApplyNoticeProvider, (prev, next) {
-      if (next == null) return;
-      unawaited(_maybeShowApplyDialog(next));
-    });
     return ShellTabBack(
       tryBack: _tryTabBack,
       child: AppBackScope(

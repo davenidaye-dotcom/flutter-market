@@ -59,6 +59,7 @@ class RemoteEndpointBootstrap {
       env: EnvConfig.environment.key,
       apiBaseUrl: EnvConfig.builtinApiBaseUrl,
       wsBaseUrl: EnvConfig.builtinWsBaseUrl,
+      authBaseUrl: EnvConfig.builtinAuthBaseUrl,
       ts: DateTime.now().millisecondsSinceEpoch,
     );
     await _apply(fallback, source: 'builtin', cacheRaw: false);

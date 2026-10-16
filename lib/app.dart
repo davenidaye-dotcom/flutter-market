@@ -14,6 +14,7 @@ import 'config/theme/app_theme.dart';
 import 'core/network/session_kick.dart';
 import 'core/network/session_store.dart';
 import 'features/auth/providers/auth_session_provider.dart';
+import 'features/host/widgets/host_apply_notice_dialog.dart';
 import 'features/profile/app_release.dart';
 
 class LetouApp extends ConsumerStatefulWidget {
@@ -92,7 +93,13 @@ class _LetouAppState extends ConsumerState<LetouApp> {
               data: MediaQuery.of(context).copyWith(
                 textScaler: TextScaler.noScaling,
               ),
-              child: EasyLoading.init()(context, child),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  EasyLoading.init()(context, child),
+                  const HostApplyNoticeHost(),
+                ],
+              ),
             );
           },
         );

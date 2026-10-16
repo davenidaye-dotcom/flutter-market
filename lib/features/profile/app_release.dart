@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,10 +22,15 @@ class AppRelease {
   static final ValueNotifier<String> builtinVersion = ValueNotifier(EnvConfig.appVersion);
   static Future<String>? _localLoad;
 
-  static String _qrUrlOf(Map<String, dynamic> release) {
+  /// 走业务客户端取图：只信包内根证书。Image.network 用系统证书，连不上私有 CA 的 443。
+  static Future<Uint8List?> _qrBytes(Map<String, dynamic> release) async {
     final rev = (release['qrRev'] ?? '').toString().trim();
-    final base = '${EnvConfig.apiBaseUrl}/app/qrcode';
-    return rev.isEmpty ? base : '$base?v=$rev';
+    final path = rev.isEmpty ? '/app/qrcode' : '/app/qrcode?v=${Uri.encodeQueryComponent(rev)}';
+    try {
+      return await ApiClient.instance.getBytes(path);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 登录页、个人中心展示内置版本，不用后台发布版本。
@@ -198,7 +204,8 @@ class AppRelease {
       return;
     }
     final version = (release['version'] ?? '').toString();
-    final qrUrl = _qrUrlOf(release);
+    final qr = await _qrBytes(release);
+    if (!context.mounted) return;
     await showEmulatorSafeDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -211,12 +218,15 @@ class AppRelease {
                 padding: EdgeInsets.only(bottom: 8.h),
                 child: Text('版本 $version', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
               ),
-            Image.network(
-              qrUrl,
-              width: 220.w,
-              height: 220.w,
-              errorBuilder: (context, error, stack) => const Text('二维码加载失败'),
-            ),
+            if (qr == null)
+              const Text('二维码加载失败')
+            else
+              Image.memory(
+                qr,
+                width: 220.w,
+                height: 220.w,
+                errorBuilder: (context, error, stack) => const Text('二维码加载失败'),
+              ),
             SizedBox(height: 8.h),
             Text('扫码安装', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint)),
           ],

@@ -9,70 +9,106 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import '../../auth/providers/auth_session_provider.dart';
 import '../providers/host_apply_notice_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
 import '../services/host_audit_alert_sound.dart';
 
-/// 竞品「审核提醒」：上/下分待审弹窗（通过 / 拒绝）。
-///
-/// 用 root Overlay 顶层插入，盖过聊天 Overlay / ShellCover，避免 showDialog 被挡住。
-Future<void> showHostApplyNoticeDialog(
-  BuildContext context,
-  WidgetRef ref,
-  HostApplyNotice notice,
-) async {
-  unawaited(HostAuditAlertSound.playOnce());
-  final overlay = Overlay.maybeOf(context, rootOverlay: true);
-  if (overlay == null) return;
+/// 挂在 MaterialApp 的 builder 里，画在导航和聊天浮层之上。
+class HostApplyNoticeHost extends ConsumerStatefulWidget {
+  const HostApplyNoticeHost({super.key});
 
-  final done = Completer<void>();
-  late OverlayEntry entry;
-  late final AppBackLayer backLayer;
-  var closed = false;
+  @override
+  ConsumerState<HostApplyNoticeHost> createState() =>
+      _HostApplyNoticeHostState();
+}
 
-  void close() {
-    if (closed) return;
-    closed = true;
-    unregisterAppBackLayer(backLayer);
-    entry.remove();
-    if (!done.isCompleted) done.complete();
+class _HostApplyNoticeHostState extends ConsumerState<HostApplyNoticeHost> {
+  AppBackLayer? _backLayer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncBack());
   }
 
-  backLayer = AppBackLayer(() {
-    close();
-    return true;
-  }, overlay: true);
+  @override
+  void dispose() {
+    final layer = _backLayer;
+    if (layer != null) unregisterAppBackLayer(layer);
+    super.dispose();
+  }
 
-  entry = OverlayEntry(
-    builder: (ctx) => Material(
-      type: MaterialType.transparency,
-      child: AppToastScope(
-        child: Stack(
-          children: [
-            Positioned.fill(
-              child: ColoredBox(
-                color: Colors.black.withValues(alpha: 0.45),
+  void _syncBack() {
+    if (!mounted) return;
+    final layer = _backLayer;
+    if (layer != null) unregisterAppBackLayer(layer);
+    _backLayer = null;
+    final show = ref.read(authSessionProvider).isHostSide &&
+        ref.read(hostApplyNoticeProvider) != null;
+    if (!show) return;
+    // 每次出现都挂到返回栈最上层，系统返回先关弹窗。
+    final next = AppBackLayer(() {
+      if (!ref.read(authSessionProvider).isHostSide) return false;
+      if (ref.read(hostApplyNoticeProvider) == null) return false;
+      ref.read(hostApplyNoticeProvider.notifier).dismissCurrent();
+      return true;
+    }, overlay: true);
+    _backLayer = next;
+    registerAppBackLayer(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final host = ref.watch(authSessionProvider).isHostSide;
+    final notice = ref.watch(hostApplyNoticeProvider);
+    ref.listen(authSessionProvider, (prev, next) {
+      if (!next.isHostSide) {
+        ref.read(hostApplyNoticeProvider.notifier).clear();
+      }
+      _syncBack();
+    });
+    ref.listen<HostApplyNotice?>(hostApplyNoticeProvider, (prev, next) {
+      if (ref.read(authSessionProvider).isHostSide &&
+          next != null &&
+          next.applicationId != prev?.applicationId) {
+        unawaited(HostAuditAlertSound.playOnce());
+      }
+      _syncBack();
+    });
+    if (!host || notice == null) {
+      return const IgnorePointer(child: SizedBox.shrink());
+    }
+    return Positioned.fill(
+      child: Material(
+        type: MaterialType.transparency,
+        child: AppToastScope(
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: ColoredBox(
+                  color: Colors.black.withValues(alpha: 0.45),
+                ),
               ),
-            ),
-            Center(
-              child: _HostApplyNoticeDialog(
-                notice: notice,
-                parentRef: ref,
-                onClose: close,
+              Center(
+                child: _HostApplyNoticeDialog(
+                  key: ValueKey(notice.applicationId),
+                  notice: notice,
+                  parentRef: ref,
+                  onClose: () {},
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ),
-  );
-  overlay.insert(entry);
-  registerAppBackLayer(backLayer);
-  await done.future;
+    );
+  }
 }
 
 class _HostApplyNoticeDialog extends ConsumerStatefulWidget {
   const _HostApplyNoticeDialog({
+    super.key,
     required this.notice,
     required this.parentRef,
     required this.onClose,
@@ -92,6 +128,14 @@ class _HostApplyNoticeDialogState
   bool _acting = false;
 
   HostApplyNotice get notice => widget.notice;
+
+  @override
+  void didUpdateWidget(covariant _HostApplyNoticeDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.notice.applicationId != widget.notice.applicationId) {
+      _acting = false;
+    }
+  }
 
   void _cancel() {
     if (_acting) return;

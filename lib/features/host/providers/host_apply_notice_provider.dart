@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/repositories/providers.dart';
+import '../../auth/providers/auth_session_provider.dart';
 import '../data/host_mock.dart';
 import 'host_pending_audit_provider.dart';
 
@@ -74,12 +75,17 @@ final hostApplyNoticeProvider =
 class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
   final List<HostApplyNotice> _queue = [];
   final Set<String> _seenIds = {};
+  final Set<String> _inflight = {};
+  bool _syncing = false;
 
   @override
   HostApplyNotice? build() => null;
 
-  /// 由 lottery WS 转发：PENDING 上/下分/进房入队弹窗。
-  Future<void> onWsApplyNotice(Map<String, dynamic> payload) async {
+  /// 由 lottery WS 转发：PENDING 上/下分/进房立刻入队。房间频道和 user 频道会各来一次。
+  Future<void> onWsApplyNotice(
+    Map<String, dynamic> payload, {
+    bool bumpBadge = true,
+  }) async {
     final status = (payload['status'] ?? '').toString().toUpperCase();
     final applyType = (payload['applyType'] ?? '').toString().toUpperCase();
     final applicationId =
@@ -87,13 +93,11 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
     if (applicationId.isEmpty) return;
 
     if (status != 'PENDING') {
-      await ref.read(hostPendingAuditProvider.notifier).refresh();
-      if (state?.applicationId == applicationId) {
-        _advance();
-      } else {
-        _queue.removeWhere((e) => e.applicationId == applicationId);
-        _seenIds.remove(applicationId);
-      }
+      // 房间频道和 user 频道会各推一次。先同步关掉，避免两次都把队列往下拨。
+      _finish(applicationId);
+      Future.microtask(() {
+        ref.read(hostPendingAuditProvider.notifier).refresh();
+      });
       return;
     }
 
@@ -102,7 +106,10 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
       return;
     }
 
-    if (_alreadyQueued(applicationId)) return;
+    if (_alreadyQueued(applicationId) || _inflight.contains(applicationId)) {
+      return;
+    }
+    _inflight.add(applicationId);
 
     final amountRaw = payload['amount'];
     final amount = applyType == 'ENTER'
@@ -133,20 +140,80 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
       avatar: wsAvatar.isEmpty ? null : wsAvatar,
       remark: wsRemark,
     );
-    // WS 缺昵称/头像/备注时补全
-    if (wsNick.isEmpty || wsAvatar.isEmpty || (applyType == 'ENTER' && wsRemark.isEmpty)) {
-      notice = await _enrich(notice);
-    } else if (notice.nickname.isEmpty) {
-      notice = notice.copyWith(nickname: '玩家');
+    // 先弹。补资料放在后面，避免接口没返回时弹窗一直不出现。
+    _enqueue(notice, bumpBadge: bumpBadge);
+    try {
+      if (wsNick.isEmpty ||
+          wsAvatar.isEmpty ||
+          (applyType == 'ENTER' && wsRemark.isEmpty)) {
+        notice = await _enrich(notice);
+        _replaceIfQueued(notice);
+      }
+    } finally {
+      _inflight.remove(applicationId);
     }
+  }
 
-    _enqueue(notice, bumpBadge: true);
+  /// 漏掉 WS 时，用近 15 分钟内仍待审的单补弹。已关掉的单不会再弹。
+  Future<void> syncRecentPending() async {
+    if (!ref.read(authSessionProvider).isHostSide) return;
+    if (_syncing) return;
+    _syncing = true;
+    try {
+      final repo = ref.read(ownerRepositoryProvider);
+      final pages = await Future.wait([
+        repo.getApplications('up', status: 'PENDING', pageSize: 20),
+        repo.getApplications('down', status: 'PENDING', pageSize: 20),
+        repo.getApplications('enter', status: 'PENDING', pageSize: 20),
+      ]);
+      const types = ['UP', 'DOWN', 'ENTER'];
+      final now = DateTime.now();
+      for (var i = 0; i < pages.length; i++) {
+        for (final row in hostRowsOf(pages[i])) {
+          final created = _parseCreatedAt(row['createdAt']);
+          if (created == null) continue;
+          if (now.difference(created) > const Duration(minutes: 15)) continue;
+          await onWsApplyNotice(
+            {
+              'applicationId': row['applicationId'] ?? row['id'],
+              'applyType': (row['applyType'] ?? types[i]).toString(),
+              'status': 'PENDING',
+              'applicantAccountId':
+                  row['applicantAccountId'] ?? row['accountId'],
+              'amount': row['amount'],
+              'nickname': row['applicantName'] ?? row['nickname'],
+              'remark': row['remark'],
+            },
+            bumpBadge: false,
+          );
+        }
+      }
+    } catch (_) {
+    } finally {
+      _syncing = false;
+    }
+  }
+
+  void clear() {
+    _queue.clear();
+    _seenIds.clear();
+    _inflight.clear();
+    state = null;
   }
 
   bool _alreadyQueued(String applicationId) {
     return _seenIds.contains(applicationId) ||
         state?.applicationId == applicationId ||
         _queue.any((e) => e.applicationId == applicationId);
+  }
+
+  void _replaceIfQueued(HostApplyNotice notice) {
+    if (state?.applicationId == notice.applicationId) {
+      state = notice;
+      return;
+    }
+    final i = _queue.indexWhere((e) => e.applicationId == notice.applicationId);
+    if (i >= 0) _queue[i] = notice;
   }
 
   void _enqueue(HostApplyNotice notice, {required bool bumpBadge}) {
@@ -242,12 +309,20 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
   }
 
   void onReviewed(String applicationId) {
-    _seenIds.remove(applicationId);
+    // 保留 seen。通过/拒绝后近 15 分钟的补拉不能把同一单再弹出来。
+    _finish(applicationId);
+  }
+
+  /// 这单已经结束（审核、撤销、或另一端已处理）。重复通知只关一次。
+  void _finish(String applicationId) {
+    if (applicationId.isEmpty) return;
+    _seenIds.add(applicationId);
+    _inflight.remove(applicationId);
     if (state?.applicationId == applicationId) {
       _advance();
-    } else {
-      _queue.removeWhere((e) => e.applicationId == applicationId);
+      return;
     }
+    _queue.removeWhere((e) => e.applicationId == applicationId);
   }
 
   /// 点 X 取消：关掉当前弹窗，不审核；保留 seen，避免同单再弹。
@@ -262,4 +337,16 @@ class HostApplyNoticeNotifier extends Notifier<HostApplyNotice?> {
     }
     state = _queue.removeAt(0);
   }
+}
+
+DateTime? _parseCreatedAt(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is num) {
+    final ms = raw.toInt();
+    if (ms <= 0) return null;
+    return DateTime.fromMillisecondsSinceEpoch(ms);
+  }
+  final text = raw.toString().trim();
+  if (text.isEmpty) return null;
+  return DateTime.tryParse(text.replaceFirst(' ', 'T'));
 }

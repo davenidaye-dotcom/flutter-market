@@ -138,6 +138,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   int _wsReconnectAttempt = 0;
   bool _wsIsHost = false;
   int _wsConnectGen = 0;
+  /// 推送代际。推送写入后，更早发出的公告/房间请求不能把入口写回去。
+  int _showQuickRev = 0;
+  /// 顶栏积分代际。推送或本地点改之后，更早发出的钱包查询不能盖回去。
+  int _pointsRev = 0;
+  /// 已写入的钱包帧序号。更小的 WALLET_DELTA / 房间合计丢掉。
+  int _appliedWalletSeq = 0;
+  /// 只让最后一次拉开关的请求落盘，避免进房请求盖住重连对齐。
+  int _showQuickHttpSeq = 0;
+  Timer? _showQuickPoll;
   Future<void>? _wsConnectInflight;
   final Set<String> _wsSubscribedTopics = {};
   final _chatPushController = StreamController<LotteryChatPush>.broadcast();
@@ -286,8 +295,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   Future<void> ensureLoaded() {
     if (state.ready && state.loadError == null) {
       _ensureTickerRunning();
-      if (!_wsConnected && !_wsDisposed) {
-        unawaited(_reconnectIfNeeded());
+      _ensureShowQuickPoll();
+      if (!_wsDisposed && _isCurrentSessionRoom()) {
+        final isHost = _ref.read(authSessionProvider).isHostSide;
+        if (!_wsConnected || _wsIsHost != isHost) {
+          unawaited(_reconnectIfNeeded());
+        }
       }
       return Future.value();
     }
@@ -295,8 +308,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   }
 
   Future<void> _reconnectIfNeeded() async {
-    if (!mounted || _wsConnected || _wsDisposed || state.games.isEmpty) return;
+    if (!mounted || _wsDisposed || state.games.isEmpty) return;
     final isHost = _ref.read(authSessionProvider).isHostSide;
+    if (_wsConnected && _wsIsHost == isHost) return;
     await _connectWs(isHost: isHost, games: state.games, isReconnect: true);
   }
 
@@ -327,8 +341,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   bool isGameWsSynced(String gameId) => _engine.isGameWsSynced(gameId);
 
   void applyShowQuick(bool on) {
-    if (state.showQuick == on) return;
-    state = state.copyWith(showQuick: on);
+    _showQuickRev++;
+    _writeShowQuick(on);
+  }
+
+  void _writeShowQuick(bool on) {
+    if (state.showQuick != on) {
+      state = state.copyWith(showQuick: on);
+    }
     unawaited(SessionStore.instance.setShowQuick(on));
   }
 
@@ -353,11 +373,24 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _ensureTickerRunning();
   }
 
+  int get pointsRev => _pointsRev;
+
+  /// 下分刚冻结、推送还没到时先减顶栏。推送若已写入则不再减，返回 false。
+  bool applyAvailableDeltaIfUnchanged(int seenRev, num delta) {
+    if (!mounted || seenRev != _pointsRev) return false;
+    _pointsRev++;
+    final next = state.points + delta;
+    state = state.copyWith(points: next < 0 ? 0 : next);
+    return true;
+  }
+
   Future<void> refreshWallet() async {
     if (!mounted) return;
+    final rev = _pointsRev;
     if (_ref.read(authSessionProvider).isHostSide) {
       try {
         final dash = await _ref.read(ownerRepositoryProvider).getDashboard();
+        if (!mounted || rev != _pointsRev) return;
         state = state.copyWith(
           points: _toNum(dash['balance']),
           turnover: _toNum(dash['turnover']),
@@ -369,6 +402,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
     try {
       final wallet = await _ref.read(walletRepositoryProvider).getSummary(roomId);
+      if (!mounted || rev != _pointsRev) return;
       // 房间顶栏只用 available；总资产给钱包/申请记录
       state = state.copyWith(
         points: wallet.availablePoints,
@@ -991,6 +1025,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           _publishGames();
         }
         _ensureTickerRunning();
+        _ensureShowQuickPoll();
         if (!_wsConnected) {
           unawaited(_loadMetaAndWs(isHost: isHost, games: games));
         } else if (!isHost) {
@@ -1049,16 +1084,21 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (!mounted) return;
 
     // 先连 WS（开奖/封盘推送）；倒计时以 HTTP openAt 锚定，WS 仅单调校正。
+    // 聊天页开着时每秒对一次开关：推送先到就马上收起，推送丢掉也在一秒内跟上。
+    _ensureShowQuickPoll();
     unawaited(_connectWs(isHost: isHost, games: games));
 
     String announcement = state.announcement;
+    final pointsRev = _pointsRev;
     var points = state.points;
     var turnover = state.turnover;
     var winLoss = state.winLoss;
     var rebate = state.rebate;
     var isTrialAccount = state.isTrialAccount;
     var betConfirm = state.betConfirm;
-    var showQuick = state.showQuick;
+    bool? fetchedShowQuick;
+    var showQuickSeen = _showQuickRev;
+    var showQuickHttpSeq = 0;
 
     if (isHost) {
       try {
@@ -1080,11 +1120,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         winLoss = _toNum(dash['playerWinLoss']);
         rebate = _toNum(dash['rebate']);
       } catch (_) {}
+      showQuickHttpSeq = ++_showQuickHttpSeq;
+      showQuickSeen = _showQuickRev;
       try {
         final room = await _ref.read(ownerRepositoryProvider).getRoom();
         betConfirm = room['betConfirm'] == true || room['betConfirm'] == 1;
-        showQuick = room['showQuick'] != false && room['showQuick'] != 0;
-        unawaited(SessionStore.instance.setShowQuick(showQuick));
+        if (room.containsKey('showQuick')) {
+          fetchedShowQuick = _showQuickEnabled(room['showQuick']);
+        }
       } catch (_) {}
     } else {
       // 必须 await：若 unawaited 先写回积分，随后再用初始 0 的 copyWith 会覆盖掉真实余额
@@ -1094,6 +1137,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       winLoss = w.$3;
       rebate = w.$4;
       isTrialAccount = w.$5;
+      showQuickHttpSeq = ++_showQuickHttpSeq;
+      showQuickSeen = _showQuickRev;
       try {
         final ann = await _ref.read(memberRepositoryProvider).getRoomAnnouncement();
         final c = ann['content']?.toString();
@@ -1103,25 +1148,30 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           SessionStore.instance.betConfirm = betConfirm;
         }
         if (ann.containsKey('showQuick')) {
-          showQuick = ann['showQuick'] != false && ann['showQuick'] != 0;
-          unawaited(SessionStore.instance.setShowQuick(showQuick));
+          fetchedShowQuick = _showQuickEnabled(ann['showQuick']);
         }
       } catch (_) {
         betConfirm = SessionStore.instance.betConfirm;
-        showQuick = SessionStore.instance.showQuick;
       }
     }
 
     if (!mounted) return;
+    final applyFetched = fetchedShowQuick != null &&
+        showQuickHttpSeq != 0 &&
+        _showQuickRev == showQuickSeen &&
+        showQuickHttpSeq == _showQuickHttpSeq;
+    if (applyFetched) {
+      unawaited(SessionStore.instance.setShowQuick(fetchedShowQuick));
+    }
     state = state.copyWith(
       announcement: announcement,
-      points: points,
+      points: pointsRev == _pointsRev ? points : null,
       turnover: turnover,
       winLoss: winLoss,
       rebate: rebate,
       isTrialAccount: isTrialAccount,
       betConfirm: betConfirm,
-      showQuick: showQuick,
+      showQuick: applyFetched ? fetchedShowQuick : null,
     );
   }
 
@@ -1194,10 +1244,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         }
       }
       _publishGames();
-      // 全部关掉后再开启：games 从空变非空时可能 WS 已断，需重连才能订新彩种
-      if (!_wsConnected && state.games.isNotEmpty) {
+      // 只重连当前登录房间。别的房间残留的连接不能改成房主身份。
+      if (_isCurrentSessionRoom() &&
+          state.games.isNotEmpty &&
+          (!_wsConnected || _wsIsHost != isHost)) {
         unawaited(_reconnectIfNeeded());
-      } else {
+      } else if (_wsConnected) {
         _syncWsSubscriptions();
       }
       _ensureTickerRunning();
@@ -1357,6 +1409,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
       _wsSub = client.events.listen(_onWsEvent);
       _syncWsSubscriptions();
+      unawaited(_pullShowQuick());
       if (isReconnect) {
         unawaited(_refreshGamesFromServer());
         _emitCs(const CsChatPush(resync: true));
@@ -1403,7 +1456,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsReconnectAttempt = math.min(_wsReconnectAttempt + 1, 5);
       unawaited(
         _connectWs(
-          isHost: _wsIsHost,
+          isHost: _ref.read(authSessionProvider).isHostSide,
           games: state.games,
           isReconnect: true,
         ),
@@ -1427,13 +1480,35 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     });
   }
 
+  /// 这条直播连接是不是当前登录的房间。房主路由用房间号，会话里同时有数字 id。
+  bool _isCurrentSessionRoom() {
+    final route = roomId.trim();
+    if (route.isEmpty) return false;
+    final code = SessionStore.instance.roomCode?.trim() ?? '';
+    final id = SessionStore.instance.roomId?.trim() ?? '';
+    if (code.isNotEmpty && route == code) return true;
+    if (id.isNotEmpty && route == id) return true;
+    return false;
+  }
+
+  /// 服务端房间频道要求数字 roomId。路由上的房间号经常是 roomCode，订上去会被拒绝。
+  String _wsRoomKey() {
+    final stored = SessionStore.instance.roomId?.trim() ?? '';
+    if (int.tryParse(stored) != null) return stored;
+    final route = roomId.trim();
+    if (int.tryParse(route) != null) return route;
+    if (stored.isNotEmpty) return stored;
+    return route;
+  }
+
   void _syncWsSubscriptions() {
     final client = _ws;
     if (!_wsConnected || client == null) return;
-    final roomNumeric = SessionStore.instance.roomId ?? roomId;
+    final roomNumeric = _wsRoomKey();
     final desired = <String>{
       'room:$roomNumeric:sys',
-      'room:$roomNumeric:apply',
+      // 申请里有金额和账号，只给房主连接订。玩家走 user 频道也收不到这间房的审核。
+      if (_wsIsHost) 'room:$roomNumeric:apply',
       for (final g in state.games)
         if (g.id.isNotEmpty) 'room:$roomNumeric:game:${g.id}',
     };
@@ -1524,17 +1599,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'ROOM_FLAGS') {
-      if (payload.containsKey('showQuick')) {
-        final on = payload['showQuick'] != false && payload['showQuick'] != 0;
-        state = state.copyWith(showQuick: on);
-        unawaited(SessionStore.instance.setShowQuick(on));
-      }
+      _applyShowQuickPayload(payload);
       return;
     }
 
-    // 房主：上下分/进房申请 WS 推送 → 全局审核提醒
-    if (type == 'APPLY_NOTICE' && _wsIsHost) {
-      unawaited(_forwardApplyNotice(payload));
+    // 房主：上下分/进房。房间频道和 user:{房主} 都会到，只收当前房间。
+    if (type == 'APPLY_NOTICE') {
+      if (_acceptApplyNotice(payload)) {
+        unawaited(_forwardApplyNotice(payload));
+      }
       return;
     }
 
@@ -2059,6 +2132,20 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return got == roomId;
   }
 
+  bool _acceptApplyNotice(Map<String, dynamic> payload) {
+    final host =
+        _wsIsHost || _ref.read(authSessionProvider).isHostSide;
+    if (!host || !_isCurrentSessionRoom()) return false;
+    final got = '${payload['roomId'] ?? ''}'.trim();
+    // 旧服务端没带 roomId：只信房主这条连接，避免别的房间残留连接误弹。
+    if (got.isEmpty) return _wsIsHost;
+    final id = SessionStore.instance.roomId?.trim() ?? '';
+    final code = SessionStore.instance.roomCode?.trim() ?? '';
+    return got == id ||
+        (code.isNotEmpty && got == code) ||
+        got == roomId.trim();
+  }
+
   Future<void> _forwardApplyNotice(Map<String, dynamic> payload) async {
     try {
       await _ref
@@ -2069,8 +2156,44 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   void _applyShowQuickPayload(Map<String, dynamic> payload) {
     if (!payload.containsKey('showQuick')) return;
-    final on = payload['showQuick'] != false && payload['showQuick'] != 0;
-    applyShowQuick(on);
+    applyShowQuick(_showQuickEnabled(payload['showQuick']));
+  }
+
+  /// false / 0 / "false" / "0" 才关。缺字段的旧包不当成关。
+  bool _showQuickEnabled(dynamic v) {
+    if (v == false || v == 0) return false;
+    final s = '$v'.trim().toLowerCase();
+    return s != 'false' && s != '0';
+  }
+
+  /// 人在房间里就每秒问一次。推送到达会先把代际拨走，这次查询不会把新状态盖回去。
+  void _ensureShowQuickPoll() {
+    if (_showQuickPoll != null || _wsDisposed || !mounted) return;
+    unawaited(_pullShowQuick());
+    _showQuickPoll = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted || _wsDisposed) return;
+      unawaited(_pullShowQuick());
+    });
+  }
+
+  /// 连上房间频道后对齐一次开关。断线期间错过的推送，重连马上补上。
+  Future<void> _pullShowQuick() async {
+    if (!mounted || _wsDisposed) return;
+    final isHost = _wsIsHost || _ref.read(authSessionProvider).isHostSide;
+    final httpSeq = ++_showQuickHttpSeq;
+    final seen = _showQuickRev;
+    try {
+      final Map<String, dynamic> src = isHost
+          ? await _ref.read(ownerRepositoryProvider).getRoom()
+          : await _ref.read(memberRepositoryProvider).getRoomAnnouncement();
+      if (!mounted ||
+          _showQuickRev != seen ||
+          httpSeq != _showQuickHttpSeq ||
+          !src.containsKey('showQuick')) {
+        return;
+      }
+      _writeShowQuick(_showQuickEnabled(src['showQuick']));
+    } catch (_) {}
   }
 
   /// 上分/下分/回水/结算等入账：即时写顶栏四字段（payload 已带 available/turnover/winLoss/rebate）。
@@ -2082,6 +2205,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (_wsIsHost || _ref.read(authSessionProvider).isHostSide) {
       return;
     }
+    if (!_takeWalletSeq(payload)) return;
     final hasAvailable = payload.containsKey('available');
     final hasTurnover = payload.containsKey('turnover');
     final hasWinLoss = payload.containsKey('winLoss');
@@ -2110,6 +2234,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (!_wsIsHost && !_ref.read(authSessionProvider).isHostSide) {
       return;
     }
+    if (!_takeWalletSeq(payload)) return;
     final balRaw = payload['balance'] ?? payload['available'] ?? payload['points'];
     final turnRaw = payload['turnover'];
     final wlRaw = payload['playerWinLoss'] ?? payload['winLoss'];
@@ -2383,6 +2508,28 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return n?.toInt() ?? 0;
   }
 
+  /// 余额帧比已显示的更新才收下。没有序号的旧服务端仍照常写，直到出现第一帧序号。
+  bool _takeWalletSeq(Map<String, dynamic> payload) {
+    final raw = payload['walletSeq'];
+    int? seq;
+    if (raw is int) {
+      seq = raw;
+    } else if (raw is num) {
+      seq = raw.toInt();
+    } else if (raw != null) {
+      seq = int.tryParse('$raw'.trim());
+    }
+    if (seq == null) {
+      if (_appliedWalletSeq > 0) return false;
+      _pointsRev++;
+      return true;
+    }
+    if (seq <= _appliedWalletSeq) return false;
+    _appliedWalletSeq = seq;
+    _pointsRev++;
+    return true;
+  }
+
   /// 金额字段：接口常为字符串（如 "1280.00"），保留小数，展示侧抹零。
   num _toNum(dynamic v) {
     if (v is num) return v;
@@ -2393,6 +2540,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   void dispose() {
     _wsDisposed = true;
     _wsConnectGen++;
+    _showQuickPoll?.cancel();
+    _showQuickPoll = null;
     _wsReconnectTimer?.cancel();
     _wsReconnectTimer = null;
     for (final t in _denialTimers.values) {
