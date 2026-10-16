@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/bootstrap/remote_endpoint_bootstrap.dart';
 import 'core/network/session_store.dart';
+import 'core/security/vpn_guard.dart';
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +20,7 @@ Future<void> main() async {
   EasyLoading.instance.toastPosition = EasyLoadingToastPosition.center;
 
   // 会话 + OSS/CDN 线路引导（失败自动降级缓存/内置，不阻塞过久）
+  VpnGuard.watch();
   await SessionStore.instance.load();
   await RemoteEndpointBootstrap.instance.ensureReady();
 

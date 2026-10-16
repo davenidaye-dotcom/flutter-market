@@ -1811,7 +1811,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     // 他人/本机机器人确认卡 / 投注失败卡
-    if (type == 'BET_RECEIPT' || type == 'BET_FAIL') {
+    if (type == 'BET_RECEIPT' || type == 'BET_FAIL' || type == 'BET_CANCEL_NOTICE') {
       _onBetReceiptWs(gameType, payload);
       return;
     }
@@ -2087,7 +2087,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         .toString()
         .trim();
     // 服务端已拼好的确认卡 / 失败卡直接用；否则本地按 items 拼
-    final content = fallback.contains('投注失败') || fallback.contains('投注成功')
+    final content = fallback.contains('投注失败') ||
+            fallback.contains('投注成功') ||
+            fallback.contains('取消成功')
         ? fallback
         : formatBetReceiptText(
             mention: (payload['mentionName'] ?? '').toString(),
@@ -2097,8 +2099,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
             fallbackContent: fallback,
           ).trim();
     if (content.isEmpty) return;
+    final cancel = content.contains('取消成功');
     final key = orderId.isNotEmpty
-        ? 'bet-receipt-$gameType-$orderId'
+        ? (cancel
+            ? 'bet-cancel-$gameType-$orderId'
+            : 'bet-receipt-$gameType-$orderId')
         : (issue.isNotEmpty
             ? 'bet-fail-$gameType-$issue-${content.hashCode}'
             : 'bet-receipt-$gameType-${DateTime.now().millisecondsSinceEpoch}');

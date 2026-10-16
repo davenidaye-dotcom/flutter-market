@@ -68,7 +68,13 @@ HttpClient _httpClient(bool presentClientCert) {
     context.usePrivateKeyBytes(utf8.encode(store.keyPem!));
   }
   final client = HttpClient(context: context);
-  client.findProxy = (_) => 'DIRECT';
+  // 连接真正建立前再看一次。回调已经把 VPN 标上时，这里抛错，TCP 不会发，抓包里没有 CONNECT。
+  client.findProxy = (_) {
+    if (VpnGuard.blocked) {
+      throw const VpnBlockedException();
+    }
+    return 'DIRECT';
+  };
   client.badCertificateCallback = (_, _, _) => false;
   return client;
 }

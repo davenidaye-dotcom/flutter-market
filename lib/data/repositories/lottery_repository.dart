@@ -307,6 +307,7 @@ class LotteryRepository {
         ? DrawResultParse.parse(content)
         : (issueNo: null, ranks: const <int>[]);
     final apiIssue = m['issueNo']?.toString();
+    final isCancelNotice = msgType == 'BET_CANCEL_NOTICE';
     final isReceipt = msgType == 'BET_RECEIPT';
     final isUserChat = msgType == 'CHAT';
     final isBetRank = msgType == 'BET_RANK' ||
@@ -332,9 +333,11 @@ class LotteryRepository {
             : (isWinList && gameType.isNotEmpty && issueForId.isNotEmpty
                 ? 'win-list-$gameType-$issueForId'
                 : (orderId.isNotEmpty && gameType.isNotEmpty
-                    ? (isReceipt
-                        ? 'bet-receipt-$gameType-$orderId'
-                        : 'bet-chat-$gameType-$orderId')
+                    ? (isCancelNotice
+                        ? 'bet-cancel-$gameType-$orderId'
+                        : (isReceipt
+                            ? 'bet-receipt-$gameType-$orderId'
+                            : 'bet-chat-$gameType-$orderId'))
                     : '')));
     final hasCheckRows = (isBetRank && m['rankings'] is List) ||
         (isWinList && m['winners'] is List);
@@ -342,7 +345,9 @@ class LotteryRepository {
         hasCheckRows ? parseCheckCard(m, isWin: isWinList) : null;
     final displayContent = checkCard != null
         ? composeCheckCardText(data: checkCard, issue: issueForId)
-        : (isReceipt
+        : (isCancelNotice && content.isNotEmpty
+            ? content
+            : (isReceipt
             ? formatBetReceiptText(
                 mention: (m['mentionName'] ?? '').toString(),
                 issue: (m['issueNo'] ?? '').toString(),
@@ -364,7 +369,7 @@ class LotteryRepository {
                           m['winners'] is List ? m['winners'] as List : null,
                         ),
                       )
-                    : content)));
+                    : content))));
     final accountIdRaw = '${m['accountId'] ?? ''}'.trim();
     return ChatMessageModel(
       id: id,
@@ -378,7 +383,8 @@ class LotteryRepository {
       type: switch (msgType) {
         'DRAW_RESULT' => ChatMessageType.resultCard,
         'SEAL_WARN' || 'SEALED' || 'SYS' => ChatMessageType.system,
-        'BET_RECEIPT' || 'BET_FAIL' => ChatMessageType.betReceipt,
+        'BET_RECEIPT' || 'BET_FAIL' || 'BET_CANCEL_NOTICE' =>
+          ChatMessageType.betReceipt,
         'BET_RANK' ||
         'BET_LIST_CHECK' ||
         'GUESS_LIST_CHECK' ||
