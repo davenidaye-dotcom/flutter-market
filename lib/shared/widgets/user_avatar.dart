@@ -3,7 +3,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
 import '../avatars/avatar_catalog.dart';
 
-/// 按头像编码显示本地预设图；兼容历史 http URL；否则占位人像。
+/// 按头像编码显示本地预设图；其它一律占位人像，不再从网络取图。
 class UserAvatar extends StatelessWidget {
   const UserAvatar({
     super.key,
@@ -28,16 +28,7 @@ class UserAvatar extends StatelessWidget {
         backgroundImage: AssetImage(asset),
       );
     }
-    final url = (codeOrUrl ?? '').trim();
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return CircleAvatar(
-        radius: r,
-        backgroundColor: bg,
-        backgroundImage: NetworkImage(url),
-        onBackgroundImageError: (_, _) {},
-        child: Icon(Icons.person, color: Colors.white, size: r),
-      );
-    }
+    // 历史上的 http(s) 头像地址不再加载：它走系统证书和系统网络栈，会在抓包里留下连接。
     return CircleAvatar(
       radius: r,
       backgroundColor: bg == const Color(0xFFBDBDBD) ? AppColors.primaryLight : bg,

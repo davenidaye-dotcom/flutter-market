@@ -16,12 +16,25 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.RenderMode
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private var splashCover: View? = null
 
     /// Surface 会推迟第一帧，Android 12+ 就会一直停在纯色启动层。
     override fun getRenderMode(): RenderMode = RenderMode.texture
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/security")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "isVpnActive" -> result.success(VpnCheck.isActive(applicationContext))
+                    else -> result.notImplemented()
+                }
+            }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {

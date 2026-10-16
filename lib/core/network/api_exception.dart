@@ -1,5 +1,7 @@
 import 'package:dio/dio.dart';
 
+import '../security/vpn_guard.dart';
+
 class ApiException implements Exception {
   const ApiException({
     required this.message,
@@ -18,6 +20,13 @@ class ApiException implements Exception {
   final bool isNetwork;
 
   factory ApiException.fromDio(DioException error) {
+    if (error.error is VpnBlockedException) {
+      return const ApiException(
+        message: VpnBlockedException.message,
+        bizCode: 'VPN_BLOCKED',
+        isNetwork: true,
+      );
+    }
     final status = error.response?.statusCode;
     if (status == 502 || status == 503 || status == 504) {
       return ApiException(message: '系统维护中', code: status, isNetwork: true);

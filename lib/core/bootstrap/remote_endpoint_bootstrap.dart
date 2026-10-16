@@ -9,6 +9,7 @@ import '../../config/env/env_config.dart';
 import '../network/api_client.dart';
 import '../network/auth_api_client.dart';
 import '../security/sign_credential_store.dart';
+import '../security/vpn_guard.dart';
 import 'bootstrap_seeds.dart';
 import 'config_crypto.dart';
 
@@ -71,6 +72,8 @@ class RemoteEndpointBootstrap {
   }) async {
     final urls = BootstrapSeeds.urlsForEnv(EnvConfig.environment.key);
     if (urls.isEmpty) return null;
+    // 有 VPN 时连 OSS 也不发，退回本地缓存 / 内置地址。
+    if (await VpnGuard.active()) return null;
 
     final dio = Dio(
       BaseOptions(

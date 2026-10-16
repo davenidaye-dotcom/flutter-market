@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../security/vpn_guard.dart';
 import 'client_cert_store.dart';
 
 const _caAsset = 'assets/certs/flyroom_root_ca.crt';
@@ -40,6 +41,7 @@ Future<WebSocketChannel> connectFlyroomSocket(Uri uri) async {
   if (uri.scheme.toLowerCase() != 'wss') {
     throw const TlsException('refuse cleartext websocket');
   }
+  await VpnGuard.assertClear();
   await ensureMtlsMaterialLoaded();
   final channel = IOWebSocketChannel.connect(
     uri,
@@ -78,12 +80,20 @@ class _TlsOnlyAdapter implements HttpClientAdapter {
     RequestOptions options,
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
-  ) {
+  ) async {
     if (options.uri.scheme.toLowerCase() != 'https') {
       throw DioException(
         requestOptions: options,
         type: DioExceptionType.connectionError,
         error: const TlsException('refuse cleartext'),
+      );
+    }
+    // 有 VPN（抓包软件）就不发，连 TCP 都不建。
+    if (await VpnGuard.active()) {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+        error: const VpnBlockedException(),
       );
     }
     return _inner.fetch(options, requestStream, cancelFuture);
