@@ -532,17 +532,17 @@ class AgentGameTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 12.w),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (var i = 0; i < games.length; i++)
-              GestureDetector(
+      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      child: Row(
+        children: [
+          for (var i = 0; i < games.length; i++)
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
                 onTap: () => onChanged(i),
                 child: Container(
-                  margin: EdgeInsets.only(right: 18.w),
-                  padding: EdgeInsets.only(bottom: 6.h, top: 4.h),
+                  alignment: Alignment.center,
+                  padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 2.w),
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
@@ -551,18 +551,22 @@ class AgentGameTabs extends StatelessWidget {
                       ),
                     ),
                   ),
-                  child: Text(
-                    games[i],
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: current == i ? AgentChrome.accent : AppColors.textSecondary,
-                      fontWeight: current == i ? FontWeight.w600 : FontWeight.w400,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      games[i],
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: current == i ? AgentChrome.accent : AppColors.textSecondary,
+                        fontWeight: current == i ? FontWeight.w600 : FontWeight.w400,
+                      ),
                     ),
                   ),
                 ),
               ),
-          ],
-        ),
+            ),
+        ],
       ),
     );
   }

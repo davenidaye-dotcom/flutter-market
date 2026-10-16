@@ -315,4 +315,49 @@ void main() {
     expect(LotteryPeriodHelper.openRemainSeconds(recovered, later), 18);
     expect(LotteryPeriodHelper.statusClockSeconds(recovered, later), 18);
   });
+
+  test('同期开奖时刻被提前扣成开奖中后，本地秒针拉回还没到的开奖时刻', () {
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    final openAt = t0.add(const Duration(seconds: 40));
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34191267',
+          previousIssue: '34191266',
+          countdownSeconds: 40,
+          openAtEpochMs: openAt.millisecondsSinceEpoch,
+          sealAtEpochMs: t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch,
+          sealSeconds: 30,
+        ),
+      ],
+      t0,
+    );
+    final midway = t0.add(const Duration(seconds: 5));
+    expect(
+      LotteryPeriodHelper.phaseOf(engine.displayGame('JS_SC', midway), midway),
+      LotteryDisplayPhase.betting,
+    );
+
+    final pastOpen = t0.subtract(const Duration(seconds: 1)).millisecondsSinceEpoch;
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34191267',
+      seconds: 0,
+      openAtEpochMs: pastOpen,
+      now: midway,
+    );
+    expect(
+      LotteryPeriodHelper.phaseOf(engine.displayGame('JS_SC', midway), midway),
+      LotteryDisplayPhase.drawing,
+    );
+
+    engine.onSecondTick(midway);
+    final restored = engine.displayGame('JS_SC', midway);
+    expect(restored.currentIssue, '34191267');
+    expect(LotteryPeriodHelper.phaseOf(restored, midway), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.openRemainSeconds(restored, midway), 35);
+  });
 }

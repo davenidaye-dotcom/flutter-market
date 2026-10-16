@@ -164,6 +164,12 @@ class SessionStore {
     await prefs.setBool(_kShowQuick, value);
   }
 
+  Future<void> setBetConfirm(bool value) async {
+    betConfirm = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kBetConfirm, value);
+  }
+
   /// 这次登录写入的 token 还在，但代际已经被更新的登录占走。只撤这张 token，不再拨代际。
   Future<void> dropToken(String token) {
     return _serial(() => _dropToken(token));

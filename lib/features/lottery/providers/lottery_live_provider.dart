@@ -122,7 +122,10 @@ class RoomLotteryLiveState {
 
 class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   RoomLotteryLiveNotifier(this._ref, this.roomId)
-      : super(RoomLotteryLiveState(showQuick: SessionStore.instance.showQuick));
+      : super(RoomLotteryLiveState(
+          showQuick: SessionStore.instance.showQuick,
+          betConfirm: SessionStore.instance.betConfirm,
+        ));
 
   final Ref _ref;
   final String roomId;
@@ -140,12 +143,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   int _wsConnectGen = 0;
   /// 推送代际。推送写入后，更早发出的公告/房间请求不能把入口写回去。
   int _showQuickRev = 0;
+  /// 下注确认推送代际。和显示快捷同一条房间消息，单独防 HTTP 回写。
+  int _betConfirmRev = 0;
   /// 顶栏积分代际。推送或本地点改之后，更早发出的钱包查询不能盖回去。
   int _pointsRev = 0;
   /// 已写入的钱包帧序号。更小的 WALLET_DELTA / 房间合计丢掉。
   int _appliedWalletSeq = 0;
   /// 只让最后一次拉开关的请求落盘，避免进房请求盖住重连对齐。
   int _showQuickHttpSeq = 0;
+  int _betConfirmHttpSeq = 0;
   Timer? _showQuickPoll;
   Future<void>? _wsConnectInflight;
   final Set<String> _wsSubscribedTopics = {};
@@ -345,11 +351,23 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _writeShowQuick(on);
   }
 
+  void applyBetConfirm(bool on) {
+    _betConfirmRev++;
+    _writeBetConfirm(on);
+  }
+
   void _writeShowQuick(bool on) {
     if (state.showQuick != on) {
       state = state.copyWith(showQuick: on);
     }
     unawaited(SessionStore.instance.setShowQuick(on));
+  }
+
+  void _writeBetConfirm(bool on) {
+    if (state.betConfirm != on) {
+      state = state.copyWith(betConfirm: on);
+    }
+    unawaited(SessionStore.instance.setBetConfirm(on));
   }
 
   Future<void> retryLoad() async {
@@ -358,7 +376,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _drawHistoryPreloaded = false;
     _gameTimelinePreloadByGame.clear();
     _engine.reset();
-    state = RoomLotteryLiveState(showQuick: SessionStore.instance.showQuick);
+    state = RoomLotteryLiveState(
+      showQuick: SessionStore.instance.showQuick,
+      betConfirm: SessionStore.instance.betConfirm,
+    );
     await ensureLoaded();
   }
 
@@ -1095,10 +1116,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     var winLoss = state.winLoss;
     var rebate = state.rebate;
     var isTrialAccount = state.isTrialAccount;
-    var betConfirm = state.betConfirm;
     bool? fetchedShowQuick;
+    bool? fetchedBetConfirm;
     var showQuickSeen = _showQuickRev;
     var showQuickHttpSeq = 0;
+    var betConfirmSeen = _betConfirmRev;
+    var betConfirmHttpSeq = 0;
 
     if (isHost) {
       try {
@@ -1122,11 +1145,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       } catch (_) {}
       showQuickHttpSeq = ++_showQuickHttpSeq;
       showQuickSeen = _showQuickRev;
+      betConfirmHttpSeq = ++_betConfirmHttpSeq;
+      betConfirmSeen = _betConfirmRev;
       try {
         final room = await _ref.read(ownerRepositoryProvider).getRoom();
-        betConfirm = room['betConfirm'] == true || room['betConfirm'] == 1;
+        if (room.containsKey('betConfirm')) {
+          fetchedBetConfirm = _flagEnabled(room['betConfirm']);
+        }
         if (room.containsKey('showQuick')) {
-          fetchedShowQuick = _showQuickEnabled(room['showQuick']);
+          fetchedShowQuick = _flagEnabled(room['showQuick']);
         }
       } catch (_) {}
     } else {
@@ -1139,20 +1166,19 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       isTrialAccount = w.$5;
       showQuickHttpSeq = ++_showQuickHttpSeq;
       showQuickSeen = _showQuickRev;
+      betConfirmHttpSeq = ++_betConfirmHttpSeq;
+      betConfirmSeen = _betConfirmRev;
       try {
         final ann = await _ref.read(memberRepositoryProvider).getRoomAnnouncement();
         final c = ann['content']?.toString();
         if (c != null && c.isNotEmpty) announcement = c;
         if (ann.containsKey('betConfirm')) {
-          betConfirm = ann['betConfirm'] == true || ann['betConfirm'] == 1;
-          SessionStore.instance.betConfirm = betConfirm;
+          fetchedBetConfirm = _flagEnabled(ann['betConfirm']);
         }
         if (ann.containsKey('showQuick')) {
-          fetchedShowQuick = _showQuickEnabled(ann['showQuick']);
+          fetchedShowQuick = _flagEnabled(ann['showQuick']);
         }
-      } catch (_) {
-        betConfirm = SessionStore.instance.betConfirm;
-      }
+      } catch (_) {}
     }
 
     if (!mounted) return;
@@ -1160,8 +1186,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         showQuickHttpSeq != 0 &&
         _showQuickRev == showQuickSeen &&
         showQuickHttpSeq == _showQuickHttpSeq;
+    final applyBetConfirm = fetchedBetConfirm != null &&
+        betConfirmHttpSeq != 0 &&
+        _betConfirmRev == betConfirmSeen &&
+        betConfirmHttpSeq == _betConfirmHttpSeq;
     if (applyFetched) {
       unawaited(SessionStore.instance.setShowQuick(fetchedShowQuick));
+    }
+    if (applyBetConfirm) {
+      unawaited(SessionStore.instance.setBetConfirm(fetchedBetConfirm));
     }
     state = state.copyWith(
       announcement: announcement,
@@ -1170,7 +1203,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       winLoss: winLoss,
       rebate: rebate,
       isTrialAccount: isTrialAccount,
-      betConfirm: betConfirm,
+      betConfirm: applyBetConfirm ? fetchedBetConfirm : null,
       showQuick: applyFetched ? fetchedShowQuick : null,
     );
   }
@@ -1599,7 +1632,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'ROOM_FLAGS') {
-      _applyShowQuickPayload(payload);
+      _applyRoomFlagsPayload(payload);
       return;
     }
 
@@ -2154,13 +2187,17 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     } catch (_) {}
   }
 
-  void _applyShowQuickPayload(Map<String, dynamic> payload) {
-    if (!payload.containsKey('showQuick')) return;
-    applyShowQuick(_showQuickEnabled(payload['showQuick']));
+  void _applyRoomFlagsPayload(Map<String, dynamic> payload) {
+    if (payload.containsKey('showQuick')) {
+      applyShowQuick(_flagEnabled(payload['showQuick']));
+    }
+    if (payload.containsKey('betConfirm')) {
+      applyBetConfirm(_flagEnabled(payload['betConfirm']));
+    }
   }
 
   /// false / 0 / "false" / "0" 才关。缺字段的旧包不当成关。
-  bool _showQuickEnabled(dynamic v) {
+  bool _flagEnabled(dynamic v) {
     if (v == false || v == 0) return false;
     final s = '$v'.trim().toLowerCase();
     return s != 'false' && s != '0';
@@ -2182,17 +2219,23 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final isHost = _wsIsHost || _ref.read(authSessionProvider).isHostSide;
     final httpSeq = ++_showQuickHttpSeq;
     final seen = _showQuickRev;
+    final betSeq = ++_betConfirmHttpSeq;
+    final betSeen = _betConfirmRev;
     try {
       final Map<String, dynamic> src = isHost
           ? await _ref.read(ownerRepositoryProvider).getRoom()
           : await _ref.read(memberRepositoryProvider).getRoomAnnouncement();
-      if (!mounted ||
-          _showQuickRev != seen ||
-          httpSeq != _showQuickHttpSeq ||
-          !src.containsKey('showQuick')) {
-        return;
+      if (!mounted || _wsDisposed) return;
+      if (_showQuickRev == seen &&
+          httpSeq == _showQuickHttpSeq &&
+          src.containsKey('showQuick')) {
+        _writeShowQuick(_flagEnabled(src['showQuick']));
       }
-      _writeShowQuick(_showQuickEnabled(src['showQuick']));
+      if (_betConfirmRev == betSeen &&
+          betSeq == _betConfirmHttpSeq &&
+          src.containsKey('betConfirm')) {
+        _writeBetConfirm(_flagEnabled(src['betConfirm']));
+      }
     } catch (_) {}
   }
 
@@ -2200,7 +2243,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   void _onWalletDelta(Map<String, dynamic> payload) {
     final rid = '${payload['roomId'] ?? ''}'.trim();
     if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
-    _applyShowQuickPayload(payload);
+    _applyRoomFlagsPayload(payload);
     // 房主顶栏等 ROOM_WALLET_SUMMARY（全房合计），不套用个人 available。
     if (_wsIsHost || _ref.read(authSessionProvider).isHostSide) {
       return;
@@ -2226,11 +2269,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   }
 
   /// 房主「玩家总*」扩展 payload：balance/turnover/winLoss/rebate（多别名），零 HTTP。
-  /// 同一条也带 showQuick：房主和房间内玩家都收，用来立刻显隐快捷入口。
+  /// 同一条也带 showQuick / betConfirm：房主和房间内玩家都收。
   void _onRoomWalletSummary(Map<String, dynamic> payload) {
     final rid = '${payload['roomId'] ?? ''}'.trim();
     if (rid.isNotEmpty && !_csRoomMatches(rid)) return;
-    _applyShowQuickPayload(payload);
+    _applyRoomFlagsPayload(payload);
     if (!_wsIsHost && !_ref.read(authSessionProvider).isHostSide) {
       return;
     }
@@ -2244,7 +2287,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final hasWinLoss = wlRaw != null;
     final hasRebate = rbRaw != null;
     if (!hasBalance && !hasTurnover && !hasWinLoss && !hasRebate) {
-      if (!payload.containsKey('showQuick')) {
+      if (!payload.containsKey('showQuick') && !payload.containsKey('betConfirm')) {
         unawaited(refreshWallet());
       }
       return;

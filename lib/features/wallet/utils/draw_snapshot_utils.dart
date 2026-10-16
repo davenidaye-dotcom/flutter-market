@@ -1,3 +1,5 @@
+import '../../../shared/format/play_label.dart';
+
 /// 解析注单/账变冗余字段 drawRanks（逗号分隔）。
 List<int> parseDrawRanks(dynamic raw) {
   if (raw == null) return const [];
@@ -119,8 +121,18 @@ String ledgerRemarkLabel(String? raw) {
     RegExp(r'items\s*=\s*(\d+)', caseSensitive: false),
     (m) => '笔数=${m.group(1)}',
   );
+  s = s.replaceAllMapped(_playCodeInRemark, (m) {
+    final label = playDisplayLabel(m.group(0));
+    return label.isEmpty ? m.group(0)! : label;
+  });
   return s;
 }
+
+/// 备注里的机器玩法码：TM-3、LM-BIG、POS-2-10、GYH_BIG、DT-1-D。
+final _playCodeInRemark = RegExp(
+  r'(?:TM-\d+|POS-\d+-\d+|LM-\d+-(?:BIG|SMALL|ODD|EVEN)|LM-(?:BIG|SMALL|ODD|EVEN)|GYH[_-](?:DS|XS|BIG|SMALL|ODD|EVEN|\d+)|DT-\d+-[DT])',
+  caseSensitive: false,
+);
 
 /// 上下分申请状态
 String applyStatusLabel(String status) {

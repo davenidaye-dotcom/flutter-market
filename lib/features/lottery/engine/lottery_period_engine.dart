@@ -296,9 +296,9 @@ final class LotteryPeriodEngine {
           force: first && slot.openDeadline == null,
         );
       }
-    } else {
-      _maybeUnstickDrawing(slot, openAtEpochMs, clock);
     }
+    // 钉死与否都要尝试：开奖中停够后，同期仍在未来的开奖时刻把倒计时拉回来。
+    _maybeUnstickDrawing(slot, openAtEpochMs, clock);
     _noteDrawing(slot, clock);
     _arm(slot, clock);
 
@@ -339,6 +339,7 @@ final class LotteryPeriodEngine {
     var changed = false;
 
     for (final slot in _slots.values) {
+      _restoreArmedOpen(slot, now);
       _arm(slot, now);
       _noteDrawing(slot, now);
       final cd = _secondsLeft(slot, now);
@@ -547,6 +548,27 @@ final class LotteryPeriodEngine {
     if (issue.isEmpty || open <= now.millisecondsSinceEpoch) return;
     slot.armedOpenAtMs = open;
     slot.armedIssue = issue;
+  }
+
+  /// 本地终点已经被提前扣到 0，但本期武装的开奖时刻还在未来：把倒计时拉回来。
+  void _restoreArmedOpen(_GameSlot slot, DateTime now) {
+    if (_secondsLeft(slot, now) > 0) return;
+    final armed = slot.armedOpenAtMs;
+    if (armed == null || armed <= now.millisecondsSinceEpoch) return;
+    if (!_sameIssue(slot.armedIssue, slot.model.currentIssue)) return;
+    slot.openDeadline = DateTime.fromMillisecondsSinceEpoch(armed);
+    final nowMs = now.millisecondsSinceEpoch;
+    var sealAt = slot.model.sealAtEpochMs ?? 0;
+    final configured = slot.model.sealSeconds ?? 0;
+    if (configured > 0 && (sealAt <= nowMs || sealAt >= armed)) {
+      sealAt = armed - configured * 1000;
+    }
+    slot.model = slot.model.copyWith(
+      openAtEpochMs: armed,
+      sealAtEpochMs: sealAt > 0 ? sealAt : slot.model.sealAtEpochMs,
+    );
+    slot.drawingSince = null;
+    slot.prevCd = _secondsLeft(slot, now);
   }
 
   /// 记下进入开奖中的时刻；倒计时恢复后清掉。

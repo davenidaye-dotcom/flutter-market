@@ -23,6 +23,22 @@ class AgentRepository {
     return _asMap(data);
   }
 
+  /// 该彩种已开奖期号，最新在前。和有没有注单无关。
+  Future<List<String>> recentDrawIssues(String gameType) async {
+    final data = await _client.get('/public/lottery/history', query: {
+      'gameType': gameType,
+      'pageNum': 1,
+      'pageSize': 40,
+    });
+    final rows = _asMap(data)['rows'];
+    if (rows is! List) return const [];
+    return [
+      for (final row in rows)
+        if (row is Map && '${row['issueNo'] ?? ''}'.trim().isNotEmpty)
+          '${row['issueNo']}'.trim(),
+    ];
+  }
+
   Future<Map<String, dynamic>> getAccounts({
     String? keyword,
     int pageNum = 1,

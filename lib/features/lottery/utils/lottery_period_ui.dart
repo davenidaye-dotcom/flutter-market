@@ -104,12 +104,9 @@ abstract final class LotteryPeriodHelper {
     if (inCloseWindow(game, now)) {
       return LotteryDisplayPhase.closed;
     }
-    if (game.isDrawing || game.status == LotteryStatus.drawing) {
-      return LotteryDisplayPhase.drawing;
-    }
     final clock = now ?? ServerClock.now();
     final openLeft = openRemainSeconds(game, clock);
-    // 与 web openText 一致：封盘和开奖剩余都到 0，显示开奖中，不停留在「封盘中 00:00」。
+    // 开奖时刻还在未来就继续倒计时。isDrawing 只是上一帧的标记，不能把没到点的期钉死在开奖中。
     if (openLeft <= 0) {
       return LotteryDisplayPhase.drawing;
     }
