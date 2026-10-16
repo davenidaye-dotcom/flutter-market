@@ -9,7 +9,11 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../security/vpn_guard.dart';
 import 'client_cert_store.dart';
 
-const _caAsset = 'assets/certs/flyroom_root_ca.crt';
+/// dev/test 与 pro 各信任自己的根 CA。由 --dart-define=APP_ENV=dev|test|pro 决定。
+const _appEnv = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
+const _caAsset = _appEnv == 'pro'
+    ? 'assets/certs/flyroom_root_ca.pro.crt'
+    : 'assets/certs/flyroom_root_ca.dev.crt';
 
 List<int>? _caBytes;
 Future<void>? _loading;
