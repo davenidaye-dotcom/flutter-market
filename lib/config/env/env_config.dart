@@ -37,11 +37,8 @@ class EnvConfig {
         AppEnvironment.pro => 'https://207.148.105.182/api/v1',
       };
 
-  static String get builtinAuthBaseUrl => switch (environment) {
-        AppEnvironment.dev => 'https://207.148.105.182:8443/api/v1',
-        AppEnvironment.test => 'https://207.148.105.182:8443/api/v1',
-        AppEnvironment.pro => 'https://207.148.105.182:8443/api/v1',
-      };
+  /// 登录和换证也走 443。认证请求不带客户端证，optional 下照常通过。
+  static String get builtinAuthBaseUrl => builtinApiBaseUrl;
 
   static String get builtinWsBaseUrl => switch (environment) {
         AppEnvironment.dev => 'wss://207.148.105.182/ws/v1',
@@ -55,15 +52,9 @@ class EnvConfig {
   /// WebSocket prefix (no trailing slash). Paths like /member?token=
   static String get wsBaseUrl => _wsBaseUrlOverride ?? builtinWsBaseUrl;
 
-  /// 登录 / 换证走 8443。只下发了 api 时取同一主机的 8443（443 上的 /api/v1/auth 返回 404）。
-  static String get authBaseUrl {
-    final auth = _authBaseUrlOverride;
-    if (auth != null) return auth;
-    final api = _apiBaseUrlOverride;
-    if (api == null) return builtinAuthBaseUrl;
-    final uri = Uri.parse(api);
-    return uri.replace(port: 8443).toString();
-  }
+  /// 登录 / 换证。未单独下发时与 [apiBaseUrl] 相同。
+  static String get authBaseUrl =>
+      _authBaseUrlOverride ?? _apiBaseUrlOverride ?? builtinAuthBaseUrl;
 
   /// 下发的地址不是 https / wss 一律丢弃，退回内置 TLS 地址，不给明文降级的机会。
   static void applyEndpoint({

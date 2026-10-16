@@ -98,6 +98,13 @@ class ApiClient {
   bool _needsFreshCert(DioException error) {
     final data = error.response?.data;
     if (data is Map && bizCodeOf(data) == 'MTLS_REQUIRED') return true;
+    // 带着过期证书时 Nginx 直接回 400（HTML，不是 JSON）
+    final status = error.response?.statusCode;
+    if (data is String &&
+        (status == 400 || status == 495 || status == 496) &&
+        data.toLowerCase().contains('ssl certificate')) {
+      return true;
+    }
     final kind = error.error?.runtimeType.toString() ?? '';
     final text = '${error.error ?? ''} ${error.message ?? ''}';
     return kind.contains('HandshakeException') ||
