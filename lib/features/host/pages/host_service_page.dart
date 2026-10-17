@@ -351,6 +351,8 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   bool _loading = true;
   bool _attachOpen = false;
   StreamSubscription<CsChatPush>? _csSub;
+  Timer? _poll;
+  bool _pulling = false;
   late final AppBackLayer _attachBack = AppBackLayer(
     () {
       if (!mounted || !_attachOpen || !appBackLayerActive(context)) return false;
@@ -369,6 +371,10 @@ class _ChatViewState extends ConsumerState<_ChatView> {
         .csPushes
         .listen(_onCsPush);
     Future.microtask(_loadMessages);
+    // 推送若排在开奖后面，停在会话里会晚一拍。接口和退回列表一样快，开着就自己拉。
+    _poll = Timer.periodic(const Duration(seconds: 1), (_) {
+      unawaited(_loadMessages(silent: true));
+    });
   }
 
   void _syncAttachBack() {
@@ -382,6 +388,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   @override
   void dispose() {
     unregisterAppBackLayer(_attachBack);
+    _poll?.cancel();
     _csSub?.cancel();
     _ctrl.dispose();
     _scroll.dispose();
@@ -436,6 +443,8 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   }
 
   Future<void> _loadMessages({bool silent = false}) async {
+    if (_pulling) return;
+    _pulling = true;
     if (!silent) setState(() => _loading = true);
     try {
       final list = await ref.read(ownerRepositoryProvider).getCsMessages(
@@ -455,7 +464,9 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      AppToast.error(e.toString());
+      if (!silent) AppToast.error(e.toString());
+    } finally {
+      _pulling = false;
     }
   }
 

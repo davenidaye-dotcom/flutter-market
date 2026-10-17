@@ -19,6 +19,7 @@ import '../../host/providers/host_apply_notice_provider.dart';
 import '../../host/providers/host_dash_dirty_provider.dart';
 import '../../room/cs_unread.dart';
 import '../engine/lottery_period_engine.dart';
+import '../hall_title.dart';
 import '../services/bet_executor.dart';
 import '../services/chat_push_cache.dart';
 import '../utils/bet_receipt_format.dart';
@@ -1633,6 +1634,21 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
     if (type == 'ROOM_FLAGS') {
       _applyRoomFlagsPayload(payload);
+      return;
+    }
+
+    if (type == 'ROOM_NAME') {
+      final name = (payload['roomName'] ?? '').toString().trim();
+      final got = '${payload['roomId'] ?? ''}'.trim();
+      final id = SessionStore.instance.roomId?.trim() ?? '';
+      final code = SessionStore.instance.roomCode?.trim() ?? '';
+      final sameRoom = got.isEmpty ||
+          got == id ||
+          (code.isNotEmpty && got == code) ||
+          got == roomId.trim();
+      if (name.isNotEmpty && sameRoom && _isCurrentSessionRoom()) {
+        unawaited(_ref.read(hallRoomTitleProvider.notifier).show(name));
+      }
       return;
     }
 

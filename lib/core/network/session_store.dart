@@ -40,11 +40,11 @@ class SessionStore {
   /// 作废还没写完的登录（快登、上一次密码登录）。
   int bumpEpoch() => ++epoch;
 
-  /// 大厅顶栏：房主昵称 → 房间名。
+  /// 大厅顶栏：房间名。没有房间名时才用房主昵称。
   String get hallTitle {
-    final nick = ownerNickname?.trim() ?? '';
-    if (nick.isNotEmpty) return nick;
-    return roomName?.trim() ?? '';
+    final name = roomName?.trim() ?? '';
+    if (name.isNotEmpty) return name;
+    return ownerNickname?.trim() ?? '';
   }
 
   Future<void> load() async {

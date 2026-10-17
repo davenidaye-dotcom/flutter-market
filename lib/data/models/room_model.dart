@@ -17,7 +17,7 @@ class RoomModel {
   /// Room code used in routes (e.g. 679010)
   final String id;
   final String name;
-  /// 房主昵称（大厅顶栏；缺省时可回退 [name]）
+  /// 房主昵称。大厅顶栏用房间名，这里只在房间名为空时兜底。
   final String? ownerNickname;
   final String? thumbnailUrl;
 
@@ -70,12 +70,11 @@ class RoomModel {
         playMode: json['playMode']?.toString() ?? 'REAL',
       );
 
-  /// 大厅顶栏优先房主昵称，其次房间名。
+  /// 大厅顶栏用房间名，没有房间名时才用房主昵称。
   String get hallTitle {
-    final nick = ownerNickname?.trim() ?? '';
-    if (nick.isNotEmpty) return nick;
     final n = name.trim();
-    return n;
+    if (n.isNotEmpty) return n;
+    return ownerNickname?.trim() ?? '';
   }
 }
 
