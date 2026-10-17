@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../config/env/env_config.dart';
@@ -14,13 +13,12 @@ import 'bootstrap_seeds.dart';
 import 'config_crypto.dart';
 
 /// 启动时从 OSS/CDN 拉加密线路 → 解密 → 应用到 [EnvConfig]。
-/// 失败则用本地缓存，再不行用包内内置地址（保证开发可跑）。
+/// 开发/测试拉不到时用内置测试地址。生产拉不到则不发业务请求。
 class RemoteEndpointBootstrap {
   RemoteEndpointBootstrap._();
   static final RemoteEndpointBootstrap instance = RemoteEndpointBootstrap._();
 
   static const _cacheKey = 'flyroom_endpoint_frcfg_cache';
-  static const _assetPath = 'assets/bootstrap/endpoint.frcfg';
 
   bool ready = false;
   String source = 'none';
@@ -33,28 +31,21 @@ class RemoteEndpointBootstrap {
   }) async {
     if (ready) return;
 
-    // 1) 远程 CDN/OSS（并行 + 总超时）
     final remote = await _tryRemote(perUrlTimeout, budget: budget);
     if (remote != null) {
       await _apply(remote.$1, source: 'oss', cacheRaw: true, raw: remote.$2);
       return;
     }
 
-    // 2) 本地缓存
-    final cached = await _tryCache();
-    if (cached != null) {
-      await _apply(cached, source: 'cache', cacheRaw: false);
+    if (EnvConfig.environment == AppEnvironment.pro) {
+      EnvConfig.clearEndpointOverride();
+      current = null;
+      source = 'none';
+      ready = true;
+      debugPrint('[bootstrap] source=none oss unavailable, requests blocked');
       return;
     }
 
-    // 3) 包内资产（可选预置加密文件）
-    final asset = await _tryAsset();
-    if (asset != null) {
-      await _apply(asset, source: 'asset', cacheRaw: false);
-      return;
-    }
-
-    // 4) 内置明文兜底
     final fallback = EndpointConfig(
       version: 1,
       env: EnvConfig.environment.key,
@@ -72,7 +63,7 @@ class RemoteEndpointBootstrap {
   }) async {
     final urls = BootstrapSeeds.urlsForEnv(EnvConfig.environment.key);
     if (urls.isEmpty) return null;
-    // 有 VPN 时连 OSS 也不发，退回本地缓存 / 内置地址。
+    // 有 VPN 时不连 OSS。开发/测试回退内置地址，生产不发业务请求。
     if (await VpnGuard.active()) return null;
 
     final dio = Dio(
@@ -110,32 +101,6 @@ class RemoteEndpointBootstrap {
 
     try {
       return await completer.future.timeout(budget, onTimeout: () => null);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<EndpointConfig?> _tryCache() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString(_cacheKey);
-      if (raw == null || raw.isEmpty) return null;
-      final cfg = ConfigCrypto.decryptFrcfg(raw);
-      if (!_envOk(cfg)) return null;
-      return cfg;
-    } catch (e) {
-      debugPrint('[bootstrap] cache fail → $e');
-      return null;
-    }
-  }
-
-  Future<EndpointConfig?> _tryAsset() async {
-    try {
-      final raw = (await rootBundle.loadString(_assetPath)).trim();
-      if (raw.isEmpty) return null;
-      final cfg = ConfigCrypto.decryptFrcfg(raw);
-      if (!_envOk(cfg)) return null;
-      return cfg;
     } catch (_) {
       return null;
     }
@@ -182,7 +147,7 @@ class RemoteEndpointBootstrap {
     );
   }
 
-  /// 验签连续失败时可清缓存，强制下次走 OSS/asset
+  /// 验签连续失败时可清缓存，下次启动重新拉 OSS
   Future<void> invalidateCache() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_cacheKey);

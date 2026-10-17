@@ -51,17 +51,20 @@ Future<WebSocketChannel> connectFlyroomSocket(Uri uri) async {
   return channel;
 }
 
-/// 只信包内根证书，不信系统和用户装的证书（含抓包软件的根证书），不走系统代理。
+/// 登录、换证不带客户端证，信系统公信根（Let's Encrypt）。
+/// 业务 API、WebSocket 带客户端证，只信包内 FlyRoom 根证书，不信系统证书。
 HttpClient _httpClient(bool presentClientCert) {
-  final context = SecurityContext(withTrustedRoots: false);
-  final ca = _caBytes;
-  if (ca != null && ca.isNotEmpty) {
-    context.setTrustedCertificatesBytes(ca);
-  }
-  final store = ClientCertStore.instance;
-  if (presentClientCert && store.hasCert) {
-    context.useCertificateChainBytes(utf8.encode(store.certPem!));
-    context.usePrivateKeyBytes(utf8.encode(store.keyPem!));
+  final context = SecurityContext(withTrustedRoots: !presentClientCert);
+  if (presentClientCert) {
+    final ca = _caBytes;
+    if (ca != null && ca.isNotEmpty) {
+      context.setTrustedCertificatesBytes(ca);
+    }
+    final store = ClientCertStore.instance;
+    if (store.hasCert) {
+      context.useCertificateChainBytes(utf8.encode(store.certPem!));
+      context.usePrivateKeyBytes(utf8.encode(store.keyPem!));
+    }
   }
   final client = HttpClient(context: context);
   // 连接真正建立前再看一次。回调已经把 VPN 标上时，这里抛错，TCP 不会发，抓包里没有 CONNECT。

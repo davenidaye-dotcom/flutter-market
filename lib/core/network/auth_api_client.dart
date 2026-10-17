@@ -59,6 +59,9 @@ class AuthApiClient {
   }
 
   Future<dynamic> post(String path, {Object? data}) async {
+    if (!EnvConfig.requestsAllowed) {
+      throw const ApiException(message: '线路未就绪', bizCode: 'NO_ENDPOINT');
+    }
     await ensureMtlsMaterialLoaded();
     try {
       final res = await _dio.post<dynamic>(path, data: data);

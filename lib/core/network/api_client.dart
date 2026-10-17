@@ -73,9 +73,15 @@ class ApiClient {
     bindMtlsClient(_dio, presentClientCert: true);
   }
 
+  void _requireEndpoint() {
+    if (EnvConfig.requestsAllowed) return;
+    throw const ApiException(message: '线路未就绪', bizCode: 'NO_ENDPOINT');
+  }
+
   Future<Response<T>> _send<T>(
     Future<Response<T>> Function() send,
   ) async {
+    _requireEndpoint();
     await ensureMtlsMaterialLoaded();
     if (ClientCertStore.instance.shouldRenew) {
       await ClientCertRefresh.refresh();
@@ -202,6 +208,7 @@ class ApiClient {
 
   /// 二进制下载（客服图片等）；走同一套签名/鉴权，不走 JSON unwrap。
   Future<Uint8List> getBytes(String path) async {
+    _requireEndpoint();
     try {
       final res = await _send(
         () => _dio.get<List<int>>(

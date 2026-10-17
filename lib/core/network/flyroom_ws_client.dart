@@ -49,6 +49,10 @@ class FlyroomWsClient {
 
   Future<void> connect() async {
     await disconnect();
+    if (!EnvConfig.requestsAllowed) {
+      debugPrint('[ws] skip connect: pro oss unavailable');
+      return;
+    }
     _disconnectNotified = false;
     sessionToken = SessionStore.instance.accessToken;
     final ch = await _open();
