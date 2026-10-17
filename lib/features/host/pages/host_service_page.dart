@@ -8,6 +8,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../../room/cs_rich.dart';
+import '../../room/cs_unread.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/keyboard_input_lift.dart';
@@ -122,6 +123,12 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
     unawaited(_loadSessions(silent: true));
   }
 
+  /// 底栏未读变多，说明有玩家来信。会话推送没到时也要把新会话拉出来。
+  void _onUnreadChanged(int? prev, int next) {
+    if (!mounted || _open != null || prev == null || next <= prev) return;
+    unawaited(_loadSessions(silent: true));
+  }
+
   Future<void> _bootstrap() async {
     final id = widget.openAccountId?.trim() ?? '';
     if (id.isNotEmpty) {
@@ -204,6 +211,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   @override
   Widget build(BuildContext context) {
     _syncSessionBack();
+    ref.listen<int>(csUnreadCountProvider, _onUnreadChanged);
     if (_open != null) {
       return _ChatView(
         roomId: widget.roomId,
@@ -396,6 +404,12 @@ class _ChatViewState extends ConsumerState<_ChatView> {
     }
   }
 
+  /// 人停在会话里时，未读变多就拉这条会话，不必退出再进。
+  void _onUnreadChanged(int? prev, int next) {
+    if (!mounted || prev == null || next <= prev) return;
+    unawaited(_loadMessages(silent: true));
+  }
+
   void _scrollToEnd() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
@@ -541,6 +555,7 @@ class _ChatViewState extends ConsumerState<_ChatView> {
   @override
   Widget build(BuildContext context) {
     _syncAttachBack();
+    ref.listen<int>(csUnreadCountProvider, _onUnreadChanged);
     return AppPageScaffold(
       body: GradientBackground(
         child: SafeArea(
