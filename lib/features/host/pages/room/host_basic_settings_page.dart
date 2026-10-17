@@ -237,6 +237,10 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
             child: EmulatorSafeTextField(
               controller: ctrl,
               textAlign: TextAlign.right,
+              // 关联想时部分手机弹出不能输入中文的安全键盘
+              keyboardType: TextInputType.text,
+              enableSuggestions: true,
+              autocorrect: false,
               decoration: const InputDecoration(
                 border: InputBorder.none,
                 isDense: true,
