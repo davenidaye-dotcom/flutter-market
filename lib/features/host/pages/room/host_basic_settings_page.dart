@@ -5,6 +5,7 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../lottery/hall_title.dart';
 import '../../../wallet/utils/draw_snapshot_utils.dart';
 import '../../widgets/host_ui.dart';
 
@@ -75,6 +76,7 @@ class _HostBasicSettingsPageState extends ConsumerState<HostBasicSettingsPage> {
       final name = _nameCtrl.text.trim();
       if (name.isNotEmpty) {
         await ref.read(ownerRepositoryProvider).updateRoomName(name);
+        await ref.read(hallRoomTitleProvider.notifier).show(name);
       }
       if (_pwdCtrl.text.isNotEmpty) {
         await ref.read(ownerRepositoryProvider).updateRoomPassword(

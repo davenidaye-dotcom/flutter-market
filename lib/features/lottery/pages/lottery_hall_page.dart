@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/session_store.dart';
 import '../../../data/repositories/providers.dart';
+import '../hall_title.dart';
 import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/page_app_bar.dart';
@@ -314,31 +315,30 @@ class _HallHeaderState extends ConsumerState<_HallHeader> {
   Future<void> _resolveTitle() async {
     final isHost = ref.read(authSessionProvider.select((s) => s.isHostSide));
     if (isHost) {
-      final nick =
-          (ref.read(authSessionProvider).user?.nickname ?? '').trim();
-      if (!mounted) return;
-      setState(() => _title = nick);
+      try {
+        final data = await ref.read(ownerRepositoryProvider).getRoom();
+        final name = (data['roomName'] ?? data['name'] ?? '').toString().trim();
+        if (name.isNotEmpty && mounted) {
+          await ref.read(hallRoomTitleProvider.notifier).show(name);
+        }
+      } catch (_) {
+        // 保持会话里已有的房间名
+      }
       return;
     }
 
-    var title = SessionStore.instance.hallTitle;
-    if (title.isEmpty) {
-      try {
-        final room = await ref
-            .read(roomRepositoryProvider)
-            .verifyRoom(widget.roomCode);
-        title = room.hallTitle;
-        if (title.isNotEmpty) {
-          await SessionStore.instance.setRoom(
-            roomId: SessionStore.instance.roomId,
-            roomCode: SessionStore.instance.roomCode ?? widget.roomCode,
-            roomName: room.name,
-            ownerNickname: room.ownerNickname ?? '',
-          );
-        }
-      } catch (_) {
-        // 保持空 → 回退品牌名
+    var title = SessionStore.instance.roomName?.trim() ?? '';
+    try {
+      final room = await ref.read(roomRepositoryProvider).verifyRoom(widget.roomCode);
+      if (room.name.trim().isNotEmpty) {
+        title = room.name.trim();
       }
+    } catch (_) {
+      // 保持进房时记下的房间名
+    }
+    if (!mounted) return;
+    if (title.isNotEmpty) {
+      await ref.read(hallRoomTitleProvider.notifier).show(title);
     }
     if (!mounted) return;
     setState(() => _title = title);
@@ -346,14 +346,8 @@ class _HallHeaderState extends ConsumerState<_HallHeader> {
 
   @override
   Widget build(BuildContext context) {
-    // 房主改昵称后顶栏同步
-    final hostNick = ref.watch(
-      authSessionProvider.select((s) {
-        if (!s.isHostSide) return null;
-        return (s.user?.nickname ?? '').trim();
-      }),
-    );
-    final title = (hostNick != null && hostNick.isNotEmpty) ? hostNick : _title;
+    final watched = ref.watch(hallRoomTitleProvider).trim();
+    final title = watched.isNotEmpty ? watched : _title;
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 4.h),
