@@ -15,7 +15,7 @@ class BootstrapSeeds {
     // 反转存放，运行时翻回，避免明文一眼搜到完整 OSS
     final seeds = <String>[
       // 主：请改成你们真实 bucket
-      _rev('https://fr-cfg.oss-cn-hongkong.aliyuncs.com/flyroom/$envKey/endpoint.frcfg'),
+      _rev('https://oss.cloudflare888.com/flyroom/$envKey/endpoint.frcfg'),
       // 备
       _rev('https://fr-cfg-backup.oss-ap-southeast-1.aliyuncs.com/flyroom/$envKey/endpoint.frcfg'),
       // 第三跳（可换成 Cloudflare R2 / 自建 CDN）
