@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'dart:isolate';
 
@@ -25,7 +24,7 @@ class FlyroomWsClient {
   WebSocketChannel? _channel;
   StreamSubscription? _sub;
   final _controller = StreamController<Map<String, dynamic>>.broadcast();
-  final Queue<dynamic> _pendingRaw = Queue();
+  final List<dynamic> _pendingRaw = [];
   bool _pumping = false;
   int _pumpGen = 0;
   _WsDecodeWorker? _worker;
@@ -90,13 +89,17 @@ class FlyroomWsClient {
     onDisconnected?.call();
   }
 
-  /// 单消费者队列：同步消化小帧，遇到大帧 await isolate，保证投递顺序 = 到达顺序。
+  /// 单消费者队列：小帧同步消化，大帧交给 isolate。
+  /// 积压时未读和期次插到队头，换期不用等聊天帧。
   Future<void> _pump() async {
     _pumping = true;
     final gen = _pumpGen;
     try {
       while (_pendingRaw.isNotEmpty) {
-        final raw = _pendingRaw.removeFirst();
+        if (_pendingRaw.length > 1) {
+          _hoistPriorityFrames();
+        }
+        final raw = _pendingRaw.removeAt(0);
         Map<String, dynamic>? decoded;
         if (raw is Map) {
           decoded = Map<String, dynamic>.from(raw);
@@ -115,6 +118,33 @@ class FlyroomWsClient {
     } finally {
       if (gen == _pumpGen) _pumping = false;
     }
+  }
+
+  /// 积压时先投递未读和期次。房间聊天再多，底栏未读和换期也不能排在后面。
+  void _hoistPriorityFrames() {
+    final pri = <dynamic>[];
+    final rest = <dynamic>[];
+    for (final raw in _pendingRaw) {
+      if (raw is String && _priorityWsFrame(raw)) {
+        pri.add(raw);
+      } else {
+        rest.add(raw);
+      }
+    }
+    if (pri.isEmpty) return;
+    _pendingRaw
+      ..clear()
+      ..addAll(pri)
+      ..addAll(rest);
+  }
+
+  bool _priorityWsFrame(String raw) {
+    return raw.contains('"event":"UNREAD_CS"') ||
+        raw.contains('"event":"CS_MESSAGE"') ||
+        raw.contains('"event":"PERIOD_SNAPSHOT"') ||
+        raw.contains('"event":"PERIOD_TICK"') ||
+        raw.contains('"event":"ROOM_FLAGS"') ||
+        raw.contains('"event":"APPLY_NOTICE"');
   }
 
   void subscribe(String topic) {

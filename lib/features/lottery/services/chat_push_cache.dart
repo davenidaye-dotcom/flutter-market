@@ -219,6 +219,9 @@ class ChatPushCache {
     );
     _bufferByRoom[roomId]!.add(entry);
     if (_isWindowed(normalized)) _trackTail(roomId, gameId, entry);
+    if (!_isWindowed(normalized)) {
+      _trimIssueWindow(roomId, gameId);
+    }
     if (_appendTimelineTail(roomId, gameId, normalized)) {
       _bumpVersion(roomId, gameId);
     } else {
@@ -226,6 +229,31 @@ class ChatPushCache {
     }
     _schedulePersist(roomId);
     return true;
+  }
+
+  /// 开奖/封盘/核对卡按期数留，只留最近 [chatHistoryIssueLimit] 期。
+  /// 停在房间里不再无限堆积，时间线重排也不会把主线程拖死。
+  void _trimIssueWindow(String roomId, String gameId) {
+    final buffer = _bufferByRoom[roomId];
+    if (buffer == null) return;
+    final newestByKey = <int, String>{};
+    for (final entry in buffer) {
+      if (entry.push.gameId != gameId || _isWindowed(entry.push.message)) {
+        continue;
+      }
+      final issue = extractIssue(entry.push.message);
+      if (issue == null || issue.isEmpty) continue;
+      final key = issueCompareKey(issue);
+      if (key <= 0) continue;
+      final prev = newestByKey[key];
+      if (prev == null || issue.length > prev.length) {
+        newestByKey[key] = issue;
+      }
+    }
+    if (newestByKey.length <= chatHistoryIssueLimit) return;
+    final sorted = newestByKey.values.toList()..sort(compareIssueNo);
+    final floor = sorted[sorted.length - chatHistoryIssueLimit];
+    dropOlderThanIssue(roomId: roomId, gameId: gameId, oldestIssue: floor);
   }
 
   /// 下注原文/回执/失败卡等占 [chatWindowSize] 窗口；开奖、封盘、核对卡不占，按期数留。

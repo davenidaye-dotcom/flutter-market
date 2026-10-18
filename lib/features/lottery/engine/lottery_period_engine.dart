@@ -381,6 +381,8 @@ final class LotteryPeriodEngine {
         }
       }
     }
+    // 人在房间里本地节拍暂停时，也要从这次补丁开始算「开奖中停了多久」。
+    _noteDrawing(slot, now);
     final advances = _incomingIssueAdvances(slot, patch.currentIssue);
     _arm(slot, now);
     final pinned = !advances && _epochsFrozen(slot, now);

@@ -76,6 +76,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   List<_CsSession> _sessions = [];
   bool _loading = true;
   StreamSubscription<CsChatPush>? _csSub;
+  Timer? _listPoll;
   late final AppBackLayer _sessionBack = AppBackLayer(
     _closeOpenSession,
     navigatorOf: () => mounted ? Navigator.of(context) : null,
@@ -88,6 +89,11 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
         .read(roomLotteryLiveProvider(widget.roomId).notifier)
         .csPushes
         .listen(_onCsPush);
+    // 会话行上的未读。推送晚到时，停在列表里每 3 秒自己拉一次。
+    _listPoll = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || _open != null) return;
+      unawaited(_loadSessions(silent: true));
+    });
     Future.microtask(_bootstrap);
   }
 
@@ -114,6 +120,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   @override
   void dispose() {
     unregisterAppBackLayer(_sessionBack);
+    _listPoll?.cancel();
     _csSub?.cancel();
     super.dispose();
   }
@@ -204,7 +211,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _loading = false);
-      AppToast.error(e.toString());
+      if (!silent) AppToast.error(e.toString());
     }
   }
 

@@ -47,7 +47,7 @@ void main() {
       expect(cache.bufferedForGame(roomId, gameId).length, 1);
     });
 
-    test('开奖和封盘都不按条数裁掉', () {
+    test('开奖和封盘按期数留最近 15 期，不按条数一刀切', () {
       for (var i = 4700; i < 4720; i++) {
         cache.pushOnce(
           roomId: roomId,
@@ -74,8 +74,10 @@ void main() {
       final buffered = cache.bufferedForGame(roomId, gameId);
       final draws = buffered.where((m) => m.type == ChatMessageType.resultCard);
 
-      expect(draws.length, 20);
-      expect(buffered.length, 60);
+      expect(draws.length, 15);
+      expect(draws.map((m) => m.issueNo), containsAll(['4715', '4729']));
+      expect(draws.map((m) => m.issueNo), isNot(contains('4710')));
+      expect(buffered.length, 25);
     });
 
     test('用户下注指令不因封盘条数被裁掉', () {
@@ -193,7 +195,7 @@ void main() {
       );
     });
 
-    test('封盘不按条数裁掉，重复推送仍去重，不会每秒重画', () {
+    test('封盘超过 15 期丢掉更早的，重复推送仍去重，不会每秒重画', () {
       for (var i = 0; i < 60; i++) {
         cache.pushOnce(
           roomId: roomId,
@@ -203,21 +205,23 @@ void main() {
         );
       }
       const sealKey = 'sealed-$gameId-0';
+      const keptKey = 'sealed-$gameId-59';
       expect(
         cache.bufferedForGame(roomId, gameId).where((m) => m.id == sealKey),
-        isNotEmpty,
+        isEmpty,
       );
-      expect(cache.bufferedForGame(roomId, gameId).length, 60);
-      expect(cache.hasDedupeKey(roomId, sealKey), isTrue);
+      expect(cache.bufferedForGame(roomId, gameId).length, 15);
+      expect(cache.hasDedupeKey(roomId, sealKey), isFalse);
+      expect(cache.hasDedupeKey(roomId, keptKey), isTrue);
       expect(
         cache.emitLive(
           roomId: roomId,
-          dedupeKey: sealKey,
+          dedupeKey: keptKey,
           gameId: gameId,
-          message: sealedLine(gameId, '0'),
+          message: sealedLine(gameId, '59'),
         ),
         isFalse,
-        reason: 'key 必须留下，否则每秒重推导致聊天闪屏',
+        reason: '还在窗口里的封盘键必须留下，否则每秒重推导致聊天闪屏',
       );
     });
 
@@ -290,7 +294,7 @@ void main() {
       expect(cache.hasDrawGap(roomId, gameId), isTrue);
     });
 
-    test('连续开 25 期后 buffer 和时间线都保留全部开奖', () {
+    test('连续开 25 期后 buffer 和时间线只留最近 15 期', () {
       for (var issue = 5250; issue <= 5274; issue++) {
         cache.pushOnce(
           roomId: roomId,
@@ -307,8 +311,8 @@ void main() {
           .whereType<String>()
           .toList();
 
-      expect(drawIssues.length, 25);
-      expect(drawIssues.first, '5250');
+      expect(drawIssues.length, 15);
+      expect(drawIssues.first, '5260');
       expect(drawIssues.last, '5274');
 
       final timeline = cache.timelineForGame(
@@ -322,8 +326,8 @@ void main() {
           .whereType<String>()
           .toList();
 
-      expect(timelineDraws.length, 25);
-      expect(timelineDraws.first, '5250');
+      expect(timelineDraws.length, 15);
+      expect(timelineDraws.first, '5260');
       expect(timelineDraws.last, '5274');
     });
 

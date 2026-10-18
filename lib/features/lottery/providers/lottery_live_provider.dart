@@ -196,6 +196,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   final Map<String, bool> _drawHistoryHasMoreByGame = {};
   Timer? _gamesRefreshDebounce;
   Future<void>? _gamesRefreshInflight;
+  bool _gamesRefreshAgain = false;
   Timer? _drawCacheBumpDebounce;
   final Map<String, Timer> _reconcileDebounceByGame = {};
   int _uiInteractionPause = 0;
@@ -1245,6 +1246,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   Future<void> _refreshGamesFromServer() async {
     if (_gamesRefreshInflight != null) {
+      _gamesRefreshAgain = true;
       await _gamesRefreshInflight;
       return;
     }
@@ -1253,6 +1255,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       await _gamesRefreshInflight;
     } finally {
       _gamesRefreshInflight = null;
+      if (_gamesRefreshAgain) {
+        _gamesRefreshAgain = false;
+        unawaited(_refreshGamesFromServer());
+      }
     }
   }
 
@@ -1944,6 +1950,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   void _runResync(String key) {
     _resyncLastAt[key] = DateTime.now();
+    // 队列把期次帧丢掉时只会打 RESYNC。不补期态的话，人还停在房间里就会一直开奖中。
+    _scheduleRefreshGamesFromServer(immediate: true);
     final future = key == '*'
         ? loadAllChatMessagesFromServer()
         : loadChatMessagesFromServer(key);
@@ -2496,12 +2504,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _scheduleDrawWatchdog();
       return;
     }
-    _drawPollDebounce?.cancel();
+    // 倒计时每秒都会进来。已经排了补拉就别取消，否则 800ms 永远到不了。
+    if (_drawPollDebounce != null) return;
     _drawPollDebounce = Timer(const Duration(milliseconds: 800), () {
       _drawPollDebounce = null;
       if (!mounted) return;
       if (state.games.any((g) => _gameNeedsRecovery(g.id))) {
-        _scheduleRefreshGamesFromServer();
+        _scheduleRefreshGamesFromServer(immediate: true);
       }
     });
   }
@@ -2512,8 +2521,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _drawWatchdog = null;
       return;
     }
-    // 周期性补拉：漏 SNAPSHOT 时尽快对齐服务端未来 openAt，退出「开奖中」
-    _drawWatchdog ??= Timer.periodic(const Duration(seconds: 2), (_) {
+    if (_drawWatchdog != null) return;
+    // 一进开奖中就拉，之后每秒再拉。漏掉换期帧时不要再空等两秒。
+    _scheduleRefreshGamesFromServer(immediate: true);
+    _drawWatchdog = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
         _cancelDrawWatchdog();
         return;
@@ -2524,6 +2535,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       }
       _scheduleRefreshGamesFromServer(immediate: true);
     });
+  }
+
+  void _syncDrawingWatchdog() {
+    if (state.games.any((g) => _gameNeedsRecovery(g.id))) {
+      _scheduleServerSync();
+    } else {
+      _cancelDrawWatchdog();
+    }
   }
 
   void _cancelDrawWatchdog() {
@@ -2549,18 +2568,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
       if (_interactionPaused) {
         _bumpUiTick();
+        // 人在下注页时倒计时照走，但开奖补拉不能停。否则换期帧一丢就停在开奖中。
+        _syncDrawingWatchdog();
         return;
       }
 
       final now = ServerClock.now();
       final result = _engine.onSecondTick(now);
       _applySecondTickResult(result);
-
-      if (state.games.any((g) => _gameNeedsRecovery(g.id))) {
-        _scheduleServerSync();
-      } else {
-        _cancelDrawWatchdog();
-      }
+      _syncDrawingWatchdog();
     });
   }
 
