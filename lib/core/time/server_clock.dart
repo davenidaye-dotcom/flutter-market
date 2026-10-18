@@ -16,8 +16,14 @@ class ServerClock {
   static const _window = Duration(seconds: 60);
   static const _maxSamples = 64;
 
+  /// 单程延迟超过这个值的样本整段丢掉。慢请求的排队时间不能把时钟拨快。
+  static const maxLatencyMs = 1000;
+
   static final List<_Sample> _samples = <_Sample>[];
   static int? _offsetMs;
+
+  /// 测试里把单调时间拨到指定毫秒。生产路径保持 null。
+  static int? debugElapsedMs;
 
   /// 当前对齐用的偏移（服务器时间 − 单调时间），未校准时为 null。
   static int? get offsetMs => _offsetMs;
@@ -25,22 +31,22 @@ class ServerClock {
   static bool get calibrated => _offsetMs != null;
 
   /// 服务器当前时间。没校准过时退回手机时间。
+  /// 读取时剪掉过期样本，慢请求留下的偏快偏移不会在没有新包时一直生效。
   static DateTime now() {
+    _syncOffset();
     final off = _offsetMs;
     if (off == null) return DateTime.now();
-    return DateTime.fromMillisecondsSinceEpoch(
-      _mono.elapsedMilliseconds + off,
-    );
+    return DateTime.fromMillisecondsSinceEpoch(_elapsed + off);
   }
 
   static int nowMs() => now().millisecondsSinceEpoch;
 
   /// 本机时钟领先服务器的毫秒数（正数=手机快）。仅用于排查。
   static int? get phoneAheadMs {
+    _syncOffset();
     final off = _offsetMs;
     if (off == null) return null;
-    return DateTime.now().millisecondsSinceEpoch -
-        (_mono.elapsedMilliseconds + off);
+    return DateTime.now().millisecondsSinceEpoch - (_elapsed + off);
   }
 
   /// 记一个样本。
@@ -49,13 +55,25 @@ class ServerClock {
   /// WS 不知道就传 0）。
   static void observe(int? serverNowMs, {int latencyMs = 0}) {
     if (serverNowMs == null || serverNowMs <= 0) return;
-    final at = _mono.elapsedMilliseconds;
+    if (latencyMs > maxLatencyMs) return;
+    final at = _elapsed;
     final sample = serverNowMs + latencyMs - at;
     _samples.add(_Sample(at, sample));
-    final cutoff = at - _window.inMilliseconds;
+    _syncOffset();
+  }
+
+  static int get _elapsed => debugElapsedMs ?? _mono.elapsedMilliseconds;
+
+  static void _syncOffset() {
+    if (_samples.isEmpty) return;
+    final cutoff = _elapsed - _window.inMilliseconds;
     _samples.removeWhere((s) => s.at < cutoff);
     while (_samples.length > _maxSamples) {
       _samples.removeAt(0);
+    }
+    if (_samples.isEmpty) {
+      _offsetMs = null;
+      return;
     }
     var best = _samples.first.offset;
     for (final s in _samples) {
@@ -68,6 +86,7 @@ class ServerClock {
   static void reset() {
     _samples.clear();
     _offsetMs = null;
+    debugElapsedMs = null;
   }
 }
 

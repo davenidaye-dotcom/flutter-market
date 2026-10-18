@@ -360,4 +360,126 @@ void main() {
     expect(LotteryPeriodHelper.phaseOf(restored, midway), LotteryDisplayPhase.betting);
     expect(LotteryPeriodHelper.openRemainSeconds(restored, midway), 35);
   });
+
+  test('秒针拉回不看交互是否暂停', () {
+    // 下注页会暂停落盘，但秒针仍调用 onSecondTick，才能把提前扣掉的开奖时刻拉回来。
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    final openAt = t0.add(const Duration(seconds: 40));
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34191267',
+          countdownSeconds: 40,
+          openAtEpochMs: openAt.millisecondsSinceEpoch,
+          sealAtEpochMs: t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch,
+          sealSeconds: 30,
+        ),
+      ],
+      t0,
+    );
+    final midway = t0.add(const Duration(seconds: 5));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34191267',
+      seconds: 0,
+      openAtEpochMs: t0.subtract(const Duration(seconds: 1)).millisecondsSinceEpoch,
+      now: midway,
+    );
+    expect(engine.needsDrawRecovery('JS_SC', midway), isTrue);
+
+    engine.onSecondTick(midway);
+    final restored = engine.displayGame('JS_SC', midway);
+    expect(LotteryPeriodHelper.phaseOf(restored, midway), LotteryDisplayPhase.betting);
+    expect(engine.needsDrawRecovery('JS_SC', midway), isFalse);
+    expect(LotteryPeriodHelper.openRemainSeconds(restored, midway), 35);
+  });
+
+  test('开奖时刻已过就要补拉，只用秒数播种时开奖时刻和终点写在一起', () {
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    final openAt = t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          countdownSeconds: 10,
+          openAtEpochMs: openAt,
+          sealAtEpochMs: t0.millisecondsSinceEpoch,
+          sealSeconds: 10,
+        ),
+      ],
+      t0,
+    );
+    final opened = t0.add(const Duration(seconds: 10));
+    engine.onSecondTick(opened);
+    final drawing = engine.displayGame('JS_SC', opened);
+    expect(LotteryPeriodHelper.phaseOf(drawing, opened), LotteryDisplayPhase.drawing);
+    expect(engine.needsDrawRecovery('JS_SC', opened), isTrue);
+
+    final seeded = LotteryPeriodEngine();
+    seeded.bootstrap(
+      [
+        const LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '1',
+        ),
+      ],
+      t0,
+    );
+    seeded.onPeriodTick('JS_SC', issue: '1', seconds: 40, now: t0);
+    final g = seeded.displayGame('JS_SC', t0);
+    expect(
+      g.openAtEpochMs,
+      t0.add(const Duration(seconds: 40)).millisecondsSinceEpoch,
+    );
+    expect(seeded.countdownFor('JS_SC', t0), 40);
+    expect(seeded.needsDrawRecovery('JS_SC', t0), isFalse);
+  });
+
+  test('开奖中超过 20 秒后，快照里的未来开奖时刻盖过钉死', () {
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    final openAt = t0.add(const Duration(seconds: 40)).millisecondsSinceEpoch;
+    final sealAt = t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          countdownSeconds: 40,
+          openAtEpochMs: openAt,
+          sealSeconds: 30,
+          sealAtEpochMs: sealAt,
+        ),
+      ],
+      t0,
+    );
+    final opened = t0.add(const Duration(seconds: 40));
+    engine.onSecondTick(opened);
+    expect(engine.needsDrawRecovery('JS_SC', opened), isTrue);
+
+    final later = opened.add(LotteryPeriodEngine.stuckDrawingAdopt);
+    final serverOpen = later.add(const Duration(seconds: 30));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 30,
+      openAtEpochMs: serverOpen.millisecondsSinceEpoch,
+      sealAtEpochMs: later.add(const Duration(seconds: 20)).millisecondsSinceEpoch,
+      sealSeconds: 10,
+      now: later,
+    );
+    final recovered = engine.displayGame('JS_SC', later);
+    expect(recovered.currentIssue, '34136341');
+    expect(LotteryPeriodHelper.phaseOf(recovered, later), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.openRemainSeconds(recovered, later), 30);
+    expect(engine.needsDrawRecovery('JS_SC', later), isFalse);
+  });
 }

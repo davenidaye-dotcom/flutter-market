@@ -65,6 +65,9 @@ final class LotteryPeriodEngine {
   /// 开奖中超过这段时间，才接受服务端仍在未来的同期开奖时刻。
   static const stuckDrawingGrace = Duration(milliseconds: 500);
 
+  /// 开奖中超过这段时间，快照里的期号和开奖时刻直接盖过钉死。
+  static const stuckDrawingAdopt = Duration(seconds: 20);
+
   /// 开奖中已持续时长（用于 watchdog / 诊断）；未在开奖中则 null。
   DateTime? drawingSinceOf(String gameId) => _slots[gameId]?.drawingSince;
 
@@ -116,9 +119,15 @@ final class LotteryPeriodEngine {
       if (existing != null) {
         _noteDrawing(existing, now);
         final advances = _incomingIssueAdvances(existing, g.currentIssue);
+        final release = _stuckLongEnough(
+          existing,
+          now,
+          g.currentIssue,
+          g.openAtEpochMs,
+        );
         _arm(existing, now);
-        final pinned = !advances && _epochsFrozen(existing, now);
-        if (advances) _clearArm(existing);
+        if (advances || release) _clearArm(existing);
+        final pinned = !advances && !release && _epochsFrozen(existing, now);
         existing.model = existing.model.copyWith(
           name: g.name.isNotEmpty ? g.name : existing.model.name,
           currentIssue: g.currentIssue.isNotEmpty
@@ -135,6 +144,7 @@ final class LotteryPeriodEngine {
             openAtMs: g.openAtEpochMs,
             sealAtMs: g.sealAtEpochMs,
             now: now,
+            force: release,
           );
         } else {
           _maybeUnstickDrawing(existing, g.openAtEpochMs, now);
@@ -223,6 +233,13 @@ final class LotteryPeriodEngine {
     return _secondsLeft(s, now) <= 0;
   }
 
+  /// 界面已经是「开奖中」就要补拉。看开奖时刻，不看可能还没归零的终点。
+  bool needsDrawRecovery(String gameId, DateTime now) {
+    final s = _slots[gameId];
+    if (s == null) return false;
+    return _shownDrawing(s, now);
+  }
+
   LotteryGameModel displayGame(String gameId, DateTime now) {
     final s = _slots[gameId];
     if (s == null) {
@@ -267,9 +284,10 @@ final class LotteryPeriodEngine {
 
     _noteDrawing(slot, clock);
     final advances = _incomingIssueAdvances(slot, issue);
+    final release = _stuckLongEnough(slot, clock, issue, openAtEpochMs);
     _arm(slot, clock);
-    final pinned = !advances && _epochsFrozen(slot, clock);
-    if (advances) _clearArm(slot);
+    if (advances || release) _clearArm(slot);
+    final pinned = !advances && !release && _epochsFrozen(slot, clock);
     if (issue.isNotEmpty) {
       final newer = _pickNewer(issue, slot.model.currentIssue);
       if (advances || first) {
@@ -286,6 +304,7 @@ final class LotteryPeriodEngine {
         openAtMs: openAtEpochMs,
         sealAtMs: sealAtEpochMs,
         now: clock,
+        force: release,
       );
       if (openAtEpochMs == null || openAtEpochMs <= 0) {
         _syncCountdown(
@@ -384,9 +403,15 @@ final class LotteryPeriodEngine {
     // 人在房间里本地节拍暂停时，也要从这次补丁开始算「开奖中停了多久」。
     _noteDrawing(slot, now);
     final advances = _incomingIssueAdvances(slot, patch.currentIssue);
+    final release = _stuckLongEnough(
+      slot,
+      now,
+      patch.currentIssue,
+      patch.openAtEpochMs,
+    );
     _arm(slot, now);
-    final pinned = !advances && _epochsFrozen(slot, now);
-    if (advances) _clearArm(slot);
+    if (advances || release) _clearArm(slot);
+    final pinned = !advances && !release && _epochsFrozen(slot, now);
     slot.model = slot.model.copyWith(
       name: patch.name.isNotEmpty ? patch.name : slot.model.name,
       currentIssue: patch.currentIssue.isNotEmpty
@@ -408,6 +433,7 @@ final class LotteryPeriodEngine {
       openAtMs: patch.openAtEpochMs,
       sealAtMs: patch.sealAtEpochMs,
       now: now,
+      force: release,
     );
     _arm(slot, now);
     final cdBefore = _secondsLeft(slot, now);
@@ -432,8 +458,15 @@ final class LotteryPeriodEngine {
   // ── internal ──
 
   bool _slotNeedsTicker(_GameSlot s) {
-    if (_secondsLeft(s, ServerClock.now()) > 0) return true;
+    final now = ServerClock.now();
+    if (_secondsLeft(s, now) > 0) return true;
+    if (_shownDrawing(s, now)) return true;
     return s.wsSynced;
+  }
+
+  bool _shownDrawing(_GameSlot slot, DateTime now) {
+    return LotteryPeriodHelper.phaseOf(_toDisplay(slot, now), now) ==
+        LotteryDisplayPhase.drawing;
   }
 
   LotteryGameModel _toDisplay(_GameSlot s, [DateTime? now]) {
@@ -554,7 +587,7 @@ final class LotteryPeriodEngine {
 
   /// 本地终点已经被提前扣到 0，但本期武装的开奖时刻还在未来：把倒计时拉回来。
   void _restoreArmedOpen(_GameSlot slot, DateTime now) {
-    if (_secondsLeft(slot, now) > 0) return;
+    if (_secondsLeft(slot, now) > 0 && !_shownDrawing(slot, now)) return;
     final armed = slot.armedOpenAtMs;
     if (armed == null || armed <= now.millisecondsSinceEpoch) return;
     if (!_sameIssue(slot.armedIssue, slot.model.currentIssue)) return;
@@ -575,7 +608,7 @@ final class LotteryPeriodEngine {
 
   /// 记下进入开奖中的时刻；倒计时恢复后清掉。
   void _noteDrawing(_GameSlot slot, DateTime now) {
-    if (_secondsLeft(slot, now) <= 0) {
+    if (_shownDrawing(slot, now)) {
       slot.drawingSince ??= now;
     } else {
       slot.drawingSince = null;
@@ -585,7 +618,7 @@ final class LotteryPeriodEngine {
   /// 开奖中已停满 [LotteryPeriodEngine.stuckDrawingGrace]，且服务端开奖时刻仍在未来。
   bool _shouldUnstickDrawing(_GameSlot slot, DateTime now, int? openAtMs) {
     if (openAtMs == null || openAtMs <= now.millisecondsSinceEpoch) return false;
-    if (_secondsLeft(slot, now) > 0) return false;
+    if (!_shownDrawing(slot, now)) return false;
     final since = slot.drawingSince;
     if (since == null) return false;
     return now.difference(since) >= LotteryPeriodEngine.stuckDrawingGrace;
@@ -641,6 +674,26 @@ final class LotteryPeriodEngine {
     return now.millisecondsSinceEpoch >= seal;
   }
 
+  /// 开奖中停太久：这份带期号和开奖时刻的快照可以盖过钉死。更旧的期号不盖。
+  bool _stuckLongEnough(
+    _GameSlot slot,
+    DateTime now,
+    String issue,
+    int? openAtMs,
+  ) {
+    if (issue.isEmpty || openAtMs == null || openAtMs <= 0) return false;
+    final current = slot.model.currentIssue;
+    if (current.isNotEmpty &&
+        !_sameIssue(issue, current) &&
+        compareIssueNo(issue, current) < 0) {
+      return false;
+    }
+    if (!_shownDrawing(slot, now)) return false;
+    final since = slot.drawingSince;
+    if (since == null) return false;
+    return now.difference(since) >= LotteryPeriodEngine.stuckDrawingAdopt;
+  }
+
   bool _incomingIssueAdvances(_GameSlot slot, String issue) {
     if (issue.isEmpty || slot.model.currentIssue.isEmpty) return false;
     return !_sameIssue(issue, slot.model.currentIssue) &&
@@ -654,12 +707,14 @@ final class LotteryPeriodEngine {
     int? openAtMs,
     int? sealAtMs,
     required DateTime now,
+    bool force = false,
   }) {
     final prevOpen = slot.model.openAtEpochMs ?? 0;
     final prevSeal = slot.model.sealAtEpochMs ?? 0;
     final sameIssue = slot.armedIssue.isNotEmpty &&
         _sameIssue(slot.armedIssue, slot.model.currentIssue);
-    if (sameIssue &&
+    if (!force &&
+        sameIssue &&
         openAtMs != null &&
         openAtMs > prevOpen &&
         prevOpen > 0) {
@@ -703,6 +758,9 @@ final class LotteryPeriodEngine {
     if (seconds <= 0) return;
     if (!force && slot.openDeadline != null) return;
     slot.openDeadline = now.add(Duration(seconds: seconds));
+    slot.model = slot.model.copyWith(
+      openAtEpochMs: slot.openDeadline!.millisecondsSinceEpoch,
+    );
   }
 
   int _secondsLeft(_GameSlot slot, DateTime now) {

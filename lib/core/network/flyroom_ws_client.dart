@@ -37,6 +37,12 @@ class FlyroomWsClient {
   /// 建连时的 token。旧连接上的 SESSION_KICKED 不能踢掉后来登录的会话。
   String? sessionToken;
 
+  /// 半开连接不会触发 onDone。定时写 PING，太久没有入站帧就主动断开。
+  static const _pingEvery = Duration(seconds: 10);
+  static const _idleLimit = Duration(seconds: 25);
+  Timer? _heartbeat;
+  DateTime? _lastRxAt;
+
   Stream<Map<String, dynamic>> get events => _controller.stream;
   bool get isConnected => _channel != null;
 
@@ -58,12 +64,14 @@ class FlyroomWsClient {
     _channel = ch;
     _sub = ch.stream.listen(
       (raw) {
+        _markRx();
         _pendingRaw.add(raw);
         if (!_pumping) unawaited(_pump());
       },
       onError: (_) => _notifyDisconnected(),
       onDone: _notifyDisconnected,
     );
+    _startHeartbeat();
   }
 
   /// 握手被拒且手上没有可用的证：总后台可能刚打开双向证书，换一次证再连。
@@ -82,11 +90,43 @@ class FlyroomWsClient {
     }
   }
 
+  void _markRx() {
+    _lastRxAt = DateTime.now();
+  }
+
+  void _startHeartbeat() {
+    _heartbeat?.cancel();
+    _markRx();
+    _heartbeat = Timer.periodic(_pingEvery, (_) {
+      if (_channel == null || _closing) return;
+      final last = _lastRxAt;
+      if (last != null && DateTime.now().difference(last) > _idleLimit) {
+        _notifyDisconnected();
+        return;
+      }
+      ping();
+    });
+  }
+
+  void _stopHeartbeat() {
+    _heartbeat?.cancel();
+    _heartbeat = null;
+  }
+
   void _notifyDisconnected() {
     if (_closing || _disconnectNotified) return;
     _disconnectNotified = true;
+    _stopHeartbeat();
+    final ch = _channel;
     _channel = null;
     onDisconnected?.call();
+    if (ch != null) {
+      unawaited(() async {
+        try {
+          await ch.sink.close();
+        } catch (_) {}
+      }());
+    }
   }
 
   /// 单消费者队列：小帧同步消化，大帧交给 isolate。
@@ -211,6 +251,7 @@ class FlyroomWsClient {
   Future<void> disconnect() async {
     _closing = true;
     _disconnectNotified = true;
+    _stopHeartbeat();
     _pendingRaw.clear();
     _pumpGen++;
     _pumping = false;

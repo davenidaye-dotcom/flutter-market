@@ -53,4 +53,23 @@ void main() {
     ServerClock.observe(-5);
     expect(ServerClock.calibrated, isFalse);
   });
+
+  test('8 秒 RTT 不能把时钟拨快超过 1 秒', () {
+    final base = DateTime.now().millisecondsSinceEpoch;
+    ServerClock.observe(base);
+    final before = ServerClock.offsetMs;
+    ServerClock.observe(base, latencyMs: 8000);
+    expect(ServerClock.offsetMs, before);
+    final skew = ServerClock.now().millisecondsSinceEpoch - base;
+    expect(skew.abs(), lessThan(1000));
+  });
+
+  test('过期的偏快样本在没有新包时也会清掉', () {
+    ServerClock.debugElapsedMs = 0;
+    ServerClock.observe(5000000);
+    expect(ServerClock.calibrated, isTrue);
+    ServerClock.debugElapsedMs = 61 * 1000;
+    ServerClock.now();
+    expect(ServerClock.calibrated, isFalse);
+  });
 }

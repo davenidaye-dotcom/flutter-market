@@ -92,11 +92,15 @@ class LotteryRepository {
   Future<List<LotteryGameModel>> getGames(
     String roomId, {
     bool asOwner = false,
+    Duration? receiveTimeout,
   }) async {
     final dynamic data;
     final sentAt = DateTime.now().millisecondsSinceEpoch;
     if (asOwner) {
-      data = await _client.get('/owner/games');
+      data = await _client.get(
+        '/owner/games',
+        receiveTimeout: receiveTimeout,
+      );
     } else {
       final numeric = SessionStore.instance.roomId ??
           (int.tryParse(roomId) != null ? roomId : null);
@@ -105,6 +109,7 @@ class LotteryRepository {
         query: {
           if (numeric != null && numeric.isNotEmpty) 'roomId': numeric,
         },
+        receiveTimeout: receiveTimeout,
       );
     }
     if (data is! List) return const [];
@@ -113,9 +118,9 @@ class LotteryRepository {
     for (final e in data) {
       if (e is Map) {
         final sn = e['serverNowMs'];
-        ServerClock.observe(
+        _observeServerClock(
           sn is num ? sn.toInt() : int.tryParse('$sn'),
-          latencyMs: rttHalf,
+          rttHalf,
         );
         break;
       }
@@ -193,9 +198,9 @@ class LotteryRepository {
         return int.tryParse('$v');
       }
 
-      ServerClock.observe(
+      _observeServerClock(
         toInt(m['serverNowMs']),
-        latencyMs: (DateTime.now().millisecondsSinceEpoch - sentAt) ~/ 2,
+        (DateTime.now().millisecondsSinceEpoch - sentAt) ~/ 2,
       );
 
       return (
@@ -611,4 +616,10 @@ class LotteryRepository {
     }
     return const [];
   }
+}
+
+/// 慢请求的单程延迟整段丢掉，避免把服务器时钟拨快。
+void _observeServerClock(int? serverNowMs, int rttHalf) {
+  if (rttHalf > ServerClock.maxLatencyMs) return;
+  ServerClock.observe(serverNowMs, latencyMs: rttHalf);
 }
