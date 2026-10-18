@@ -25,42 +25,43 @@ class _RaceCarPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final scale = size.width / 24;
     canvas.scale(scale);
+    // 线宽和占位按 24 的 Material 图标：内容大约落在 2–22，和耳机、盾牌同一视觉大小。
     final stroke = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.7
+      ..strokeWidth = 2
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;
 
-    final ground = Path()..moveTo(4.5, 15.4)..lineTo(19.5, 15.4);
+    final ground = Path()..moveTo(2, 17.6)..lineTo(22, 17.6);
     final body = Path()
-      ..moveTo(6.2, 15.4)
-      ..lineTo(7.9, 11.2)
+      ..moveTo(3.2, 17.6)
+      ..lineTo(5.4, 12.2)
       ..arcToPoint(
-        const Offset(9.5, 10),
-        radius: const Radius.circular(1.7),
+        const Offset(7.6, 10.4),
+        radius: const Radius.circular(2.2),
         clockwise: true,
       )
-      ..lineTo(14.5, 10)
-      ..cubicTo(15.14, 10, 15.72, 10.36, 16, 11)
-      ..lineTo(17.8, 15.4);
+      ..lineTo(15.2, 10.4)
+      ..cubicTo(16.2, 10.4, 17.1, 10.9, 17.6, 11.8)
+      ..lineTo(20.8, 17.6);
     final cabin = Path()
-      ..moveTo(9.4, 10)
-      ..lineTo(10.4, 7.85)
+      ..moveTo(8.2, 10.4)
+      ..lineTo(9.6, 6.0)
       ..arcToPoint(
-        const Offset(11.5, 7.2),
-        radius: const Radius.circular(1.2),
+        const Offset(11.4, 4.4),
+        radius: const Radius.circular(1.8),
         clockwise: true,
       )
-      ..lineTo(12.6, 7.2)
-      ..cubicTo(13.08, 7.2, 13.52, 7.48, 13.72, 7.92)
-      ..lineTo(14.7, 10);
+      ..lineTo(13.0, 4.4)
+      ..cubicTo(13.9, 4.4, 14.6, 4.9, 15.0, 5.7)
+      ..lineTo(16.4, 10.4);
 
     canvas.drawPath(ground, stroke);
     canvas.drawPath(body, stroke);
     canvas.drawPath(cabin, stroke);
-    canvas.drawCircle(const Offset(8, 15.4), 1.65, stroke);
-    canvas.drawCircle(const Offset(16.1, 15.4), 1.65, stroke);
+    canvas.drawCircle(const Offset(7.6, 17.6), 2.55, stroke);
+    canvas.drawCircle(const Offset(16.6, 17.6), 2.55, stroke);
   }
 
   @override
