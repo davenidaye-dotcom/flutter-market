@@ -271,6 +271,16 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
     }
   }
 
+  void _leave() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pop();
+      return;
+    }
+    appRoomBack(context, widget.roomId);
+  }
+
   @override
   Widget build(BuildContext context) {
     // 已在客服 Tab 时再次「发给客服」也会弹确认
@@ -290,7 +300,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
             children: [
               PageAppBar(
                 title: '在线客服',
-                onBack: () => appRoomBack(context, widget.roomId),
+                onBack: _leave,
               ),
               Expanded(
                 child: ValueListenableBuilder<bool>(

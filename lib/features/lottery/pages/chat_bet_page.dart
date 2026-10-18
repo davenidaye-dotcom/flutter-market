@@ -1133,8 +1133,11 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   /// 一次返回只关一层：子页和弹窗在最上面，然后才是面板，最后关聊天。
   bool _consumeBackStep() {
     if (!mounted || widget.onClose == null) return false;
-    if (!appBackLayerActive(context)) return false;
+    final overlayVisible =
+        ChatOverlayVisibility.maybeOf(context)?.visible ?? true;
+    if (!overlayVisible) return false;
     final nav = Navigator.of(context);
+    // 客服等子页盖在聊天上时，本页路由已经不是当前页。先把子页退掉。
     if (popNavigatorPopup(nav)) return true;
     if (nav.canPop() && tryAppBackLayers(overlay: false, onlyNavigator: nav)) {
       return true;
@@ -1143,6 +1146,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
       nav.pop();
       return true;
     }
+    if (!appBackLayerActive(context)) return false;
     if (_topPanelNotifier.value != _TopPanel.none) {
       _topPanelNotifier.value = _TopPanel.none;
       _fabSelectedNotifier.value = null;

@@ -10,7 +10,6 @@ import '../../../config/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/models/room_model.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/gradient_background.dart';
@@ -310,8 +309,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(height: 12.h),
-                  const AppLogoHeader(),
-                  SizedBox(height: 20.h),
                   _ProfileCard(
                     nickname: user?.nickname ?? '未登录',
                     username: user?.username ?? '',

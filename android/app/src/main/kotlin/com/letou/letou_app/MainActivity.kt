@@ -36,6 +36,43 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/update")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "installApk" -> {
+                        val path = call.argument<String>("path")
+                        val version = call.argument<String>("version") ?: ""
+                        if (path.isNullOrBlank()) {
+                            result.error("install", "缺少安装包", null)
+                            return@setMethodCallHandler
+                        }
+                        if (!ApkInstaller.canInstall(this)) {
+                            ApkInstaller.openUnknownSources(this)
+                            result.success("permission")
+                            return@setMethodCallHandler
+                        }
+                        Thread {
+                            try {
+                                ApkInstaller.install(applicationContext, java.io.File(path), version)
+                                runOnUiThread { result.success("started") }
+                            } catch (e: Exception) {
+                                runOnUiThread { result.error("install", e.message, null) }
+                            }
+                        }.start()
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/update/status")
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {
+                    ApkInstaller.sink = sink
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    ApkInstaller.sink = null
+                }
+            })
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/security/vpn")
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, sink: EventChannel.EventSink) {

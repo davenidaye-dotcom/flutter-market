@@ -27,6 +27,40 @@ Future<void> _load() async {
   }
 }
 
+/// 安装包可能在公网，也可能在只认包内根证书的主机上。两边都信，不带客户端证。
+Future<void> downloadHttps(
+  String url,
+  String savePath, {
+  required void Function(int received, int total) onProgress,
+  CancelToken? cancelToken,
+}) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || uri.scheme.toLowerCase() != 'https') {
+    throw const TlsException('安装包地址需要是 https');
+  }
+  await ensureMtlsMaterialLoaded();
+  final dio = Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 20),
+      receiveTimeout: const Duration(minutes: 10),
+      followRedirects: true,
+    ),
+  );
+  dio.httpClientAdapter = _TlsOnlyAdapter(
+    IOHttpClientAdapter(createHttpClient: _downloadClient),
+  );
+  try {
+    await dio.download(
+      url,
+      savePath,
+      cancelToken: cancelToken,
+      onReceiveProgress: onProgress,
+    );
+  } finally {
+    dio.close();
+  }
+}
+
 void bindMtlsClient(Dio dio, {required bool presentClientCert}) {
   final old = dio.httpClientAdapter;
   dio.httpClientAdapter = _TlsOnlyAdapter(
@@ -68,6 +102,23 @@ HttpClient _httpClient(bool presentClientCert) {
   }
   final client = HttpClient(context: context);
   // 连接真正建立前再看一次。回调已经把 VPN 标上时，这里抛错，TCP 不会发，抓包里没有 CONNECT。
+  client.findProxy = (_) {
+    if (VpnGuard.blocked) {
+      throw const VpnBlockedException();
+    }
+    return 'DIRECT';
+  };
+  client.badCertificateCallback = (_, _, _) => false;
+  return client;
+}
+
+HttpClient _downloadClient() {
+  final context = SecurityContext(withTrustedRoots: true);
+  final ca = _caBytes;
+  if (ca != null && ca.isNotEmpty) {
+    context.setTrustedCertificatesBytes(ca);
+  }
+  final client = HttpClient(context: context);
   client.findProxy = (_) {
     if (VpnGuard.blocked) {
       throw const VpnBlockedException();
