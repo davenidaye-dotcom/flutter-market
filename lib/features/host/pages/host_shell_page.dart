@@ -84,27 +84,24 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
     super.dispose();
   }
 
-  int get _navIndex {
-    final i = widget.navigationShell.currentIndex;
-    return i == 0 ? -1 : i - 1;
-  }
+  /// 底栏下标与分支一致：0 游戏（彩种大厅）… 4 审核
+  int get _navIndex => widget.navigationShell.currentIndex;
 
   void _bumpAuditListRefresh() {
     ref.read(hostAuditListRefreshTickProvider.notifier).state++;
   }
 
   void _onNavTap(int index) {
-    final branch = index + 1;
-    if (branch == widget.navigationShell.currentIndex) {
+    if (index == widget.navigationShell.currentIndex) {
       // 再点个人中心/审核：刷新角标；审核页再拉列表
-      if (index == 2 || index == 3) {
+      if (index == 3 || index == 4) {
         unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
       }
-      if (index == 3) _bumpAuditListRefresh();
+      if (index == 4) _bumpAuditListRefresh();
       return;
     }
-    widget.navigationShell.goBranch(branch);
-    if (index == 2 || index == 3) {
+    widget.navigationShell.goBranch(index);
+    if (index == 3 || index == 4) {
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
     }
   }

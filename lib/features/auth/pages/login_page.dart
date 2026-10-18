@@ -144,9 +144,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         return;
       }
       final dest = live.isAgentSide
-          ? RoutePaths.agentPersonalInfo(live.roomId ?? '1001')
+          ? RoutePaths.agentPersonalInfo(live.roomId ?? SessionStore.instance.routeRoomKey)
           : live.isHostSide
-              ? RoutePaths.hostLottery(live.roomId ?? '1001')
+              ? RoutePaths.hostLottery(live.roomId ?? SessionStore.instance.routeRoomKey)
               : RoutePaths.home;
       context.go(dest);
     } catch (e) {

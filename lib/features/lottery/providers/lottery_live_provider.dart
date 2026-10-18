@@ -1535,16 +1535,59 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   String _wsRoomKey() {
     final stored = SessionStore.instance.roomId?.trim() ?? '';
     if (int.tryParse(stored) != null) return stored;
+    // 房主路由上可能是房间号或占位值，订错房间就收不到玩家消息和全房合计
+    if (_wsIsHost) return '';
     final route = roomId.trim();
     if (int.tryParse(route) != null) return route;
     if (stored.isNotEmpty) return stored;
     return route;
   }
 
+  bool _hostRoomResolving = false;
+  Timer? _hostRoomRetry;
+
+  /// 房主会话里没有数字 roomId（旧版本登录、登录包没带房间）：向服务端要本房间再订阅。
+  Future<void> _resolveHostRoomId() async {
+    if (_hostRoomResolving || _wsDisposed) return;
+    _hostRoomResolving = true;
+    var ok = false;
+    try {
+      final room = await _ref.read(ownerRepositoryProvider).getRoom();
+      final id = '${room['roomId'] ?? ''}'.trim();
+      if (int.tryParse(id) != null && mounted && !_wsDisposed) {
+        final code = '${room['roomCode'] ?? ''}'.trim();
+        final name = room['roomName']?.toString();
+        await SessionStore.instance.setRoom(
+          roomId: id,
+          roomCode: code.isNotEmpty ? code : SessionStore.instance.roomCode,
+          roomName: name,
+        );
+        ok = true;
+      }
+    } catch (_) {
+    } finally {
+      _hostRoomResolving = false;
+    }
+    if (!mounted || _wsDisposed) return;
+    if (ok) {
+      _syncWsSubscriptions();
+      return;
+    }
+    _hostRoomRetry?.cancel();
+    _hostRoomRetry = Timer(const Duration(seconds: 3), () {
+      _hostRoomRetry = null;
+      if (mounted && !_wsDisposed) _syncWsSubscriptions();
+    });
+  }
+
   void _syncWsSubscriptions() {
     final client = _ws;
     if (!_wsConnected || client == null) return;
     final roomNumeric = _wsRoomKey();
+    if (roomNumeric.isEmpty) {
+      if (_wsIsHost) unawaited(_resolveHostRoomId());
+      return;
+    }
     final desired = <String>{
       'room:$roomNumeric:sys',
       // 申请里有金额和账号，只给房主连接订。玩家走 user 频道也收不到这间房的审核。
@@ -2624,6 +2667,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _showQuickPoll = null;
     _wsReconnectTimer?.cancel();
     _wsReconnectTimer = null;
+    _hostRoomRetry?.cancel();
+    _hostRoomRetry = null;
     for (final t in _denialTimers.values) {
       t.cancel();
     }

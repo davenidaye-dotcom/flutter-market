@@ -40,6 +40,14 @@ class SessionStore {
   /// 作废还没写完的登录（快登、上一次密码登录）。
   int bumpEpoch() => ++epoch;
 
+  /// 路由里的房间段。登录包没带房间时用 0 占位，房间推送另按数字 roomId 订阅。
+  String get routeRoomKey {
+    final code = roomCode?.trim() ?? '';
+    if (code.isNotEmpty) return code;
+    final id = roomId?.trim() ?? '';
+    return id.isNotEmpty ? id : '0';
+  }
+
   /// 大厅顶栏：房间名。没有房间名时才用房主昵称。
   String get hallTitle {
     final name = roomName?.trim() ?? '';

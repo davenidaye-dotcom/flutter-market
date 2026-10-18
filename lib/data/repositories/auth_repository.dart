@@ -116,16 +116,14 @@ class AuthRepository {
         epoch: commitEpoch,
       );
     } else {
+      // 登录包没带房间也要清掉上一个账号的房间，否则房主会订到别人的房间频道。
       final room = map['room'];
-      if (room is Map) {
-        final roomId = room['roomId']?.toString();
-        final roomCode = room['roomCode']?.toString();
-        await SessionStore.instance.setRoom(
-          roomId: roomId,
-          roomCode: roomCode,
-          epoch: commitEpoch,
-        );
-      }
+      await SessionStore.instance.setRoom(
+        roomId: room is Map ? room['roomId']?.toString() : null,
+        roomCode: room is Map ? room['roomCode']?.toString() : null,
+        roomName: room is Map ? (room['roomName']?.toString() ?? '') : '',
+        epoch: commitEpoch,
+      );
     }
     // setRoom 会让出执行权。代际已变就撤掉这次写下的 token，不能清掉后来的登录。
     _ensureEpoch(commitEpoch, token);

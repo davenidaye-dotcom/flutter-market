@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
+import 'race_car_icon.dart';
 import 'red_count_badge.dart';
 
 class UserBottomNavItem {
   const UserBottomNavItem({
-    required this.icon,
     required this.label,
+    this.icon,
+    this.raceCar = false,
   });
 
-  final IconData icon;
+  final IconData? icon;
   final String label;
+  final bool raceCar;
 }
 
-/// 在线客服、钱包中心、房间介绍、个人中心
+/// 游戏、在线客服、钱包中心、房间介绍、个人中心。下标与壳分支一致。
 class UserBottomNavBar extends StatelessWidget {
   const UserBottomNavBar({
     super.key,
@@ -22,13 +25,14 @@ class UserBottomNavBar extends StatelessWidget {
     this.csBadge = 0,
   });
 
-  /// -1 = 无选中（彩种大厅）
+  /// 0 游戏（彩种大厅）… 4 个人中心
   final int currentIndex;
   final ValueChanged<int> onTap;
   /// 在线客服未读
   final int csBadge;
 
   static const items = [
+    UserBottomNavItem(label: '游戏', raceCar: true),
     UserBottomNavItem(icon: Icons.support_agent, label: '在线客服'),
     UserBottomNavItem(icon: Icons.verified_user_outlined, label: '钱包中心'),
     UserBottomNavItem(icon: Icons.account_balance_wallet_outlined, label: '房间介绍'),
@@ -67,8 +71,10 @@ class UserBottomNavBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       BadgedIcon(
-                        count: i == 0 ? csBadge : 0,
-                        child: Icon(item.icon, color: iconColor, size: 24.sp),
+                        count: i == 1 ? csBadge : 0,
+                        child: item.raceCar
+                            ? RaceCarIcon(color: iconColor, size: 24.sp)
+                            : Icon(item.icon!, color: iconColor, size: 24.sp),
                       ),
                       SizedBox(height: 2.h),
                       Text(

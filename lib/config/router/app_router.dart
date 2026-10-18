@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/router/route_paths.dart';
+import '../../core/network/session_store.dart';
 import '../../shared/widgets/app_back.dart';
 import '../../features/auth/pages/captcha_page.dart';
 import '../../features/auth/pages/login_page.dart';
@@ -80,7 +81,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final session = ref.read(authSessionProvider);
       final loc = state.matchedLocation;
-      final roomId = session.user?.roomId ?? '1001';
+      final roomId = session.user?.roomId ?? SessionStore.instance.routeRoomKey;
 
       if (session.isHostSide) {
         final forcePwd = session.user?.forceChangePassword == true;
