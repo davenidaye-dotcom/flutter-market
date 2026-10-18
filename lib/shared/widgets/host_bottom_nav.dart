@@ -1,15 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
+import 'race_car_icon.dart';
 import 'red_count_badge.dart';
 
 class HostBottomNavItem {
-  const HostBottomNavItem({required this.icon, required this.label});
-  final IconData icon;
+  const HostBottomNavItem({required this.label, this.icon, this.raceCar = false});
+  final IconData? icon;
   final String label;
+  final bool raceCar;
 }
 
-/// 竞品：在线客服｜房间管理｜个人中心｜审核列表
+/// 在线客服｜房间管理｜游戏｜个人中心｜审核列表。游戏在正中，壳分支仍是大厅为 0。
 class HostBottomNavBar extends StatelessWidget {
   const HostBottomNavBar({
     super.key,
@@ -29,9 +31,18 @@ class HostBottomNavBar extends StatelessWidget {
   static const items = [
     HostBottomNavItem(icon: Icons.support_agent, label: '在线客服'),
     HostBottomNavItem(icon: Icons.settings, label: '房间管理'),
+    HostBottomNavItem(label: '游戏', raceCar: true),
     HostBottomNavItem(icon: Icons.person_outline, label: '个人中心'),
     HostBottomNavItem(icon: Icons.account_balance_wallet_outlined, label: '审核列表'),
   ];
+
+  /// 视觉下标 → 壳分支。游戏在中间，对应分支 0。
+  static const branches = [1, 2, 0, 3, 4];
+
+  static int visualIndex(int branch) {
+    final i = branches.indexOf(branch);
+    return i < 0 ? 0 : i;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +65,7 @@ class HostBottomNavBar extends StatelessWidget {
               final color = active ? const Color(0xFF2F7FD1) : const Color(0xFF3A8AD8);
               final badge = i == 0
                   ? csBadge
-                  : ((i == 2 || i == 3) ? auditBadge : 0);
+                  : ((i == 3 || i == 4) ? auditBadge : 0);
               return Expanded(
                 child: InkWell(
                   onTap: () => onTap(i),
@@ -63,7 +74,9 @@ class HostBottomNavBar extends StatelessWidget {
                     children: [
                       BadgedIcon(
                         count: badge,
-                        child: Icon(item.icon, color: color, size: 24.sp),
+                        child: item.raceCar
+                            ? RaceCarIcon(color: color, size: 24.sp)
+                            : Icon(item.icon!, color: color, size: 24.sp),
                       ),
                       SizedBox(height: 2.h),
                       Text(

@@ -1,19 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../config/theme/app_colors.dart';
+import 'race_car_icon.dart';
 import 'red_count_badge.dart';
 
 class UserBottomNavItem {
   const UserBottomNavItem({
-    required this.icon,
     required this.label,
+    this.icon,
+    this.raceCar = false,
   });
 
-  final IconData icon;
+  final IconData? icon;
   final String label;
+  final bool raceCar;
 }
 
-/// 在线客服、钱包中心、房间介绍、个人中心
+/// 在线客服、钱包中心、游戏、房间介绍、个人中心。游戏在正中，壳分支仍是大厅为 0。
 class UserBottomNavBar extends StatelessWidget {
   const UserBottomNavBar({
     super.key,
@@ -22,7 +25,7 @@ class UserBottomNavBar extends StatelessWidget {
     this.csBadge = 0,
   });
 
-  /// -1 = 无选中（彩种大厅）
+  /// 底栏视觉下标：0 客服 … 2 游戏 … 4 个人
   final int currentIndex;
   final ValueChanged<int> onTap;
   /// 在线客服未读
@@ -31,9 +34,18 @@ class UserBottomNavBar extends StatelessWidget {
   static const items = [
     UserBottomNavItem(icon: Icons.support_agent, label: '在线客服'),
     UserBottomNavItem(icon: Icons.verified_user_outlined, label: '钱包中心'),
+    UserBottomNavItem(label: '游戏', raceCar: true),
     UserBottomNavItem(icon: Icons.account_balance_wallet_outlined, label: '房间介绍'),
     UserBottomNavItem(icon: Icons.people_alt_outlined, label: '个人中心'),
   ];
+
+  /// 视觉下标 → 壳分支。游戏在中间，对应分支 0。
+  static const branches = [1, 2, 0, 3, 4];
+
+  static int visualIndex(int branch) {
+    final i = branches.indexOf(branch);
+    return i < 0 ? 0 : i;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -68,7 +80,9 @@ class UserBottomNavBar extends StatelessWidget {
                     children: [
                       BadgedIcon(
                         count: i == 0 ? csBadge : 0,
-                        child: Icon(item.icon, color: iconColor, size: 24.sp),
+                        child: item.raceCar
+                            ? RaceCarIcon(color: iconColor, size: 24.sp)
+                            : Icon(item.icon!, color: iconColor, size: 24.sp),
                       ),
                       SizedBox(height: 2.h),
                       Text(

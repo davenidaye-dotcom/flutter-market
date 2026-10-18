@@ -79,27 +79,25 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
     super.dispose();
   }
 
-  int get _navIndex {
-    final i = widget.navigationShell.currentIndex;
-    return i == 0 ? -1 : i - 1;
-  }
+  /// 底栏视觉下标。游戏在正中，对应壳分支 0。
+  int get _navIndex => HostBottomNavBar.visualIndex(widget.navigationShell.currentIndex);
 
   void _bumpAuditListRefresh() {
     ref.read(hostAuditListRefreshTickProvider.notifier).state++;
   }
 
   void _onNavTap(int index) {
-    final branch = index + 1;
+    final branch = HostBottomNavBar.branches[index];
     if (branch == widget.navigationShell.currentIndex) {
       // 再点个人中心/审核：刷新角标；审核页再拉列表
-      if (index == 2 || index == 3) {
+      if (branch == 3 || branch == 4) {
         unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
       }
-      if (index == 3) _bumpAuditListRefresh();
+      if (branch == 4) _bumpAuditListRefresh();
       return;
     }
     widget.navigationShell.goBranch(branch);
-    if (index == 2 || index == 3) {
+    if (branch == 3 || branch == 4) {
       unawaited(ref.read(hostPendingAuditProvider.notifier).refresh());
     }
   }
