@@ -90,7 +90,7 @@ class FlyroomWsClient {
   }
 
   /// 单消费者队列：小帧同步消化，大帧交给 isolate。
-  /// 积压时未读和期次插到队头，换期不用等聊天帧。
+  /// 积压时按车道把时钟和状态排到气泡前面，仪式帧保持原顺序。
   Future<void> _pump() async {
     _pumping = true;
     final gen = _pumpGen;
@@ -120,31 +120,76 @@ class FlyroomWsClient {
     }
   }
 
-  /// 积压时先投递未读和期次。房间聊天再多，底栏未读和换期也不能排在后面。
+  /// 积压时按车道重排，车道内部保持到达顺序。
+  /// 时钟可以排到封盘和开奖前面；仪式帧本身不互相插队；气泡留在最后。
   void _hoistPriorityFrames() {
-    final pri = <dynamic>[];
-    final rest = <dynamic>[];
+    var urgent = false;
     for (final raw in _pendingRaw) {
-      if (raw is String && _priorityWsFrame(raw)) {
-        pri.add(raw);
-      } else {
-        rest.add(raw);
+      if (raw is String && _sendLane(raw) < 4) {
+        urgent = true;
+        break;
       }
     }
-    if (pri.isEmpty) return;
+    if (!urgent) return;
+    final lanes = List.generate(5, (_) => <dynamic>[]);
+    for (final raw in _pendingRaw) {
+      final lane = raw is String ? _sendLane(raw) : 4;
+      lanes[lane].add(raw);
+    }
     _pendingRaw
       ..clear()
-      ..addAll(pri)
-      ..addAll(rest);
+      ..addAll(lanes[0])
+      ..addAll(lanes[1])
+      ..addAll(lanes[2])
+      ..addAll(lanes[3])
+      ..addAll(lanes[4]);
   }
 
-  bool _priorityWsFrame(String raw) {
-    return raw.contains('"event":"UNREAD_CS"') ||
-        raw.contains('"event":"CS_MESSAGE"') ||
-        raw.contains('"event":"PERIOD_SNAPSHOT"') ||
-        raw.contains('"event":"PERIOD_TICK"') ||
-        raw.contains('"event":"ROOM_FLAGS"') ||
-        raw.contains('"event":"APPLY_NOTICE"');
+  /// 与服务端 {@code WsSendLane} 一致：0 连接，1 时钟，2 仪式，3 状态，4 气泡。
+  static const Map<String, int> _laneByEvent = {
+    'SESSION_KICKED': 0,
+    'SYSTEM_MAINTAIN': 0,
+    'CONNECTED': 0,
+    'SUBSCRIBED': 0,
+    'UNSUBSCRIBED': 0,
+    'SUBSCRIBE_DENIED': 0,
+    'PONG': 0,
+    'BET_ACK': 0,
+    'PERIOD_TICK': 1,
+    'PERIOD_SNAPSHOT': 1,
+    'SEAL_WARN': 2,
+    'SEALED': 2,
+    'DRAW_RESULT': 2,
+    'BET_RANK': 2,
+    'WIN_LIST': 2,
+    'CHECK_SELF': 2,
+    'WALLET_DELTA': 3,
+    'CREDIT_DELTA': 3,
+    'ROOM_WALLET_SUMMARY': 3,
+    'UNREAD_CS': 3,
+    'ROOM_FLAGS': 3,
+    'ROOM_NAME': 3,
+    'ROOM_GAMES_CHANGED': 3,
+    'OWNER_DASH_DIRTY': 3,
+    'CS_MESSAGE': 3,
+    'APPLY_NOTICE': 3,
+    'REDPACK_NOTICE': 3,
+    'SITE_NOTICE': 3,
+    'SETTLE_RESULT': 3,
+    'LONG_DRAGON': 3,
+  };
+
+  int _sendLane(String raw) => _laneByEvent[_envelopeEvent(raw)] ?? 4;
+
+  /// 只认信封上的第一个 event。气泡正文里如果出现同样的字样，不能因此插队。
+  String _envelopeEvent(String raw) {
+    const marker = '"event":"';
+    final at = raw.indexOf(marker);
+    if (at < 0) return '';
+    final start = at + marker.length;
+    final end = raw.indexOf('"', start);
+    if (end < 0) return '';
+    return raw.substring(start, end);
   }
 
   void subscribe(String topic) {
