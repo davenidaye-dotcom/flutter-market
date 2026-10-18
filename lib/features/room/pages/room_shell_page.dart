@@ -68,13 +68,14 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
     } catch (_) {}
   }
 
-  /// 底栏下标与分支一致：0 游戏（彩种大厅）… 4 个人
-  int get _navIndex => widget.navigationShell.currentIndex;
+  /// 底栏视觉下标。游戏在正中，对应壳分支 0。
+  int get _navIndex => UserBottomNavBar.visualIndex(widget.navigationShell.currentIndex);
 
   void _onNavTap(int index) {
     // 勿 initialLocation:true，否则会重置分支丢掉保活 State
-    if (index == widget.navigationShell.currentIndex) return;
-    widget.navigationShell.goBranch(index);
+    final branch = UserBottomNavBar.branches[index];
+    if (branch == widget.navigationShell.currentIndex) return;
+    widget.navigationShell.goBranch(branch);
   }
 
   /// 底栏、goBranch、路由切分支都记上一页，返回时按进入顺序退。
@@ -112,7 +113,7 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
           bottomNavigationBar: UserBottomNavBar(
             currentIndex: _navIndex,
             // 正在看客服时数字让给对话本身，离开这一栏再显示未读
-            csBadge: _navIndex == 1 ? 0 : unread,
+            csBadge: widget.navigationShell.currentIndex == 1 ? 0 : unread,
             onTap: _onNavTap,
           ),
         ),

@@ -16,7 +16,7 @@ class UserBottomNavItem {
   final bool raceCar;
 }
 
-/// 游戏、在线客服、钱包中心、房间介绍、个人中心。下标与壳分支一致。
+/// 在线客服、钱包中心、游戏、房间介绍、个人中心。游戏在正中，壳分支仍是大厅为 0。
 class UserBottomNavBar extends StatelessWidget {
   const UserBottomNavBar({
     super.key,
@@ -25,19 +25,27 @@ class UserBottomNavBar extends StatelessWidget {
     this.csBadge = 0,
   });
 
-  /// 0 游戏（彩种大厅）… 4 个人中心
+  /// 底栏视觉下标：0 客服 … 2 游戏 … 4 个人
   final int currentIndex;
   final ValueChanged<int> onTap;
   /// 在线客服未读
   final int csBadge;
 
   static const items = [
-    UserBottomNavItem(label: '游戏', raceCar: true),
     UserBottomNavItem(icon: Icons.support_agent, label: '在线客服'),
     UserBottomNavItem(icon: Icons.verified_user_outlined, label: '钱包中心'),
+    UserBottomNavItem(label: '游戏', raceCar: true),
     UserBottomNavItem(icon: Icons.account_balance_wallet_outlined, label: '房间介绍'),
     UserBottomNavItem(icon: Icons.people_alt_outlined, label: '个人中心'),
   ];
+
+  /// 视觉下标 → 壳分支。游戏在中间，对应分支 0。
+  static const branches = [1, 2, 0, 3, 4];
+
+  static int visualIndex(int branch) {
+    final i = branches.indexOf(branch);
+    return i < 0 ? 0 : i;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,7 +79,7 @@ class UserBottomNavBar extends StatelessWidget {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       BadgedIcon(
-                        count: i == 1 ? csBadge : 0,
+                        count: i == 0 ? csBadge : 0,
                         child: item.raceCar
                             ? RaceCarIcon(color: iconColor, size: 24.sp)
                             : Icon(item.icon!, color: iconColor, size: 24.sp),

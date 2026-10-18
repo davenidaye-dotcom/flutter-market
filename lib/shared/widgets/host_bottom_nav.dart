@@ -11,7 +11,7 @@ class HostBottomNavItem {
   final bool raceCar;
 }
 
-/// 游戏｜在线客服｜房间管理｜个人中心｜审核列表。下标与壳分支一致。
+/// 在线客服｜房间管理｜游戏｜个人中心｜审核列表。游戏在正中，壳分支仍是大厅为 0。
 class HostBottomNavBar extends StatelessWidget {
   const HostBottomNavBar({
     super.key,
@@ -29,12 +29,20 @@ class HostBottomNavBar extends StatelessWidget {
   final int csBadge;
 
   static const items = [
-    HostBottomNavItem(label: '游戏', raceCar: true),
     HostBottomNavItem(icon: Icons.support_agent, label: '在线客服'),
     HostBottomNavItem(icon: Icons.settings, label: '房间管理'),
+    HostBottomNavItem(label: '游戏', raceCar: true),
     HostBottomNavItem(icon: Icons.person_outline, label: '个人中心'),
     HostBottomNavItem(icon: Icons.account_balance_wallet_outlined, label: '审核列表'),
   ];
+
+  /// 视觉下标 → 壳分支。游戏在中间，对应分支 0。
+  static const branches = [1, 2, 0, 3, 4];
+
+  static int visualIndex(int branch) {
+    final i = branches.indexOf(branch);
+    return i < 0 ? 0 : i;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +63,7 @@ class HostBottomNavBar extends StatelessWidget {
               final item = items[i];
               final active = currentIndex == i;
               final color = active ? const Color(0xFF2F7FD1) : const Color(0xFF3A8AD8);
-              final badge = i == 1
+              final badge = i == 0
                   ? csBadge
                   : ((i == 3 || i == 4) ? auditBadge : 0);
               return Expanded(
