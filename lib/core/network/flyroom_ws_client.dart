@@ -41,7 +41,8 @@ class FlyroomWsClient {
   static const _pingEvery = Duration(seconds: 10);
   static const _idleLimit = Duration(seconds: 25);
   Timer? _heartbeat;
-  DateTime? _lastRxAt;
+  /// 单调计时：用户改手机时间不能误判空闲而断线。
+  final Stopwatch _sinceRx = Stopwatch();
 
   Stream<Map<String, dynamic>> get events => _controller.stream;
   bool get isConnected => _channel != null;
@@ -91,7 +92,9 @@ class FlyroomWsClient {
   }
 
   void _markRx() {
-    _lastRxAt = DateTime.now();
+    _sinceRx
+      ..reset()
+      ..start();
   }
 
   void _startHeartbeat() {
@@ -99,8 +102,7 @@ class FlyroomWsClient {
     _markRx();
     _heartbeat = Timer.periodic(_pingEvery, (_) {
       if (_channel == null || _closing) return;
-      final last = _lastRxAt;
-      if (last != null && DateTime.now().difference(last) > _idleLimit) {
+      if (_sinceRx.elapsed > _idleLimit) {
         _notifyDisconnected();
         return;
       }

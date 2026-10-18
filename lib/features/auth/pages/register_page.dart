@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
-import '../../../shared/widgets/app_logo.dart';
 import '../../../shared/widgets/auth_card.dart';
 import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
@@ -52,13 +51,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
     setState(() => _loading = true);
     try {
-      await ref.read(authRepositoryProvider).register(
-            username: username,
-            password: password,
-          );
+      await ref
+          .read(authRepositoryProvider)
+          .register(username: username, password: password);
       if (!mounted) return;
       AppToast.success('注册成功');
-      context.go(RoutePaths.login);
+      final account = (username: username, password: password);
+      if (context.canPop()) {
+        context.pop(account);
+      } else {
+        context.go(RoutePaths.login, extra: account);
+      }
     } catch (e) {
       AppToast.error(e.toString());
     } finally {
@@ -69,39 +72,68 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   @override
   Widget build(BuildContext context) {
     return AppPageScaffold(
+      // 和登录页一致：不让 Scaffold 缩高度，键盘高度用来把白框上移
+      resizeToAvoidBottomInset: false,
       body: GradientBackground(
         child: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: 28.w),
-            child: Column(
-              children: [
-                SizedBox(height: 48.h),
-                const AppLogoHeader(),
-                SizedBox(height: 32.h),
-                AuthCard(
-                  tabText: '玩家注册',
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final keyboard = MediaQuery.viewInsetsOf(context).bottom;
+              final cardHeight = (constraints.maxHeight - keyboard).clamp(
+                0.0,
+                constraints.maxHeight,
+              );
+              return SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(28.w, 0, 28.w, keyboard),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: cardHeight),
                   child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _input(Icons.person_outline, '请输入用户名', _usernameCtrl),
-                      _input(Icons.lock_outline, '6-16位字母和…', _passwordCtrl, obscure: true),
-                      _input(Icons.lock_outline, '6-16位字母和…', _confirmCtrl, obscure: true),
-                      SizedBox(height: 24.h),
-                      GlossyButton(
-                        text: '立即注册',
-                        colors: const [Color(0xFFC9A07A), AppColors.accentBrown],
-                        onPressed: _register,
-                        loading: _loading,
-                      ),
-                      SizedBox(height: 16.h),
-                      GlossyButton(
-                        text: '返回登录',
-                        onPressed: () => appSafePop(context),
+                      AuthCard(
+                        tabText: '玩家注册',
+                        child: Column(
+                          children: [
+                            _input(
+                              Icons.person_outline,
+                              '请输入用户名',
+                              _usernameCtrl,
+                            ),
+                            _input(
+                              Icons.lock_outline,
+                              '6-16位字母和…',
+                              _passwordCtrl,
+                              obscure: true,
+                            ),
+                            _input(
+                              Icons.lock_outline,
+                              '6-16位字母和…',
+                              _confirmCtrl,
+                              obscure: true,
+                            ),
+                            SizedBox(height: 24.h),
+                            GlossyButton(
+                              text: '立即注册',
+                              colors: const [
+                                Color(0xFFC9A07A),
+                                AppColors.accentBrown,
+                              ],
+                              onPressed: _register,
+                              loading: _loading,
+                            ),
+                            SizedBox(height: 16.h),
+                            GlossyButton(
+                              text: '返回登录',
+                              onPressed: () => appSafePop(context),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -135,7 +167,11 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                   if (value.text.isEmpty) return const SizedBox.shrink();
                   return GestureDetector(
                     onTap: ctrl.clear,
-                    child: Icon(Icons.cancel, color: AppColors.textHint, size: 18.sp),
+                    child: Icon(
+                      Icons.cancel,
+                      color: AppColors.textHint,
+                      size: 18.sp,
+                    ),
                   );
                 },
               ),

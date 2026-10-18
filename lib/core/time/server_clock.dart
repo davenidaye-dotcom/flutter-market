@@ -67,13 +67,12 @@ class ServerClock {
   static void _syncOffset() {
     if (_samples.isEmpty) return;
     final cutoff = _elapsed - _window.inMilliseconds;
+    // 全部过期时留最新一条：没有新包时退回手机时间，手机快慢几秒倒计时就跟着错几秒
+    final newest = _samples.last;
     _samples.removeWhere((s) => s.at < cutoff);
+    if (_samples.isEmpty) _samples.add(newest);
     while (_samples.length > _maxSamples) {
       _samples.removeAt(0);
-    }
-    if (_samples.isEmpty) {
-      _offsetMs = null;
-      return;
     }
     var best = _samples.first.offset;
     for (final s in _samples) {

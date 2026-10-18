@@ -64,12 +64,19 @@ void main() {
     expect(skew.abs(), lessThan(1000));
   });
 
-  test('过期的偏快样本在没有新包时也会清掉', () {
+  test('过期的偏快样本在没有新包时也会清掉，只留最新一条', () {
     ServerClock.debugElapsedMs = 0;
-    ServerClock.observe(5000000);
-    expect(ServerClock.calibrated, isTrue);
+    ServerClock.observe(5000000 + 800); // 偏快的一条
+    ServerClock.debugElapsedMs = 30 * 1000;
+    ServerClock.observe(5000000 + 30 * 1000); // 准的一条
+    expect(ServerClock.offsetMs, 5000000 + 800);
     ServerClock.debugElapsedMs = 61 * 1000;
     ServerClock.now();
-    expect(ServerClock.calibrated, isFalse);
+    expect(ServerClock.offsetMs, 5000000);
+    // 再过很久也不退回手机时间，沿用最新那条
+    ServerClock.debugElapsedMs = 600 * 1000;
+    ServerClock.now();
+    expect(ServerClock.calibrated, isTrue);
+    expect(ServerClock.offsetMs, 5000000);
   });
 }

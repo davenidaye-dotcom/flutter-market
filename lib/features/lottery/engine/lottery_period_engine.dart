@@ -117,6 +117,14 @@ final class LotteryPeriodEngine {
     for (final g in list) {
       final existing = _slots[g.id];
       if (existing != null) {
+        if (_olderThanCurrent(existing, g.currentIssue)) {
+          // 换期前发出、晚到的旧期快照：只收上期开奖号，开奖/封盘时刻不动
+          if (g.name.isNotEmpty) {
+            existing.model = existing.model.copyWith(name: g.name);
+          }
+          _mergeHttpDraw(existing, g);
+          continue;
+        }
         _noteDrawing(existing, now);
         final advances = _incomingIssueAdvances(existing, g.currentIssue);
         final release = _stuckLongEnough(
@@ -268,6 +276,14 @@ final class LotteryPeriodEngine {
     final clock = now ?? ServerClock.now();
     final slot = existing;
 
+    if (_olderThanCurrent(slot, issue)) {
+      // 换期前发出、晚到的旧期帧：只收上期开奖号，开奖/封盘时刻和倒计时不动
+      final staleLast = lastIssue ?? '';
+      if (staleLast.isEmpty || lastRanks.isEmpty) return PeriodTickResult.none;
+      final draws = _ingestDraw(gameId, slot, staleLast, lastRanks, clock);
+      return PeriodTickResult(draws: draws, changed: draws.isNotEmpty);
+    }
+
     if (sealSeconds != null && sealSeconds > 0) {
       slot.model = slot.model.copyWith(sealSeconds: sealSeconds);
     }
@@ -400,6 +416,15 @@ final class LotteryPeriodEngine {
         }
       }
     }
+    if (_olderThanCurrent(slot, patch.currentIssue)) {
+      // 换期前发出、晚到的旧期补丁：只收上期开奖号，开奖/封盘时刻不动
+      slot.model = slot.model.copyWith(
+        name: patch.name.isNotEmpty ? patch.name : slot.model.name,
+        previousIssue: nextPrevIssue,
+        previousResults: nextResults,
+      );
+      return;
+    }
     // 人在房间里本地节拍暂停时，也要从这次补丁开始算「开奖中停了多久」。
     _noteDrawing(slot, now);
     final advances = _incomingIssueAdvances(slot, patch.currentIssue);
@@ -462,6 +487,13 @@ final class LotteryPeriodEngine {
     if (_secondsLeft(s, now) > 0) return true;
     if (_shownDrawing(s, now)) return true;
     return s.wsSynced;
+  }
+
+  bool _olderThanCurrent(_GameSlot slot, String issue) {
+    // compareIssueNo 把非纯数字期号当最小：认不出的期号不能当旧帧丢，否则这一彩种永远不更新
+    final a = int.tryParse(issue.trim()) ?? 0;
+    final b = int.tryParse(slot.model.currentIssue.trim()) ?? 0;
+    return a > 0 && b > 0 && compareIssueNo(issue, slot.model.currentIssue) < 0;
   }
 
   bool _shownDrawing(_GameSlot slot, DateTime now) {

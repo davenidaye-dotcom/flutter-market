@@ -1391,6 +1391,20 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _bumpUiTick();
   }
 
+  String _phaseKey(DateTime now) {
+    final b = StringBuffer();
+    for (final g in state.games) {
+      b
+        ..write(g.id)
+        ..write(':')
+        ..write(_engine.gameById(g.id)?.currentIssue ?? '')
+        ..write(':')
+        ..write(_engine.isDrawingPhase(g.id, now) ? 1 : 0)
+        ..write(';');
+    }
+    return b.toString();
+  }
+
   void _bumpUiTick() {
     if (!mounted) return;
     state = state.copyWith(uiTick: state.uiTick + 1);
@@ -2623,8 +2637,21 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       }
 
       final now = ServerClock.now();
-      final result = _engine.onSecondTick(now);
-      _applySecondTickResult(result);
+      if (_uiInteractionPause > 0) {
+        // 房间里：秒针照走（换期帧丢了要靠它拉回），但只在期号/开奖中真的变了才重发 games，
+        // 否则每秒整表重建会拖慢聊天和下注页。倒计时靠 uiTick 现算。
+        final before = _phaseKey(now);
+        final result = _engine.onSecondTick(now);
+        for (final draw in result.draws) {
+          _pushDrawChat(draw.gameId, draw.issue, draw.ranks);
+        }
+        if (result.draws.isNotEmpty || _phaseKey(now) != before) {
+          _publishGames();
+        }
+        _bumpUiTick();
+      } else {
+        _applySecondTickResult(_engine.onSecondTick(now));
+      }
       // 人在下注页时倒计时照走。开奖补拉和秒针拆开，换期帧丢掉也不能停。
       _syncDrawingWatchdog();
     });

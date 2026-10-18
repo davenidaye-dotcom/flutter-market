@@ -20,8 +20,14 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../login_remember_store.dart';
 import '../providers/auth_session_provider.dart';
 
+/// 注册成功后回登录页回显的账号密码。
+typedef RegisteredAccount = ({String username, String password});
+
 class LoginPage extends ConsumerStatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.registered});
+
+  /// 注册页没法 pop 回来时（栈底是注册页），经路由 extra 带过来。
+  final RegisteredAccount? registered;
 
   @override
   ConsumerState<LoginPage> createState() => _LoginPageState();
@@ -44,8 +50,23 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     Future.microtask(() async {
       await AppRelease.localVersion();
       await _applyRemember();
+      // 记住密码读完再回显，否则会被本地保存的旧账号盖掉
+      final registered = widget.registered;
+      if (registered != null && mounted) _fillRegistered(registered);
     });
-    unawaited(_tryDeviceLogin());
+    if (widget.registered == null) unawaited(_tryDeviceLogin());
+  }
+
+  void _fillRegistered(RegisteredAccount account) {
+    _usernameCtrl.text = account.username;
+    _passwordCtrl.text = account.password;
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  Future<void> _openRegister() async {
+    final account = await context.push<RegisteredAccount>(RoutePaths.register);
+    if (account == null || !mounted) return;
+    _fillRegistered(account);
   }
 
   /// 有设备令牌时静默登录（仅玩家入口）；失败静默留在密码登录页。
@@ -265,7 +286,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                       _footerAction(
                                         Icons.person_add_alt_1,
                                         '注册',
-                                        () => context.push(RoutePaths.register),
+                                        _openRegister,
                                       ),
                                   ],
                                 ),

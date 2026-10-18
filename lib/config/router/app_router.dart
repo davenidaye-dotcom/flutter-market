@@ -108,7 +108,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
-      GoRoute(path: RoutePaths.login, builder: (_, _) => const LoginPage()),
+      GoRoute(
+        path: RoutePaths.login,
+        builder: (_, state) => LoginPage(
+          registered: state.extra is RegisteredAccount ? state.extra as RegisteredAccount : null,
+        ),
+      ),
       GoRoute(
         path: RoutePaths.register,
         builder: (_, _) => const AppBackScope(child: RegisterPage()),

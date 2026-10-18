@@ -276,6 +276,20 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     await _loadOdds();
   }
 
+  /// 单注限额 ≤ 单期总限额；最低限额 ≤ 单注限额。0 为不封顶。
+  String? _limitError(_OddsRow r) {
+    final maxBet = num.tryParse(r.maxBetCtrl.text.trim());
+    final period = num.tryParse(r.periodLimitCtrl.text.trim());
+    final minLimit = num.tryParse(_minLimitCtrl.text.trim());
+    if (maxBet != null && period != null && maxBet > 0 && period > 0 && maxBet > period) {
+      return '单注限额不能大于单期总限额';
+    }
+    if (minLimit != null && maxBet != null && maxBet > 0 && minLimit > maxBet) {
+      return '最低限额不能大于单注限额';
+    }
+    return null;
+  }
+
   Future<void> _save() async {
     final minLimit = num.tryParse(_minLimitCtrl.text.trim()) ?? 1;
     final items = <Map<String, dynamic>>[];
@@ -285,6 +299,11 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       final period = num.tryParse(r.periodLimitCtrl.text.trim());
       if (odds == null || maxBet == null || period == null) {
         AppToast.error('${r.name} 请填写有效数字');
+        return;
+      }
+      final limitError = _limitError(r);
+      if (limitError != null) {
+        AppToast.error('${r.name}：$limitError');
         return;
       }
       for (final play in r.plays) {
@@ -467,6 +486,8 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
             child: _boxField(
               controller: _minLimitCtrl,
               keyboardType: TextInputType.number,
+              integer: true,
+              onChanged: (_) => setState(() {}),
             ),
           ),
         ],
@@ -476,6 +497,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
 
   Widget _playCard(int index, _OddsRow row) {
     final no = (index + 1).toString().padLeft(2, '0');
+    final limitError = _limitError(row);
     return Container(
       padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 14.h),
       decoration: BoxDecoration(
@@ -522,6 +544,10 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
               Expanded(child: _fieldCol('单期总限额', row.periodLimitCtrl)),
             ],
           ),
+          if (limitError != null) ...[
+            SizedBox(height: 6.h),
+            Text(limitError, style: TextStyle(fontSize: 12.sp, color: AppColors.danger)),
+          ],
         ],
       ),
     );
@@ -538,6 +564,8 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
           keyboardType: decimal
               ? const TextInputType.numberWithOptions(decimal: true)
               : TextInputType.number,
+          integer: !decimal,
+          onChanged: decimal ? null : (_) => setState(() {}),
         ),
       ],
     );
@@ -597,13 +625,16 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     required TextEditingController controller,
     TextInputType? keyboardType,
     TextAlign textAlign = TextAlign.start,
+    bool integer = false,
+    ValueChanged<String>? onChanged,
   }) {
     return EmulatorSafeTextField(
       controller: controller,
       keyboardType: keyboardType,
       textAlign: textAlign,
+      onChanged: onChanged,
       inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+        FilteringTextInputFormatter.allow(RegExp(integer ? r'[0-9]' : r'[0-9.]')),
       ],
       decoration: InputDecoration(
         isDense: true,

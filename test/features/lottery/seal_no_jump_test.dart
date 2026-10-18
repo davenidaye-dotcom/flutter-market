@@ -482,4 +482,87 @@ void main() {
     expect(LotteryPeriodHelper.openRemainSeconds(recovered, later), 30);
     expect(engine.needsDrawRecovery('JS_SC', later), isFalse);
   });
+
+  test('换期后晚到的旧期帧只收上期开奖号，不把新期拉回开奖中', () {
+    final engine = LotteryPeriodEngine();
+    final t0 = DateTime(2099, 6, 1, 12, 0, 0);
+    final openAt = t0.add(const Duration(seconds: 40)).millisecondsSinceEpoch;
+    engine.bootstrap(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          countdownSeconds: 40,
+          openAtEpochMs: openAt,
+          sealSeconds: 30,
+          sealAtEpochMs: t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch,
+        ),
+      ],
+      t0,
+    );
+    final opened = t0.add(const Duration(seconds: 41));
+    engine.onSecondTick(opened);
+    expect(engine.needsDrawRecovery('JS_SC', opened), isTrue);
+
+    final nextOpen = opened.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
+    final nextSeal = opened.add(const Duration(seconds: 45)).millisecondsSinceEpoch;
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136342',
+      seconds: 75,
+      openAtEpochMs: nextOpen,
+      sealAtEpochMs: nextSeal,
+      sealSeconds: 30,
+      lastIssue: '34136341',
+      lastRanks: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      now: opened,
+    );
+    expect(engine.needsDrawRecovery('JS_SC', opened), isFalse);
+
+    final stale = opened.add(const Duration(milliseconds: 300));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 0,
+      openAtEpochMs: openAt,
+      sealAtEpochMs: t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch,
+      sealSeconds: 30,
+      lastIssue: '34136340',
+      lastRanks: const [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+      now: stale,
+    );
+    engine.mergeHttpSnapshot(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          countdownSeconds: 0,
+          openAtEpochMs: openAt,
+          sealSeconds: 30,
+        ),
+      ],
+      stale,
+    );
+    engine.patchGame(
+      LotteryGameModel(
+        id: 'JS_SC',
+        name: '极速赛车',
+        currentIssue: '34136341',
+        countdownSeconds: 0,
+        openAtEpochMs: openAt,
+      ),
+      stale,
+    );
+    engine.onSecondTick(stale);
+
+    final shown = engine.displayGame('JS_SC', stale);
+    expect(shown.currentIssue, '34136342');
+    expect(shown.previousIssue, '34136341');
+    expect(shown.previousResults, const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(LotteryPeriodHelper.phaseOf(shown, stale), LotteryDisplayPhase.betting);
+    expect(engine.needsDrawRecovery('JS_SC', stale), isFalse);
+    expect(engine.countdownFor('JS_SC', stale), greaterThanOrEqualTo(74));
+  });
 }

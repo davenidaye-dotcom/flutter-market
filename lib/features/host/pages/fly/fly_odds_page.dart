@@ -40,6 +40,7 @@ class _OddsRow {
     required this.odds,
     required this.oddsMax,
     required this.oddsMin,
+    required this.maxBet,
     required this.periodLimit,
     required this.controller,
   });
@@ -50,7 +51,10 @@ class _OddsRow {
   final double? memberOdds;
   final double? oddsMax;
   final double? oddsMin;
+  /// 平台单注最高、单期总限额：飞单那一刻按它们判断，只读
+  final double? maxBet;
   final double? periodLimit;
+  bool limitOpen = false;
   double odds;
   final TextEditingController controller;
 
@@ -150,6 +154,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
             odds: odds,
             oddsMax: ceiling,
             oddsMin: floor,
+            maxBet: _num(shown['maxBet']),
             periodLimit: _num(shown['periodLimit']),
             controller: TextEditingController(text: displayNumber(odds, maxDecimals: 4)),
           ),
@@ -300,6 +305,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
 
   String _limitText(double? value) {
     if (value == null) return '—';
+    if (value <= 0) return '不封顶';
     return displayNumber(value);
   }
 
@@ -521,6 +527,34 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   }
 
   Widget _line(_OddsRow row) {
+    if (!row.limitOpen) return _lineMain(row);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _lineMain(row),
+        Container(
+          color: const Color(0xFFF5F7FA),
+          padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 8.h),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '平台单注限额 ${_limitText(row.maxBet)} · 单期总限额 ${_limitText(row.periodLimit)}',
+                style: TextStyle(fontSize: 12.sp, color: const Color(0xFF333333)),
+              ),
+              SizedBox(height: 2.h),
+              Text(
+                '飞单时超过任一项，这张单不飞',
+                style: TextStyle(fontSize: 10.sp, color: AppColors.textHint),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _lineMain(_OddsRow row) {
     final range = _rangeText(row);
     return Padding(
       padding: EdgeInsets.fromLTRB(8.w, 8.h, 8.w, 8.h),
@@ -606,10 +640,14 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
           ),
           Expanded(
             flex: 16,
-            child: Text(
-              _limitText(row.periodLimit),
-              textAlign: TextAlign.right,
-              style: TextStyle(fontSize: 12.sp, color: const Color(0xFF333333)),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => setState(() => row.limitOpen = !row.limitOpen),
+              child: Text(
+                row.limitOpen ? '收起' : '查看',
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 12.sp, color: AppColors.navBlue),
+              ),
             ),
           ),
         ],

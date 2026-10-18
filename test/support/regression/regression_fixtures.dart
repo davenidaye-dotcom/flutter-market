@@ -153,6 +153,7 @@ class FakeLotteryRepository extends LotteryRepository {
   Future<List<LotteryGameModel>> getGames(
     String roomId, {
     bool asOwner = false,
+    Duration? receiveTimeout,
   }) async =>
       games;
 
