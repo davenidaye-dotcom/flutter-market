@@ -2699,7 +2699,7 @@ class _GameStatusBar extends StatelessWidget {
         return Container(
           color: Colors.white,
           padding: EdgeInsets.fromLTRB(
-            HistoryDrawLayout.hPad(),
+            HistoryDrawLayout.leftPad(),
             8.h,
             HistoryDrawLayout.hPad(),
             // 下拉展开时去掉底 padding，与面板顶边贴死

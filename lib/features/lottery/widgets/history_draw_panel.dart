@@ -19,16 +19,24 @@ class HistoryDrawRow {
 }
 
 /// 顶栏期号、开奖球、历史表头、下拉数据行共用同一套列宽。
-/// 方块规格：S22（22.w）· 左右 gap 2.w · 上下间隔 1px。
+/// 设计宽 375：期号列 39、球间距 1、方块 22.6。边长 = min(格宽 − 球间距, 22.6.w)。
+/// 期号列从 48 收到 39，让出的 9px 给球间距；首球离格边半个间距，用 [ballNudge] 补回贴近。
 abstract final class HistoryDrawLayout {
   static double hPad() => 4.w;
-  /// 后 4 位期号完整显示（避免 34.w + ellipsis 变成 56…）
-  static double issueW() => 48.w;
-  static double issueGap() => 1.w;
+  /// 左侧再少 3 逻辑像素。4.w 小于 4 时贴边，避免负 padding。
+  static double leftPad() {
+    final p = hPad() - 4;
+    return p < 0 ? 0 : p;
+  }
+  /// 后 4 位期号 13sp 约 30px，39 仍完整显示（34 以下会出现 ellipsis）。
+  static double issueW() => 39.w;
+  static double issueGap() => 0;
   static double gyW() => 42.w;
   static double dtW() => 54.w;
   static double trailingW() => gyW() + dtW();
-  static double ballSize() => 22.w;
+  static double ballSize() => 22.6.w;
+  /// 方块行左移量：1 + 半个球间距，首球与期号的距离和无间距时一致。
+  static double ballNudge() => 1 + ballGap() / 2;
 
   static TextStyle issueStyle() => TextStyle(
         fontSize: 13.sp,
@@ -48,14 +56,14 @@ abstract final class HistoryDrawLayout {
 
   static double ballDigitSize() => ballSize() * ballFontScale();
 
-  static double ballGap() => LotteryBallStyle.gap();
+  static double ballGap() => 1;
 
   static double ballRadius() => LotteryBallStyle.radius();
 
   @Deprecated('Use ballGap; boost removed to keep spacing')
   static double ballBoxBoost() => 0;
 
-  static const int visibleRows = 10;
+  static const int visibleRows = 11;
   /// 行高贴球径；行间距固定 1 逻辑像素
   static double rowHeight() => ballSize();
   static double rowGap() => 1;
@@ -88,7 +96,12 @@ class Pk10AlignRow extends StatelessWidget {
           child: Center(child: issue),
         ),
         SizedBox(width: HistoryDrawLayout.issueGap()),
-        Expanded(child: middle),
+        Expanded(
+          child: Transform.translate(
+            offset: Offset(-HistoryDrawLayout.ballNudge(), 0),
+            child: middle,
+          ),
+        ),
         SizedBox(
           width: HistoryDrawLayout.gyW(),
           child: Center(child: gy),
@@ -139,8 +152,6 @@ class HistoryDrawPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pad = HistoryDrawLayout.hPad();
-
     return Material(
       color: Colors.white,
       child: Container(
@@ -159,14 +170,14 @@ class HistoryDrawPanel extends StatelessWidget {
         child: Column(
           children: [
             const _Header(),
-            Expanded(child: _buildBody(rows, pad)),
+            Expanded(child: _buildBody(rows)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBody(List<HistoryDrawRow> displayRows, double pad) {
+  Widget _buildBody(List<HistoryDrawRow> displayRows) {
     if (loading && displayRows.isEmpty) {
       return const AppPageLoading();
     }
@@ -198,9 +209,9 @@ class HistoryDrawPanel extends StatelessWidget {
         : ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
-              pad,
+              HistoryDrawLayout.leftPad(),
               HistoryDrawLayout.listPadTop(),
-              pad,
+              HistoryDrawLayout.hPad(),
               HistoryDrawLayout.listPadBottom(),
             ),
             itemCount: displayRows.length,
@@ -228,10 +239,14 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final pad = HistoryDrawLayout.hPad();
     return Container(
       height: HistoryDrawLayout.headerHeight(),
-      padding: EdgeInsets.symmetric(horizontal: pad),
+      padding: EdgeInsets.fromLTRB(
+        HistoryDrawLayout.leftPad(),
+        0,
+        HistoryDrawLayout.hPad(),
+        0,
+      ),
       color: const Color(0xFFF5F5F5),
       child: Pk10AlignRow(
         issue: Text(
