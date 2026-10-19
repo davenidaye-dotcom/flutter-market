@@ -3,7 +3,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 Future<void> ensureMtlsMaterialLoaded() async {}
 
-Future<void> downloadHttps(
+Future<void> downloadPackage(
   String url,
   String savePath, {
   required void Function(int received, int total) onProgress,

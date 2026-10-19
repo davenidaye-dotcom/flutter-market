@@ -46,28 +46,6 @@ class AuthRepository {
     );
   }
 
-  /// 设备令牌快速登录：成功返回与密码登录相同的用户，并换存新的 deviceToken。
-  /// 令牌失效（DEVICE_TOKEN_INVALID）时抛出，由调用方清令牌并回到密码登录。
-  Future<UserModel> deviceLogin({
-    required String username,
-    required String deviceToken,
-    int? epoch,
-  }) async {
-    final commitEpoch = epoch ?? SessionStore.instance.epoch;
-    final data = await AuthApiClient.instance.post('/auth/member/device-login', data: {
-      'username': username.trim(),
-      'deviceId': await DeviceLoginStore.deviceId(),
-      'deviceToken': deviceToken,
-      'clientType': 'APP',
-    });
-    return _finishLogin(
-      data,
-      username: username,
-      expectedRole: AppRole.player,
-      commitEpoch: commitEpoch,
-    );
-  }
-
   Future<UserModel> _finishLogin(
     dynamic data, {
     required String username,

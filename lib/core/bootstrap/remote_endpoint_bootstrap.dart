@@ -13,37 +13,34 @@ import 'bootstrap_seeds.dart';
 import 'config_crypto.dart';
 
 /// 启动时从 OSS/CDN 拉加密线路 → 解密 → 应用到 [EnvConfig]。
-/// 开发/测试拉不到时用内置测试地址。生产拉不到则不发业务请求。
+/// 生产包一直停在启动页重试，拉到 OSS 才进 App。开发/测试拉不到时用内置测试地址。
 class RemoteEndpointBootstrap {
   RemoteEndpointBootstrap._();
   static final RemoteEndpointBootstrap instance = RemoteEndpointBootstrap._();
 
   static const _cacheKey = 'flyroom_endpoint_frcfg_cache';
+  static const _retryGap = Duration(seconds: 1);
 
   bool ready = false;
   String source = 'none';
   EndpointConfig? current;
 
-  /// [perUrlTimeout] 单地址超时；[budget] 远程总预算，避免串行拖死启动。
+  /// [perUrlTimeout] 单地址超时；[budget] 每一轮的总预算。
   Future<void> ensureReady({
-    Duration perUrlTimeout = const Duration(seconds: 2),
-    Duration budget = const Duration(seconds: 3),
+    Duration perUrlTimeout = const Duration(seconds: 6),
+    Duration budget = const Duration(seconds: 8),
   }) async {
     if (ready) return;
 
-    final remote = await _tryRemote(perUrlTimeout, budget: budget);
-    if (remote != null) {
-      await _apply(remote.$1, source: 'oss', cacheRaw: true, raw: remote.$2);
-      return;
-    }
-
-    if (EnvConfig.environment == AppEnvironment.pro) {
-      EnvConfig.clearEndpointOverride();
-      current = null;
-      source = 'none';
-      ready = true;
-      debugPrint('[bootstrap] source=none oss unavailable, requests blocked');
-      return;
+    while (true) {
+      final remote = await _tryRemote(perUrlTimeout, budget: budget);
+      if (remote != null) {
+        await _apply(remote.$1, source: 'oss', cacheRaw: true, raw: remote.$2);
+        return;
+      }
+      if (EnvConfig.environment != AppEnvironment.pro) break;
+      debugPrint('[bootstrap] oss unavailable, retry');
+      await Future<void>.delayed(_retryGap);
     }
 
     final fallback = EndpointConfig(

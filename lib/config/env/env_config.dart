@@ -104,8 +104,8 @@ class EnvConfig {
   static bool get isDebug => environment != AppEnvironment.pro;
 
   /// 内置版本。是否要更新只和发布版本号按段比较，不看版本序号。
-  static String get appVersion => '1.0';
+  static String get appVersion => '1.2';
 
   /// 与 pubspec 的构建号一致。更新判断不用它。
-  static const int appVersionCode = 1;
+  static const int appVersionCode = 2;
 }

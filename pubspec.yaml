@@ -1,7 +1,7 @@
 name: letou_app
 description: 瑞丰 - 房间聊天下注应用
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.2.0+2
 
 environment:
   sdk: ^3.12.2

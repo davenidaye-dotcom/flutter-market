@@ -16,6 +16,7 @@ import 'core/network/session_store.dart';
 import 'features/auth/providers/auth_session_provider.dart';
 import 'features/host/widgets/host_apply_notice_dialog.dart';
 import 'features/profile/app_release.dart';
+import 'features/profile/update_progress_host.dart';
 
 class LetouApp extends ConsumerStatefulWidget {
   const LetouApp({super.key});
@@ -98,6 +99,7 @@ class _LetouAppState extends ConsumerState<LetouApp> {
                 children: [
                   EasyLoading.init()(context, child),
                   const HostApplyNoticeHost(),
+                  const UpdateProgressHost(),
                 ],
               ),
             );

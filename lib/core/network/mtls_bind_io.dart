@@ -27,16 +27,17 @@ Future<void> _load() async {
   }
 }
 
-/// 安装包可能在公网，也可能在只认包内根证书的主机上。两边都信，不带客户端证。
-Future<void> downloadHttps(
+/// 安装包就是二维码里的链接，http、https 都下。https 时公网证书和包内根证书都信，不带客户端证。
+Future<void> downloadPackage(
   String url,
   String savePath, {
   required void Function(int received, int total) onProgress,
   CancelToken? cancelToken,
 }) async {
   final uri = Uri.tryParse(url);
-  if (uri == null || uri.scheme.toLowerCase() != 'https') {
-    throw const TlsException('安装包地址需要是 https');
+  final scheme = uri?.scheme.toLowerCase();
+  if (scheme != 'https' && scheme != 'http') {
+    throw const FormatException('二维码里不是下载地址');
   }
   await ensureMtlsMaterialLoaded();
   final dio = Dio(
@@ -46,7 +47,7 @@ Future<void> downloadHttps(
       followRedirects: true,
     ),
   );
-  dio.httpClientAdapter = _TlsOnlyAdapter(
+  dio.httpClientAdapter = _VpnGuardAdapter(
     IOHttpClientAdapter(createHttpClient: _downloadClient),
   );
   try {
@@ -149,6 +150,32 @@ class _TlsOnlyAdapter implements HttpClientAdapter {
       );
     }
     // 有 VPN（抓包软件）就不发，连 TCP 都不建。
+    if (await VpnGuard.active()) {
+      throw DioException(
+        requestOptions: options,
+        type: DioExceptionType.connectionError,
+        error: const VpnBlockedException(),
+      );
+    }
+    return _inner.fetch(options, requestStream, cancelFuture);
+  }
+
+  @override
+  void close({bool force = false}) => _inner.close(force: force);
+}
+
+/// 只给安装包下载用：放行明文，有 VPN 照样不发。
+class _VpnGuardAdapter implements HttpClientAdapter {
+  _VpnGuardAdapter(this._inner);
+
+  final HttpClientAdapter _inner;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
     if (await VpnGuard.active()) {
       throw DioException(
         requestOptions: options,

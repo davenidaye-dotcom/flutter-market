@@ -20,7 +20,7 @@ Future<String> downloadReleaseApk(
   if (await file.exists()) {
     await file.delete();
   }
-  await downloadHttps(url, file.path, onProgress: onProgress, cancelToken: cancel);
+  await downloadPackage(url, file.path, onProgress: onProgress, cancelToken: cancel);
   final head = await file.openRead(0, 2).fold<List<int>>(<int>[], (buf, chunk) {
     buf.addAll(chunk);
     return buf;

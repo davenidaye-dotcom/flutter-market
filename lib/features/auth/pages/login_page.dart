@@ -54,7 +54,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       final registered = widget.registered;
       if (registered != null && mounted) _fillRegistered(registered);
     });
-    if (widget.registered == null) unawaited(_tryDeviceLogin());
   }
 
   void _fillRegistered(RegisteredAccount account) {
@@ -67,20 +66,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final account = await context.push<RegisteredAccount>(RoutePaths.register);
     if (account == null || !mounted) return;
     _fillRegistered(account);
-  }
-
-  /// 有设备令牌时静默登录（仅玩家入口）；失败静默留在密码登录页。
-  Future<void> _tryDeviceLogin() async {
-    if (_hostMode) return;
-    final user = await ref.read(authSessionProvider.notifier).tryDeviceLogin();
-    if (user == null || !mounted || _hostMode || _loading) return;
-    final live = ref.read(authSessionProvider).user;
-    if (live == null ||
-        live.role != AppRole.player ||
-        live.username != user.username) {
-      return;
-    }
-    context.go(RoutePaths.home);
   }
 
   Future<void> _applyRemember() async {
@@ -100,7 +85,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   Future<void> _switchHostMode(bool hostMode) async {
     if (_hostMode == hostMode) return;
-    // 切到房主/代理时，作废已经发出的玩家设备快登。快登若已写上玩家会话，一并丢掉。
+    // 切到房主/代理时，作废在途的玩家登录。已写上的玩家会话一并丢掉。
     if (hostMode) {
       final live = ref.read(authSessionProvider).user;
       if (live != null && live.role == AppRole.player) {

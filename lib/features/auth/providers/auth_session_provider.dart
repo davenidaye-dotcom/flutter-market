@@ -28,29 +28,21 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
 
   final Ref _ref;
 
-  /// 密码登录进行中。这段时间开出来的登录页不能再跑快登，避免共用同一次代际。
-  int? _passwordEpoch;
-
   Future<UserModel> login({
     required String username,
     required String password,
     required String captchaToken,
     required AppRole expectedRole,
   }) async {
-    // 先占代际，在途快登和上一次密码登录都不能再写 token。
+    // 先占代际，上一次还没写完的密码登录不能再写 token。
     final epoch = SessionStore.instance.bumpEpoch();
-    _passwordEpoch = epoch;
-    try {
-      return await _loginWithEpoch(
-        epoch: epoch,
-        username: username,
-        password: password,
-        captchaToken: captchaToken,
-        expectedRole: expectedRole,
-      );
-    } finally {
-      if (_passwordEpoch == epoch) _passwordEpoch = null;
-    }
+    return _loginWithEpoch(
+      epoch: epoch,
+      username: username,
+      password: password,
+      captchaToken: captchaToken,
+      expectedRole: expectedRole,
+    );
   }
 
   Future<UserModel> _loginWithEpoch({
@@ -88,47 +80,6 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
       player: user.role == AppRole.player,
     ));
     return user;
-  }
-
-  /// 启动时用保存的设备令牌静默登录。没有令牌 / 失败返回 null（走密码登录）。
-  /// 令牌被服务端判无效（DEVICE_TOKEN_INVALID）时清掉本地令牌。
-  Future<UserModel?> tryDeviceLogin() async {
-    if (_passwordEpoch != null) return null;
-    final seen = SessionStore.instance.epoch;
-    final saved = await DeviceLoginStore.loadSaved();
-    if (saved == null ||
-        _passwordEpoch != null ||
-        SessionStore.instance.epoch != seen) {
-      return null;
-    }
-    // 单独占一代，不能和已经开始的密码登录写进同一次代际。
-    final epoch = SessionStore.instance.bumpEpoch();
-    try {
-      final user = await _ref.read(authRepositoryProvider).deviceLogin(
-            username: saved.username,
-            deviceToken: saved.token,
-            epoch: epoch,
-          );
-      if (SessionStore.instance.epoch != epoch) return null;
-      if (user.role != AppRole.player) {
-        if (SessionStore.instance.epoch == epoch) {
-          await SessionStore.instance.clear();
-        }
-        return null;
-      }
-      if (SessionStore.instance.epoch != epoch) return null;
-      state = AuthSession(user: user);
-      unawaited(BgmPrompt.resetForLogin(host: false, player: true));
-      return user;
-    } catch (e) {
-      if (e is ApiException && e.bizCode == 'LOGIN_SUPERSEDED') return null;
-      if (e is ApiException &&
-          (e.bizCode == 'DEVICE_TOKEN_INVALID' ||
-              e.message.contains('DEVICE_TOKEN_INVALID'))) {
-        await DeviceLoginStore.clear(saved.username);
-      }
-      return null;
-    }
   }
 
   void bindRoomCode(String roomCode) {
