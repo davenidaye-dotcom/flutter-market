@@ -26,9 +26,8 @@ class _OddsRow {
     required this.name,
     required this.rangeText,
     required this.oddsCtrl,
-    required this.maxBetCtrl,
-    required this.periodLimitCtrl,
-    required this.minBetCtrl,
+    required this.maxBetText,
+    required this.periodLimitText,
     required this.gameType,
     this.parentOdds,
     this.hPlay,
@@ -39,9 +38,9 @@ class _OddsRow {
   final String rangeText;
   final String gameType;
   final TextEditingController oddsCtrl;
-  final TextEditingController maxBetCtrl;
-  final TextEditingController periodLimitCtrl;
-  final TextEditingController minBetCtrl;
+  /// 平台单注最高、单期总限额：只回显，不提交
+  final String maxBetText;
+  final String periodLimitText;
   final num? parentOdds;
   final num? hPlay;
 
@@ -59,13 +58,10 @@ class _OddsRow {
 
   void dispose() {
     oddsCtrl.dispose();
-    maxBetCtrl.dispose();
-    periodLimitCtrl.dispose();
-    minBetCtrl.dispose();
   }
 }
 
-/// 下级赔率返水 — 对齐参考：统一修改 + 彩种胶囊 Tab + 玩法卡（赔率/返点说明/单期限额）
+/// 下级赔率返水 — 统一修改 + 彩种胶囊 Tab + 玩法卡（赔率/返点说明；限额为平台值，只读）
 class AgentChildOddsPage extends ConsumerStatefulWidget {
   const AgentChildOddsPage({
     super.key,
@@ -83,7 +79,6 @@ class AgentChildOddsPage extends ConsumerStatefulWidget {
 class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   final List<_OddsRow> _rows = [];
   final _stepCtrl = TextEditingController(text: '0.100');
-  final _minLimitCtrl = TextEditingController(text: '1');
   bool _loading = true;
   bool _saving = false;
   /// 默认勾选：保存时同步同系列
@@ -112,7 +107,6 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   @override
   void dispose() {
     _stepCtrl.dispose();
-    _minLimitCtrl.dispose();
     _clearRows();
     super.dispose();
   }
@@ -130,6 +124,13 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
     return num.tryParse('$v'.trim());
   }
 
+  /// 平台限额：0 为不封顶。
+  String _capText(dynamic v) {
+    final n = _asNum(v);
+    if (n == null || n <= 0) return '不封顶';
+    return displayNumber(n);
+  }
+
   Future<void> _loadOdds() async {
     setState(() => _loading = true);
     try {
@@ -140,11 +141,8 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
       if (!mounted) return;
       _clearRows();
       final merged = mergePlayOddsRows(raw);
-      num? firstMin;
       for (final m in merged) {
         final shown = m.shown;
-        final minBet = _asNum(shown['minBet']);
-        firstMin ??= minBet;
         _rows.add(
           _OddsRow(
             plays: [
@@ -155,17 +153,13 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
             rangeText: '${shown['rangeText'] ?? ''}',
             gameType: '${shown['gameType'] ?? _gameType}',
             oddsCtrl: TextEditingController(text: displayNumber(shown['odds'], maxDecimals: 4)),
-            maxBetCtrl: TextEditingController(text: displayNumber(shown['maxBet'] ?? 50000)),
-            periodLimitCtrl: TextEditingController(
-              text: displayNumber(shown['periodLimit'] ?? shown['userPeriodLimit'] ?? 0),
-            ),
-            minBetCtrl: TextEditingController(text: displayNumber(minBet ?? 1)),
+            maxBetText: _capText(shown['maxBet']),
+            periodLimitText: _capText(shown['userPeriodLimit'] ?? shown['periodLimit']),
             parentOdds: _asNum(shown['parentOdds']),
             hPlay: _asNum(shown['hPlay']),
           ),
         );
       }
-      _minLimitCtrl.text = displayNumber(firstMin ?? 1);
       setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
@@ -196,7 +190,6 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
 
   Future<void> _save() async {
     if (_saving) return;
-    final globalMin = num.tryParse(_minLimitCtrl.text.trim()) ?? 1;
     final payload = <Map<String, dynamic>>[];
     for (final r in _rows) {
       final odds = num.tryParse(r.oddsCtrl.text.trim());
@@ -204,17 +197,11 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
         AppToast.error('${r.name} 请填写有效赔率');
         return;
       }
-      final maxBet = num.tryParse(r.maxBetCtrl.text.trim());
-      final period = num.tryParse(r.periodLimitCtrl.text.trim());
-      final minBet = num.tryParse(r.minBetCtrl.text.trim()) ?? globalMin;
       for (final play in r.plays) {
         payload.add({
           'gameType': r.gameType.isEmpty ? _gameType : r.gameType,
           'playCode': play.code,
           'odds': odds,
-          'minBet': minBet,
-          'maxBet': ?maxBet,
-          'periodLimit': ?period,
         });
       }
     }
@@ -386,10 +373,6 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
               _stepBtn('+', () => _adjustAll(1)),
             ],
           ),
-          SizedBox(height: 12.h),
-          Text('最低限额', style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary)),
-          SizedBox(height: 6.h),
-          _inputBox(controller: _minLimitCtrl),
         ],
       ),
     );
@@ -503,9 +486,9 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('单注限额', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                    Text('单注限额（平台）', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
                     SizedBox(height: 6.h),
-                    _inputBox(controller: row.maxBetCtrl),
+                    _readonlyBox(row.maxBetText),
                   ],
                 ),
               ),
@@ -514,9 +497,9 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('单期总限额', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
+                    Text('单期总限额（平台）', style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary)),
                     SizedBox(height: 6.h),
-                    _inputBox(controller: row.periodLimitCtrl),
+                    _readonlyBox(row.periodLimitText),
                   ],
                 ),
               ),
@@ -524,6 +507,19 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _readonlyBox(String text) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F3F7),
+        borderRadius: BorderRadius.circular(8.r),
+        border: Border.all(color: const Color(0xFFD8DEE6)),
+      ),
+      child: Text(text, style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)),
     );
   }
 

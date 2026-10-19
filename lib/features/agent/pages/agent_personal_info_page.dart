@@ -178,8 +178,8 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
         children: [
           Expanded(flex: 22, child: _head('\u73a9\u6cd5', align: TextAlign.left)),
           Expanded(flex: 12, child: _head('\u8d54\u7387')),
-          Expanded(flex: 14, child: _head('\u5355\u671f\u9650\u989d')),
-          Expanded(flex: 12, child: _head('\u5355\u6ce8\u6700\u4f4e')),
+          Expanded(flex: 13, child: _head('\u5355\u6ce8\u9650\u989d')),
+          Expanded(flex: 15, child: _head('\u5355\u671f\u603b\u9650\u989d')),
         ],
       ),
     );
@@ -203,8 +203,8 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
             ),
           ),
           Expanded(flex: 12, child: _num(_numStr(shown['odds']))),
-          Expanded(flex: 14, child: _num(_numStr(_limit(shown['periodLimit'], shown['userPeriodLimit'])))),
-          Expanded(flex: 12, child: _num(_numStr(_limit(shown['minBet'], 1)))),
+          Expanded(flex: 13, child: _num(_capStr(shown['maxBet']))),
+          Expanded(flex: 15, child: _num(_capStr(shown['userPeriodLimit'] ?? shown['periodLimit']))),
         ],
       ),
     );
@@ -243,16 +243,10 @@ String _numStr(dynamic v) {
   return displayNumber(v);
 }
 
-/// 0 / 空视为未设置，回退到备选值（与编辑页 periodLimit??userPeriodLimit 对齐）
-dynamic _limit(dynamic primary, dynamic fallback) {
-  num? asNum(dynamic v) {
-    if (v is num) return v;
-    return num.tryParse('$v');
-  }
-
-  final p = asNum(primary);
-  if (p != null && p > 0) return p;
-  final f = asNum(fallback);
-  if (f != null && f > 0) return f;
-  return fallback ?? primary ?? '';
+/// 平台限额：0 为不封顶。
+String _capStr(dynamic v) {
+  if (v == null) return '';
+  final n = v is num ? v : num.tryParse('$v');
+  if (n != null && n <= 0) return '不封顶';
+  return displayNumber(v);
 }
