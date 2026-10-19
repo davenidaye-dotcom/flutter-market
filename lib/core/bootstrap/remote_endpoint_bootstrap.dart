@@ -83,6 +83,7 @@ class RemoteEndpointBootstrap {
           if (raw.isEmpty) throw StateError('empty');
           final cfg = ConfigCrypto.decryptFrcfg(raw);
           if (!_envOk(cfg)) throw StateError('env mismatch');
+          if (!_linesOk(cfg)) throw StateError('endpoint not https/wss');
           if (!completer.isCompleted) {
             completer.complete((cfg, raw));
           }
@@ -107,6 +108,15 @@ class RemoteEndpointBootstrap {
     // 必须带 env，且与当前 APP_ENV 一致，避免错环境配置落库
     if (cfg.env.isEmpty) return false;
     return cfg.env == EnvConfig.environment.key;
+  }
+
+  /// [EnvConfig.applyEndpoint] 会丢掉非 https / wss 地址，丢掉后登录会报线路未就绪，这种配置不算拉到。
+  bool _linesOk(EndpointConfig cfg) {
+    bool ok(String? raw, String scheme) =>
+        (raw ?? '').trim().toLowerCase().startsWith('$scheme://');
+    if (!ok(cfg.apiBaseUrl, 'https') || !ok(cfg.wsBaseUrl, 'wss')) return false;
+    final auth = cfg.authBaseUrl;
+    return auth == null || auth.trim().isEmpty || ok(auth, 'https');
   }
 
   Future<void> _apply(
