@@ -117,7 +117,8 @@ final class LotteryPeriodEngine {
     for (final g in list) {
       final existing = _slots[g.id];
       if (existing != null) {
-        if (_olderThanCurrent(existing, g.currentIssue)) {
+        if (_olderThanCurrent(existing, g.currentIssue) &&
+            !_stuckLongEnough(existing, now, g.currentIssue, g.openAtEpochMs)) {
           // 换期前发出、晚到的旧期快照：只收上期开奖号，开奖/封盘时刻不动
           if (g.name.isNotEmpty) {
             existing.model = existing.model.copyWith(name: g.name);
@@ -138,9 +139,11 @@ final class LotteryPeriodEngine {
         final pinned = !advances && !release && _epochsFrozen(existing, now);
         existing.model = existing.model.copyWith(
           name: g.name.isNotEmpty ? g.name : existing.model.name,
-          currentIssue: g.currentIssue.isNotEmpty
-              ? _pickNewer(g.currentIssue, existing.model.currentIssue)
-              : existing.model.currentIssue,
+          currentIssue: g.currentIssue.isEmpty
+              ? existing.model.currentIssue
+              : (release && _olderThanCurrent(existing, g.currentIssue)
+                  ? g.currentIssue
+                  : _pickNewer(g.currentIssue, existing.model.currentIssue)),
           sealSeconds: g.sealSeconds ?? existing.model.sealSeconds,
           // 目录里没带封盘时间窗 = 没配置（或已清除），传 0 覆盖旧值
           closeStartEpochMs: g.closeStartEpochMs ?? 0,
@@ -276,7 +279,8 @@ final class LotteryPeriodEngine {
     final clock = now ?? ServerClock.now();
     final slot = existing;
 
-    if (_olderThanCurrent(slot, issue)) {
+    if (_olderThanCurrent(slot, issue) &&
+        !_stuckLongEnough(slot, clock, issue, openAtEpochMs)) {
       // 换期前发出、晚到的旧期帧：只收上期开奖号，开奖/封盘时刻和倒计时不动
       final staleLast = lastIssue ?? '';
       if (staleLast.isEmpty || lastRanks.isEmpty) return PeriodTickResult.none;
@@ -305,10 +309,11 @@ final class LotteryPeriodEngine {
     if (advances || release) _clearArm(slot);
     final pinned = !advances && !release && _epochsFrozen(slot, clock);
     if (issue.isNotEmpty) {
+      final rewind = release && _olderThanCurrent(slot, issue);
       final newer = _pickNewer(issue, slot.model.currentIssue);
-      if (advances || first) {
-        // PERIOD_TICK/SNAPSHOT 的 issueNo 以服务端为准。
-        slot.model = slot.model.copyWith(currentIssue: newer);
+      if (advances || first || rewind) {
+        // PERIOD_TICK/SNAPSHOT 的 issueNo 以服务端为准。开奖中太久时，收回来的期号也认。
+        slot.model = slot.model.copyWith(currentIssue: rewind ? issue : newer);
       }
     }
 
@@ -416,7 +421,8 @@ final class LotteryPeriodEngine {
         }
       }
     }
-    if (_olderThanCurrent(slot, patch.currentIssue)) {
+    if (_olderThanCurrent(slot, patch.currentIssue) &&
+        !_stuckLongEnough(slot, now, patch.currentIssue, patch.openAtEpochMs)) {
       // 换期前发出、晚到的旧期补丁：只收上期开奖号，开奖/封盘时刻不动
       slot.model = slot.model.copyWith(
         name: patch.name.isNotEmpty ? patch.name : slot.model.name,
@@ -439,9 +445,11 @@ final class LotteryPeriodEngine {
     final pinned = !advances && !release && _epochsFrozen(slot, now);
     slot.model = slot.model.copyWith(
       name: patch.name.isNotEmpty ? patch.name : slot.model.name,
-      currentIssue: patch.currentIssue.isNotEmpty
-          ? _pickNewer(patch.currentIssue, slot.model.currentIssue)
-          : slot.model.currentIssue,
+      currentIssue: patch.currentIssue.isEmpty
+          ? slot.model.currentIssue
+          : (release && _olderThanCurrent(slot, patch.currentIssue)
+              ? patch.currentIssue
+              : _pickNewer(patch.currentIssue, slot.model.currentIssue)),
       previousIssue: nextPrevIssue,
       previousResults: nextResults,
       sealSeconds: patch.sealSeconds ?? slot.model.sealSeconds,
@@ -715,9 +723,11 @@ final class LotteryPeriodEngine {
   ) {
     if (issue.isEmpty || openAtMs == null || openAtMs <= 0) return false;
     final current = slot.model.currentIssue;
+    // 期号更旧、开奖时刻也已过去：是迟到的旧帧。开奖时刻还在未来：服务端把封盘窗里跳空的期号拉回来了。
     if (current.isNotEmpty &&
         !_sameIssue(issue, current) &&
-        compareIssueNo(issue, current) < 0) {
+        compareIssueNo(issue, current) < 0 &&
+        openAtMs <= now.millisecondsSinceEpoch) {
       return false;
     }
     if (!_shownDrawing(slot, now)) return false;
