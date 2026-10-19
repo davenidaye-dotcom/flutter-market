@@ -1269,6 +1269,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           .getGames(roomId, asOwner: isHost);
       if (!mounted) return;
       final now = ServerClock.now();
+      final issuesBefore = {
+        for (final g in _engine.games) g.id: _timelineIssueKey(g),
+      };
       // 必须 syncCatalog：关则移除、开则加回（merge 不会删）
       _engine.syncCatalog(games, now);
       for (final g in games) {
@@ -1287,13 +1290,19 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         _syncWsSubscriptions();
       }
       _ensureTickerRunning();
+      // 开奖中看门狗每秒都会走到这里：期号没动的彩种不再重拉历史/消息，免得把服务端期态锁挤满。
       for (final g in games) {
+        final after = _engine.gameById(g.id);
+        if (after != null && issuesBefore[g.id] == _timelineIssueKey(after)) continue;
         scheduleReconcileChatDraws(g.id);
         unawaited(ensureGameTimelinePreloaded(g.id));
       }
       unawaited(_enrichSealFromPublic(games));
     } catch (_) {}
   }
+
+  static String _timelineIssueKey(LotteryGameModel g) =>
+      '${g.currentIssue}|${g.previousIssue ?? ''}';
 
   /// 用公开期数补 sealSeconds/sealAt（不改倒计时，不对齐会跳秒）。
   Future<void> _enrichSealFromPublic(List<LotteryGameModel> games) async {
