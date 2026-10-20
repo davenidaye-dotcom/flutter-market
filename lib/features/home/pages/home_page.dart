@@ -34,6 +34,7 @@ class HomePage extends ConsumerStatefulWidget {
 }
 
 class _HomePageState extends ConsumerState<HomePage> {
+  final _roomCodeKey = GlobalKey();
   String _roomCode = '';
   bool _loading = false;
   List<RoomModel> _history = [];
@@ -289,12 +290,24 @@ class _HomePageState extends ConsumerState<HomePage> {
     }
   }
 
+  void _hideKeyboardOutside(PointerDownEvent event) {
+    final box = _roomCodeKey.currentContext?.findRenderObject();
+    if (box is RenderBox && box.hasSize) {
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      if (rect.contains(event.position)) return;
+    }
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authSessionProvider.select((s) => s.user));
     return AppBackScope(
       child: AppPageScaffold(
-      body: GradientBackground(
+      body: Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: _hideKeyboardOutside,
+      child: GradientBackground(
         child: SafeArea(
           child: AppPullRefresh(
             onRefresh: _loadHistory,
@@ -311,6 +324,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     avatarUrl: user?.avatarUrl,
                     trial: _history.any((r) => r.isTrial),
                     loading: _loading,
+                    roomCodeKey: _roomCodeKey,
                     initialRoomCode: _roomCode,
                     onSettings: () => context.push(RoutePaths.personalSettings),
                     onLogout: () async {
@@ -349,6 +363,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         ),
       ),
       ),
+      ),
     );
   }
 }
@@ -362,6 +377,7 @@ class _ProfileCard extends StatefulWidget {
     required this.onRoomCodeChanged,
     required this.onEnterRoom,
     required this.loading,
+    required this.roomCodeKey,
     this.avatarUrl,
     this.initialRoomCode = '',
     this.trial = false,
@@ -371,6 +387,7 @@ class _ProfileCard extends StatefulWidget {
   final String username;
   final String? avatarUrl;
   final bool trial;
+  final Key roomCodeKey;
   final String initialRoomCode;
   final VoidCallback onSettings;
   final VoidCallback onLogout;
@@ -488,6 +505,7 @@ class _ProfileCardState extends State<_ProfileCard> {
                 Text('房间号', style: TextStyle(fontSize: 14.sp, color: AppColors.textPrimary)),
                 SizedBox(height: 12.h),
                 RoomCodeSixInput(
+                  key: widget.roomCodeKey,
                   controller: _roomCodeCtrl,
                   onSubmitted: (v) {
                     if (v.length == 6) widget.onEnterRoom(v);

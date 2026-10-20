@@ -159,6 +159,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                   controller: ctrl,
                   obscureText: obscure,
                   secureKeyboard: obscure,
+                  asciiKeyboard: true,
                   decoration: InputDecoration(hintText: hint),
                 ),
               ),

@@ -117,6 +117,7 @@ class _RoomCodeSixInputState extends State<RoomCodeSixInput> {
                   focusNode: _focus,
                   enabled: widget.enabled,
                   keyboardType: TextInputType.number,
+                  keepKeyboardType: true,
                   textInputAction: TextInputAction.done,
                   maxLength: 6,
                   autofocus: false,
