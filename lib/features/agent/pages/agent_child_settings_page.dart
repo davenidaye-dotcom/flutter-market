@@ -6,6 +6,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
+import '../../auth/credential_rules.dart';
 import 'agent_account_child_page.dart';
 
 /// 下级账号设置：昵称 / 状态 / 重置密码
@@ -56,11 +57,11 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
       AppToast.error('账号无效');
       return;
     }
-    final pwd = _passCtrl.text.trim();
-    final confirm = _confirmCtrl.text.trim();
+    final pwd = _passCtrl.text;
+    final confirm = _confirmCtrl.text;
     if (pwd.isNotEmpty || confirm.isNotEmpty) {
-      if (pwd.length < 6) {
-        AppToast.error('密码至少 6 位');
+      if (!validPassword(pwd)) {
+        AppToast.error(passwordMessage);
         return;
       }
       if (pwd != confirm) {
@@ -202,10 +203,11 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
         obscureText: true,
         secureKeyboard: true,
         style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
+        inputFormatters: [alphanumeric],
         decoration: InputDecoration(
           border: InputBorder.none,
           isCollapsed: true,
-          hintText: hint,
+          hintText: hint ?? '8-64位大小写+数字',
           hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
           contentPadding: EdgeInsets.zero,
         ),

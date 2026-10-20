@@ -1673,7 +1673,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         AppToast.info('系统维护中');
       }
       final token = _ws?.sessionToken;
-      if (token != null && token.isNotEmpty) SessionKick.signal(token);
+      if (token != null && token.isNotEmpty) {
+        SessionKick.signal(token, message: message);
+      }
       return;
     }
 

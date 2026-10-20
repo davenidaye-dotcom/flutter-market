@@ -11,6 +11,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
+import '../../auth/credential_rules.dart';
 
 class ChangePasswordPage extends ConsumerStatefulWidget {
   const ChangePasswordPage({
@@ -50,8 +51,8 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
       AppToast.info('请完整填写密码信息');
       return;
     }
-    if (_newCtrl.text.length < 6 || _newCtrl.text.length > 64) {
-      AppToast.info('新密码需为6-64位');
+    if (!validPassword(_newCtrl.text)) {
+      AppToast.info(passwordMessage);
       return;
     }
     if (_newCtrl.text != _confirmCtrl.text) {
@@ -131,8 +132,8 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                 child: Column(
                   children: [
                     _row('旧密码', widget.agentMode ? '代理会员当前密码' : '请输入旧密码', _oldCtrl),
-                    _row('新密码', '请输入新密码', _newCtrl),
-                    _row('确认密码', '请确认密码', _confirmCtrl, showDivider: false),
+                    _row('新密码', '8-64位大小写+数字', _newCtrl, lettersAndDigits: true),
+                    _row('确认密码', '8-64位大小写+数字', _confirmCtrl, showDivider: false, lettersAndDigits: true),
                   ],
                 ),
               ),
@@ -158,7 +159,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
     );
   }
 
-  Widget _row(String label, String hint, TextEditingController ctrl, {bool showDivider = true}) {
+  Widget _row(String label, String hint, TextEditingController ctrl, {bool showDivider = true, bool lettersAndDigits = false}) {
     return Column(
       children: [
         Row(
@@ -169,6 +170,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
                 controller: ctrl,
                 obscureText: true,
                 secureKeyboard: true,
+                inputFormatters: lettersAndDigits ? [alphanumeric] : null,
                 decoration: InputDecoration(hintText: hint),
               ),
             ),

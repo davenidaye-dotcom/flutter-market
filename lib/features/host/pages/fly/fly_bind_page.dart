@@ -7,6 +7,7 @@ import '../../../../data/repositories/providers.dart';
 import '../../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../auth/credential_rules.dart';
 import '../../widgets/host_ui.dart';
 
 /// 绑定代理会员。首次绑定或后台/上级改密后须设新密码再绑。
@@ -116,7 +117,9 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
             EmulatorSafeTextField(
               controller: newCtrl,
               obscureText: true,
-              decoration: const InputDecoration(hintText: '新密码（6–64 位）'),
+              secureKeyboard: true,
+              inputFormatters: [alphanumeric],
+              decoration: const InputDecoration(hintText: '8-64位大小写+数字'),
             ),
           ],
         ),
@@ -129,8 +132,8 @@ class _FlyBindPageState extends ConsumerState<FlyBindPage> {
     final n = newCtrl.text;
     newCtrl.dispose();
     if (ok != true) return null;
-    if (n.length < 6 || n.length > 64) {
-      AppToast.info('新密码需为6-64位');
+    if (!validPassword(n)) {
+      AppToast.info(passwordMessage);
       return null;
     }
     return n;

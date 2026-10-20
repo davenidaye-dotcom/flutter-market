@@ -10,6 +10,7 @@ import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../credential_rules.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -40,8 +41,12 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       AppToast.info('请完整填写注册信息');
       return;
     }
-    if (password.length < 6 || password.length > 16) {
-      AppToast.info('密码需为6-16位');
+    if (!validUsername(username)) {
+      AppToast.info(usernameMessage);
+      return;
+    }
+    if (!validPassword(password)) {
+      AppToast.info(passwordMessage);
       return;
     }
     if (password != confirm) {
@@ -96,20 +101,23 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                           children: [
                             _input(
                               Icons.person_outline,
-                              '请输入用户名',
+                              '6-32位字母和数字',
                               _usernameCtrl,
+                              lettersAndDigits: true,
                             ),
                             _input(
                               Icons.lock_outline,
-                              '6-16位字母和…',
+                              '8-64位大小写+数字',
                               _passwordCtrl,
                               obscure: true,
+                              lettersAndDigits: true,
                             ),
                             _input(
                               Icons.lock_outline,
-                              '6-16位字母和…',
+                              '8-64位大小写+数字',
                               _confirmCtrl,
                               obscure: true,
+                              lettersAndDigits: true,
                             ),
                             SizedBox(height: 24.h),
                             GlossyButton(
@@ -145,6 +153,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     String hint,
     TextEditingController ctrl, {
     bool obscure = false,
+    bool lettersAndDigits = false,
   }) {
     return Padding(
       padding: EdgeInsets.only(bottom: 8.h),
@@ -161,6 +170,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                   secureKeyboard: obscure,
                   asciiKeyboard: true,
                   decoration: InputDecoration(hintText: hint),
+                  inputFormatters: lettersAndDigits ? [alphanumeric] : null,
                 ),
               ),
               ValueListenableBuilder<TextEditingValue>(

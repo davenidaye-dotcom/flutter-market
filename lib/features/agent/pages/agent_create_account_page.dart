@@ -6,6 +6,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
+import '../../auth/credential_rules.dart';
 
 /// 新增账户 — 整页表单（方案 A：Chip 选类型，无确认密码）
 class AgentCreateAccountPage extends ConsumerStatefulWidget {
@@ -53,8 +54,12 @@ class _AgentCreateAccountPageState extends ConsumerState<AgentCreateAccountPage>
       AppToast.error('请填写用户名和密码');
       return;
     }
-    if (password.length < 6 || password.length > 64) {
-      AppToast.info('密码需为6-64位');
+    if (!validUsername(username)) {
+      AppToast.info(usernameMessage);
+      return;
+    }
+    if (!validPassword(password)) {
+      AppToast.info(passwordMessage);
       return;
     }
     setState(() => _loading = true);
@@ -94,11 +99,11 @@ class _AgentCreateAccountPageState extends ConsumerState<AgentCreateAccountPage>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _field('用户名', '请输入用户名', _userCtrl),
+                        _field('用户名', '6-32位字母和数字', _userCtrl, lettersAndDigits: true),
                         SizedBox(height: 10.h),
-                        _field('密码', '请输入密码', _passCtrl, secureKeyboard: true),
+                        _field('密码', '8-64位大小写+数字', _passCtrl, secureKeyboard: true, lettersAndDigits: true),
                         SizedBox(height: 10.h),
-                        _field('显示名称', '可选，默认同用户名', _nameCtrl),
+                        _field('显示名称', '可选，可填汉字', _nameCtrl),
                         SizedBox(height: 14.h),
                         Text(
                           '账户类型',
@@ -170,6 +175,7 @@ class _AgentCreateAccountPageState extends ConsumerState<AgentCreateAccountPage>
     String hint,
     TextEditingController ctrl, {
     bool secureKeyboard = false,
+    bool lettersAndDigits = false,
   }) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 2.h),
@@ -191,6 +197,8 @@ class _AgentCreateAccountPageState extends ConsumerState<AgentCreateAccountPage>
             child: EmulatorSafeTextField(
               controller: ctrl,
               secureKeyboard: secureKeyboard,
+              asciiKeyboard: lettersAndDigits && !secureKeyboard,
+              inputFormatters: lettersAndDigits ? [alphanumeric] : null,
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),

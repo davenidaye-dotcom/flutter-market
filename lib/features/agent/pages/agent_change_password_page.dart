@@ -9,6 +9,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../widgets/agent_ui.dart';
+import '../../auth/credential_rules.dart';
 
 /// 密码修改 — POST /auth/password/change（代理/代理会员）
 class AgentChangePasswordPage extends ConsumerStatefulWidget {
@@ -40,8 +41,8 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
       AppToast.info('请填写完整');
       return;
     }
-    if (_newCtrl.text.length < 6 || _newCtrl.text.length > 64) {
-      AppToast.info('新密码需为6-64位');
+    if (!validPassword(_newCtrl.text)) {
+      AppToast.info(passwordMessage);
       return;
     }
     if (_newCtrl.text != _confirmCtrl.text) {
@@ -94,9 +95,9 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
                 children: [
                   _field('旧密码', '请输入旧密码', _oldCtrl),
                   SizedBox(height: 8.h),
-                  _field('新密码', '请输入新密码', _newCtrl, obscure: true),
+                  _field('新密码', '8-64位大小写+数字', _newCtrl, obscure: true, lettersAndDigits: true),
                   SizedBox(height: 8.h),
-                  _field('确认密码', '请确认密码', _confirmCtrl, obscure: true),
+                  _field('确认密码', '8-64位大小写+数字', _confirmCtrl, obscure: true, lettersAndDigits: true),
                 ],
               ),
             ),
@@ -129,7 +130,7 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
     );
   }
 
-  Widget _field(String label, String hint, TextEditingController ctrl, {bool obscure = false}) {
+  Widget _field(String label, String hint, TextEditingController ctrl, {bool obscure = false, bool lettersAndDigits = false}) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 2.h),
       decoration: BoxDecoration(
@@ -148,6 +149,7 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
               controller: ctrl,
               obscureText: obscure,
               secureKeyboard: obscure,
+              inputFormatters: lettersAndDigits ? [alphanumeric] : null,
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),

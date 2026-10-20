@@ -30,13 +30,27 @@ class SessionKick {
     if (_isCredentialExchange(options.uri.path)) return;
     final sent = options.extra[tokenExtra];
     if (sent is! String || sent.isEmpty) return;
-    signal(sent);
+    signal(sent, message: _message(data));
   }
 
-  static void signal(String token) {
+  static String? _message(dynamic data) {
+    if (data is Map && data['msg'] != null) return data['msg'].toString();
+    return null;
+  }
+
+  static String? _pendingMessage;
+
+  static String takePendingMessage() {
+    final message = _pendingMessage;
+    _pendingMessage = null;
+    return message ?? '';
+  }
+
+  static void signal(String token, {String? message}) {
     if (_busy || token.isEmpty) return;
     final now = SessionStore.instance.accessToken;
     if (now == null || now.isEmpty || now != token) return;
+    _pendingMessage = message;
     _busy = true;
     try {
       handler?.call();

@@ -17,6 +17,7 @@ import 'features/auth/providers/auth_session_provider.dart';
 import 'features/host/widgets/host_apply_notice_dialog.dart';
 import 'features/profile/app_release.dart';
 import 'features/profile/update_progress_host.dart';
+import 'shared/widgets/page_app_bar.dart';
 
 class LetouApp extends ConsumerStatefulWidget {
   const LetouApp({super.key});
@@ -32,9 +33,13 @@ class _LetouAppState extends ConsumerState<LetouApp> {
     // 首帧后撤 splash，不依赖 LoginPage 是否挂载
     unawaited(BgmPrompt.setEnabled(false));
     SessionKick.handler = () {
+      final message = SessionKick.takePendingMessage();
       unawaited(SessionStore.instance.clear());
       ref.read(authSessionProvider.notifier).dropLocal();
       ref.read(routerProvider).go(RoutePaths.login);
+      if (message.contains('其他地方')) {
+        AppToast.info(message);
+      }
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       FlutterNativeSplash.remove();
