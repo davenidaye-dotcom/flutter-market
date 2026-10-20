@@ -168,6 +168,7 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
               child: EmulatorSafeTextField(
                 controller: ctrl,
                 obscureText: true,
+                secureKeyboard: true,
                 decoration: InputDecoration(hintText: hint),
               ),
             ),

@@ -204,10 +204,6 @@ class _HomePageState extends ConsumerState<HomePage> {
             SizedBox(height: 12.h),
             EmulatorSafeTextField(
               controller: remarkCtrl,
-              // 中文备注：默认文本键盘 + 开联想（关联想时部分 IME 卡英文）
-              keyboardType: TextInputType.text,
-              enableSuggestions: true,
-              autocorrect: true,
               maxLines: 3,
               decoration: const InputDecoration(hintText: '申请说明（可选）'),
             ),

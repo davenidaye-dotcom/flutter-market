@@ -224,7 +224,6 @@ Future<String?> hostInputSheet(
   String? suffixText,
   TextInputType? keyboardType,
   bool obscureText = false,
-  bool systemKeyboard = false,
   String confirmText = '保存',
   String cancelText = '取消',
 }) async {
@@ -247,9 +246,8 @@ Future<String?> hostInputSheet(
                   controller: ctrl,
                   autofocus: true,
                   obscureText: obscureText,
-                  keyboardType: systemKeyboard ? TextInputType.text : keyboardType,
-                  enableSuggestions: systemKeyboard,
-                  autocorrect: systemKeyboard,
+                  secureKeyboard: obscureText,
+                  keyboardType: keyboardType,
                   textInputAction: TextInputAction.done,
                   scrollPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 160.h),
                   onSubmitted: (v) {

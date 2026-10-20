@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../shared/format/display_number.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
+import '../../../shared/widgets/emulator_safe_text_field.dart';
 
 /// 确认弹框一行：号码 / 赔率 / 可改金额
 class BetConfirmLine {
@@ -430,9 +431,8 @@ class _BetConfirmSheetState extends State<_BetConfirmSheet> {
             flex: 4,
             child: SizedBox(
               height: 34.h,
-              child: TextField(
+              child: EmulatorSafeTextField(
                 controller: line.amountCtrl,
-                keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13.sp),

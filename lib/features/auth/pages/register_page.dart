@@ -158,6 +158,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                 child: EmulatorSafeTextField(
                   controller: ctrl,
                   obscureText: obscure,
+                  secureKeyboard: obscure,
                   decoration: InputDecoration(hintText: hint),
                 ),
               ),

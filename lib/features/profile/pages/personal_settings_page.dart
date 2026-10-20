@@ -27,11 +27,7 @@ class PersonalSettingsPage extends ConsumerWidget {
           controller: ctrl,
           autofocus: true,
           maxLength: 32,
-          // 中文输入：用默认文本键盘，并打开联想（关联想时部分 IME 会卡英文）
-          keyboardType: TextInputType.text,
           textInputAction: TextInputAction.done,
-          enableSuggestions: true,
-          autocorrect: false,
           decoration: const InputDecoration(
             hintText: '请输入昵称',
             counterText: '',

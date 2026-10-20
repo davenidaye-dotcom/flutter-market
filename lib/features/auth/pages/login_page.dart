@@ -367,6 +367,7 @@ class _LoginFieldState extends State<_LoginField> {
                 controller: widget.controller,
                 focusNode: widget.focusNode,
                 obscureText: widget.obscure,
+                secureKeyboard: widget.obscure,
                 textInputAction: widget.textInputAction,
                 onSubmitted: widget.onSubmitted,
                 decoration: InputDecoration(hintText: widget.hint),

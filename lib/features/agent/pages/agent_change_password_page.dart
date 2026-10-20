@@ -147,6 +147,7 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
             child: EmulatorSafeTextField(
               controller: ctrl,
               obscureText: obscure,
+              secureKeyboard: obscure,
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),

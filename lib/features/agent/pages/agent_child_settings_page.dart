@@ -162,7 +162,6 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
     );
   }
 
-  /// 昵称：系统键盘 + 联想，支持中文输入（不走 EmulatorSafe 默认关联想）。
   Widget _nicknameField() {
     return Container(
       height: 40.h,
@@ -173,12 +172,9 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
         border: Border.all(color: AgentChrome.cardBorder),
       ),
       alignment: Alignment.centerLeft,
-      child: TextField(
+      child: EmulatorSafeTextField(
         controller: _nameCtrl,
-        keyboardType: TextInputType.text,
         textInputAction: TextInputAction.next,
-        enableSuggestions: true,
-        autocorrect: true,
         style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
         decoration: InputDecoration(
           border: InputBorder.none,
@@ -204,6 +200,7 @@ class _AgentChildSettingsPageState extends ConsumerState<AgentChildSettingsPage>
       child: EmulatorSafeTextField(
         controller: ctrl,
         obscureText: true,
+        secureKeyboard: true,
         style: TextStyle(fontSize: 14.sp, color: AgentChrome.ink),
         decoration: InputDecoration(
           border: InputBorder.none,

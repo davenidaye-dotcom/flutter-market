@@ -405,9 +405,6 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
                                     child: EmulatorSafeTextField(
                                       controller: _ctrl,
                                       enabled: !sending,
-                                      keyboardType: TextInputType.text,
-                                      enableSuggestions: true,
-                                      autocorrect: true,
                                       textInputAction: TextInputAction.send,
                                       onSubmitted: (_) => _send(),
                                       decoration: InputDecoration(

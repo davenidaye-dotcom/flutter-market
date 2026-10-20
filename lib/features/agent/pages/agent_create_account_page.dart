@@ -96,14 +96,9 @@ class _AgentCreateAccountPageState extends ConsumerState<AgentCreateAccountPage>
                       children: [
                         _field('用户名', '请输入用户名', _userCtrl),
                         SizedBox(height: 10.h),
-                        _field('密码', '请输入密码', _passCtrl, obscure: true),
+                        _field('密码', '请输入密码', _passCtrl, secureKeyboard: true),
                         SizedBox(height: 10.h),
-                        _field(
-                          '显示名称',
-                          '可选，默认同用户名',
-                          _nameCtrl,
-                          enableSuggestions: true,
-                        ),
+                        _field('显示名称', '可选，默认同用户名', _nameCtrl),
                         SizedBox(height: 14.h),
                         Text(
                           '账户类型',
@@ -174,8 +169,7 @@ class _AgentCreateAccountPageState extends ConsumerState<AgentCreateAccountPage>
     String label,
     String hint,
     TextEditingController ctrl, {
-    bool obscure = false,
-    bool enableSuggestions = false,
+    bool secureKeyboard = false,
   }) {
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 2.h),
@@ -196,8 +190,7 @@ class _AgentCreateAccountPageState extends ConsumerState<AgentCreateAccountPage>
           Expanded(
             child: EmulatorSafeTextField(
               controller: ctrl,
-              obscureText: obscure,
-              enableSuggestions: enableSuggestions,
+              secureKeyboard: secureKeyboard,
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: TextStyle(fontSize: 14.sp, color: AppColors.textHint),

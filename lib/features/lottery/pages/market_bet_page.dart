@@ -146,7 +146,7 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   static const _presets = [5, 10, 50, 100, 500];
   static const _twoSides = ['大', '小', '单', '双', '龙', '虎'];
   static const _gyhSides = ['大', '小', '单', '双'];
-  static const _sumValues = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+  static const _sumValues = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
 
   @override
   void initState() {
@@ -782,7 +782,11 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
               children: [
                 Expanded(child: _sumNumberCell(_sumValues[i], selected)),
                 SizedBox(width: 6.w),
-                Expanded(child: _sumNumberCell(_sumValues[i + 1], selected)),
+                Expanded(
+                  child: i + 1 < _sumValues.length
+                      ? _sumNumberCell(_sumValues[i + 1], selected)
+                      : const SizedBox.shrink(),
+                ),
               ],
             ),
           ),

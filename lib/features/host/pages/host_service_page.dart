@@ -627,9 +627,6 @@ class _ChatViewState extends ConsumerState<_ChatView> {
                             Expanded(
                               child: EmulatorSafeTextField(
                                 controller: _ctrl,
-                                keyboardType: TextInputType.text,
-                                enableSuggestions: true,
-                                autocorrect: true,
                                 textInputAction: TextInputAction.send,
                                 onSubmitted: (_) => _send(),
                                 decoration: InputDecoration(
