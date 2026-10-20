@@ -13,6 +13,7 @@ import 'config/router/route_paths.dart';
 import 'config/theme/app_theme.dart';
 import 'core/network/session_kick.dart';
 import 'core/network/session_store.dart';
+import 'core/network/session_watch.dart';
 import 'features/auth/providers/auth_session_provider.dart';
 import 'features/host/widgets/host_apply_notice_dialog.dart';
 import 'features/profile/app_release.dart';
@@ -27,6 +28,8 @@ class LetouApp extends ConsumerStatefulWidget {
 }
 
 class _LetouAppState extends ConsumerState<LetouApp> {
+  final SessionWatch _sessionWatch = SessionWatch();
+
   @override
   void initState() {
     super.initState();
@@ -37,11 +40,16 @@ class _LetouAppState extends ConsumerState<LetouApp> {
       unawaited(SessionStore.instance.clear());
       ref.read(authSessionProvider.notifier).dropLocal();
       ref.read(routerProvider).go(RoutePaths.login);
-      if (message.contains('其他地方')) {
+      if (message.contains('维护')) {
+        AppToast.info('系统维护中');
+      } else if (message.contains('其他地方')) {
         AppToast.info(message);
       }
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final session = ref.read(authSessionProvider);
+      _sessionWatch.sync(loggedIn: session.isLoggedIn, host: session.isHostSide);
       FlutterNativeSplash.remove();
       unawaited(_promptUpdate());
     });
@@ -60,6 +68,7 @@ class _LetouAppState extends ConsumerState<LetouApp> {
 
   @override
   void dispose() {
+    _sessionWatch.stop();
     if (SessionKick.handler != null) {
       SessionKick.handler = null;
     }
@@ -68,6 +77,9 @@ class _LetouAppState extends ConsumerState<LetouApp> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(authSessionProvider, (prev, next) {
+      _sessionWatch.sync(loggedIn: next.isLoggedIn, host: next.isHostSide);
+    });
     final router = ref.watch(routerProvider);
     // 必须用 ScreenUtilInit：在 MaterialApp 内拿真实 MediaQuery。
     // 旧写法在 MaterialApp 外 init 一次，真机长屏会缩放错，登录卡片挤在顶部。
