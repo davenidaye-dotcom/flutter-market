@@ -37,6 +37,7 @@ class _LetouAppState extends ConsumerState<LetouApp> {
     unawaited(BgmPrompt.setEnabled(false));
     SessionKick.handler = () {
       final message = SessionKick.takePendingMessage();
+      dismissAllShellCovers();
       unawaited(SessionStore.instance.clear());
       ref.read(authSessionProvider.notifier).dropLocal();
       ref.read(routerProvider).go(RoutePaths.login);

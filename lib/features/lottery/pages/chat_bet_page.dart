@@ -19,7 +19,7 @@ import '../../../shared/format/display_number.dart';
 import '../../../shared/format/game_series.dart';
 import '../../../shared/widgets/emulator_safe_dialog.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
-import '../../../shared/widgets/input_dialog.dart';
+import '../../../shared/widgets/score_apply_sheet.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../utils/bet_receipt_format.dart';
@@ -1452,13 +1452,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     _setPanel(_BottomPanel.none);
     _fabSelectedNotifier.value = null;
     try {
-      final amountText = await showTextInputDialog(
-        context: context,
-        title: '申请$label',
-        hint: '请输入$label金额',
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        digitsOnly: true,
-      );
+      final amountText = await showScoreApplySheet(context, label: label);
       if (amountText == null) return;
       final amount = double.tryParse(amountText);
       if (amount == null || amount <= 0) {
@@ -2656,7 +2650,7 @@ class _StatusIssueColumn extends StatelessWidget {
       width: HistoryDrawLayout.issueW(),
       child: Text(
         label.isEmpty ? '--' : label,
-        textAlign: TextAlign.center,
+        textAlign: TextAlign.right,
         maxLines: 1,
         softWrap: false,
         style: HistoryDrawLayout.issueStyle(),
@@ -2766,7 +2760,7 @@ class _GameStatusBar extends StatelessWidget {
                       middle: LiveLatestDrawBalls(
                         roomId: roomId,
                         gameId: gameId,
-                        expandSlots: true,
+                        pinEdges: true,
                         ballSize: HistoryDrawLayout.ballSize(),
                         digitFontSize: HistoryDrawLayout.ballDigitSize(),
                         gap: HistoryDrawLayout.ballGap(),

@@ -23,6 +23,27 @@ import '../providers/auth_session_provider.dart';
 /// 注册成功后回登录页回显的账号密码。
 typedef RegisteredAccount = ({String username, String password});
 
+/// 改密成功后回登录页回显。路由可能被盖层挡住，不依赖 extra。
+class LoginPrefill {
+  LoginPrefill._();
+
+  static ({String username, String password, bool hostMode})? _pending;
+
+  static void set({
+    required String username,
+    required String password,
+    required bool hostMode,
+  }) {
+    _pending = (username: username, password: password, hostMode: hostMode);
+  }
+
+  static ({String username, String password, bool hostMode})? take() {
+    final value = _pending;
+    _pending = null;
+    return value;
+  }
+}
+
 class LoginPage extends ConsumerStatefulWidget {
   const LoginPage({super.key, this.registered});
 
@@ -47,12 +68,22 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   @override
   void initState() {
     super.initState();
+    final prefill = LoginPrefill.take();
+    if (prefill != null) _hostMode = prefill.hostMode;
     Future.microtask(() async {
       await AppRelease.localVersion();
       await _applyRemember();
+      if (!mounted) return;
       // 记住密码读完再回显，否则会被本地保存的旧账号盖掉
+      if (prefill != null) {
+        setState(() {
+          _usernameCtrl.text = prefill.username;
+          _passwordCtrl.text = prefill.password;
+        });
+        return;
+      }
       final registered = widget.registered;
-      if (registered != null && mounted) _fillRegistered(registered);
+      if (registered != null) _fillRegistered(registered);
     });
   }
 

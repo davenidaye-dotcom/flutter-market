@@ -27,32 +27,33 @@ abstract final class AppColors {
   static const sidebarActive = Color(0xFF4A698A);
   static const sidebarInactive = Color(0xFFF0F0F0);
 
-  /// 开奖号码方框色：截图色轻暗方案 A（×0.88）。历史表 / 开奖卡统一。
+  /// 开奖号码方框色：极速赛车验证版截图取色（方块四角，避开数字）。
+  /// 历史表 / 开奖卡统一。
   static const ballColors = <int, Color>{
-    1: Color(0xFFDEDE00),
-    2: Color(0xFF007FDE),
-    3: Color(0xFF3F3F3F),
-    4: Color(0xFFDE6400),
-    5: Color(0xFF6ADEDE),
-    6: Color(0xFF452ADE),
-    7: Color(0xFFC9C9C9),
-    8: Color(0xFFDE2000),
-    9: Color(0xFF6A0B00),
-    10: Color(0xFF05A400),
+    1: Color(0xFFFEF601),
+    2: Color(0xFF018FFC),
+    3: Color(0xFF4A4B4A),
+    4: Color(0xFFFD7701),
+    5: Color(0xFF7AFEFD),
+    6: Color(0xFF5134FB),
+    7: Color(0xFFE2E4E6),
+    8: Color(0xFFFC2801),
+    9: Color(0xFF740C00),
+    10: Color(0xFF13B80D),
   };
 
   /// 开奖卡顶行和分色车：与 [ballColors] 同色板。
   static const resultBallColors = <int, Color>{
-    1: Color(0xFFDEDE00),
-    2: Color(0xFF007FDE),
-    3: Color(0xFF3F3F3F),
-    4: Color(0xFFDE6400),
-    5: Color(0xFF6ADEDE),
-    6: Color(0xFF452ADE),
-    7: Color(0xFFC9C9C9),
-    8: Color(0xFFDE2000),
-    9: Color(0xFF6A0B00),
-    10: Color(0xFF05A400),
+    1: Color(0xFFFEF601),
+    2: Color(0xFF018FFC),
+    3: Color(0xFF4A4B4A),
+    4: Color(0xFFFD7701),
+    5: Color(0xFF7AFEFD),
+    6: Color(0xFF5134FB),
+    7: Color(0xFFE2E4E6),
+    8: Color(0xFFFC2801),
+    9: Color(0xFF740C00),
+    10: Color(0xFF13B80D),
   };
 
   /// 开奖球号：统一纯白（含浅色底 1/5/7）。

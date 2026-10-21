@@ -169,7 +169,7 @@ class AuthRepository {
     required String newPassword,
     required String confirmPassword,
   }) async {
-    await _client.post('/auth/password/change', data: {
+    await _client.post('/account/password/change', data: {
       'oldPassword': oldPassword,
       'newPassword': newPassword,
       'confirmPassword': confirmPassword,

@@ -1,17 +1,22 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:go_router/go_router.dart';
+
+import '../../../config/router/app_router.dart';
 import '../../../config/router/route_paths.dart';
+import '../../../core/network/session_store.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../auth/pages/login_page.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../widgets/agent_ui.dart';
 import '../../auth/credential_rules.dart';
 
-/// 密码修改 — POST /auth/password/change（代理/代理会员）
+/// 密码修改 — POST /account/password/change（代理/代理会员）
 class AgentChangePasswordPage extends ConsumerStatefulWidget {
   const AgentChangePasswordPage({super.key, required this.roomId});
 
@@ -56,11 +61,17 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
             newPassword: _newCtrl.text,
             confirmPassword: _confirmCtrl.text,
           );
-      // 后端改密成功后会使 Token 失效
-      await ref.read(authSessionProvider.notifier).logout();
-      if (!mounted) return;
+      final session = ref.read(authSessionProvider);
+      LoginPrefill.set(
+        username: session.user?.username ?? '',
+        password: _newCtrl.text,
+        hostMode: true,
+      );
+      dismissAllShellCovers();
+      ref.read(routerProvider).go(RoutePaths.login);
+      ref.read(authSessionProvider.notifier).dropLocal();
+      unawaited(SessionStore.instance.clear());
       AppToast.success('密码已修改，请重新登录');
-      context.go(RoutePaths.login);
     } catch (e) {
       AppToast.error(e.toString());
     } finally {

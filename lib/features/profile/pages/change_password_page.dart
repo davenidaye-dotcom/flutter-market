@@ -1,15 +1,20 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:go_router/go_router.dart';
+
+import '../../../config/router/app_router.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/session_store.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import '../../auth/pages/login_page.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../auth/credential_rules.dart';
 
@@ -78,10 +83,17 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
             newPassword: _newCtrl.text,
             confirmPassword: _confirmCtrl.text,
           );
-      await ref.read(authSessionProvider.notifier).logout();
-      if (!mounted) return;
+      final session = ref.read(authSessionProvider);
+      LoginPrefill.set(
+        username: session.user?.username ?? '',
+        password: _newCtrl.text,
+        hostMode: session.isManagementSide,
+      );
+      dismissAllShellCovers();
+      ref.read(routerProvider).go(RoutePaths.login);
+      ref.read(authSessionProvider.notifier).dropLocal();
+      unawaited(SessionStore.instance.clear());
       AppToast.success('修改成功，请重新登录');
-      context.go(RoutePaths.login);
     } on ApiException catch (e) {
       AppToast.error(e.message);
     } catch (e) {

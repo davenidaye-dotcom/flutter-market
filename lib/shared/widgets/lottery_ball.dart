@@ -85,6 +85,8 @@ class LotteryBallRow extends StatelessWidget {
     this.gap,
     /// true：10 列等宽，方框居中，列间保留 [gap]（默认对齐倒计时）。
     this.expandSlots = false,
+    /// true：方块保持 [ballSize]，首块贴左、末块贴右，中间间距均分。
+    this.pinEdges = false,
     this.fontScale = 0.48,
     /// 指定后数字用这个绝对字号，不随方框变大。
     this.digitFontSize,
@@ -98,6 +100,7 @@ class LotteryBallRow extends StatelessWidget {
   final double? ballSize;
   final double? gap;
   final bool expandSlots;
+  final bool pinEdges;
   final double fontScale;
   final double? digitFontSize;
   final Map<int, Color>? palette;
@@ -105,6 +108,36 @@ class LotteryBallRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (pinEdges) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          var size = ballSize ?? 22;
+          final maxH = constraints.maxHeight;
+          if (maxH.isFinite && maxH > 0 && maxH < size) size = maxH;
+          final maxW = constraints.maxWidth;
+          if (maxW.isFinite && maxW > 0 && size * 10 > maxW) {
+            size = maxW / 10;
+          }
+          size = math.max(1, size);
+          final scale = digitFontSize != null && digitFontSize! > 0
+              ? digitFontSize! / size
+              : fontScale;
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(
+              10,
+              (i) => LotteryBall(
+                number: i < numbers.length ? numbers[i] : 0,
+                size: size,
+                placeholder: placeholder || i >= numbers.length,
+                fontScale: scale,
+                palette: palette,
+              ),
+            ),
+          );
+        },
+      );
+    }
     if (expandSlots) {
       return LayoutBuilder(
         builder: (context, constraints) {

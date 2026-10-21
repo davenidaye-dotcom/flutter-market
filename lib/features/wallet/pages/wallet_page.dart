@@ -10,7 +10,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
-import '../../../shared/widgets/input_dialog.dart';
+import '../../../shared/widgets/score_apply_sheet.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../../shared/widgets/app_back.dart';
 import 'agent_info_page.dart';
@@ -85,13 +85,7 @@ class _WalletPageState extends ConsumerState<WalletPage>
     _applyDialogOpen = true;
     final label = applyType == 'UP' ? '上分' : '下分';
     try {
-      final amountText = await showTextInputDialog(
-        context: context,
-        title: '申请$label',
-        hint: '请输入$label金额',
-        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-        digitsOnly: true,
-      );
+      final amountText = await showScoreApplySheet(context, label: label);
       if (amountText == null) return;
       final amount = double.tryParse(amountText);
       if (amount == null || amount <= 0) {

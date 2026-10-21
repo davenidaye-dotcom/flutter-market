@@ -19,8 +19,9 @@ class HistoryDrawRow {
 }
 
 /// 顶栏期号、开奖球、历史表头、下拉数据行共用同一套列宽。
-/// 设计宽 375：期号列 39、球间距 1、方块 22.6。边长 = min(格宽 − 球间距, 22.6.w)。
-/// 期号列从 48 收到 39，让出的 9px 给球间距；首球离格边半个间距，用 [ballNudge] 补回贴近。
+/// 期号右对齐，离首块 3px。方块保持 22.6，首块贴轨道左、末块贴轨道右，往冠亚和挤。
+/// 末块到冠亚和、冠亚和到龙虎用同一段 [tailGap]；冠亚和文字居中，龙虎文字左对齐，
+/// 这样两侧露出的空隙一样宽。
 abstract final class HistoryDrawLayout {
   static double hPad() => 4.w;
   /// 左侧再少 3 逻辑像素。4.w 小于 4 时贴边，避免负 padding。
@@ -28,20 +29,29 @@ abstract final class HistoryDrawLayout {
     final p = hPad() - 4;
     return p < 0 ? 0 : p;
   }
-  /// 后 4 位期号 13sp 约 30px，39 仍完整显示（34 以下会出现 ellipsis）。
-  static double issueW() => 39.w;
-  static double issueGap() => 0;
+  /// 后 4 位细体期号约 22px，28 右对齐后仍完整显示。
+  static double issueW() => 28.w;
+  /// 期号字形右缘到首块左缘。
+  static double issueGap() => 3;
   static double gyW() => 42.w;
-  static double dtW() => 54.w;
-  static double trailingW() => gyW() + dtW();
+  static double dtW() => 52.w;
+  /// 末块 | 冠亚和 | 龙虎 两段间隔。
+  static double tailGap() => 3;
+  static double trailingW() => tailGap() + gyW() + tailGap() + dtW();
   static double ballSize() => 22.6.w;
-  /// 方块行左移量：1 + 半个球间距，首球与期号的距离和无间距时一致。
-  static double ballNudge() => 1 + ballGap() / 2;
 
   static TextStyle issueStyle() => TextStyle(
-        fontSize: 13.sp,
+        fontSize: 10.sp,
         height: 1.1,
         color: const Color(0xFF5A5A5A),
+        fontWeight: FontWeight.w300,
+      );
+
+  /// 表头「期数」跟期号列一起收，避免 13sp 两字在 28 宽里换行。
+  static TextStyle issueHeaderStyle() => TextStyle(
+        fontSize: 10.sp,
+        height: 1.1,
+        color: const Color(0xFF7A7A7A),
         fontWeight: FontWeight.w600,
       );
 
@@ -93,22 +103,19 @@ class Pk10AlignRow extends StatelessWidget {
       children: [
         SizedBox(
           width: HistoryDrawLayout.issueW(),
-          child: Center(child: issue),
+          child: Align(alignment: Alignment.centerRight, child: issue),
         ),
         SizedBox(width: HistoryDrawLayout.issueGap()),
-        Expanded(
-          child: Transform.translate(
-            offset: Offset(-HistoryDrawLayout.ballNudge(), 0),
-            child: middle,
-          ),
-        ),
+        Expanded(child: middle),
+        SizedBox(width: HistoryDrawLayout.tailGap()),
         SizedBox(
           width: HistoryDrawLayout.gyW(),
           child: Center(child: gy),
         ),
+        SizedBox(width: HistoryDrawLayout.tailGap()),
         SizedBox(
           width: HistoryDrawLayout.dtW(),
-          child: Center(child: dt),
+          child: Align(alignment: Alignment.centerLeft, child: dt),
         ),
       ],
     );
@@ -235,8 +242,6 @@ class HistoryDrawPanel extends StatelessWidget {
 class _Header extends StatelessWidget {
   const _Header();
 
-  static const _cn = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -251,19 +256,10 @@ class _Header extends StatelessWidget {
       child: Pk10AlignRow(
         issue: Text(
           '期数',
-          style: HistoryDrawLayout.headerStyle(),
+          style: HistoryDrawLayout.issueHeaderStyle(),
           textAlign: TextAlign.center,
         ),
-        middle: Row(
-          children: [
-            for (final label in _cn)
-              Expanded(
-                child: Center(
-                  child: Text(label, style: HistoryDrawLayout.headerStyle()),
-                ),
-              ),
-          ],
-        ),
+        middle: const _RankHeads(),
         gy: Text(
           '冠亚和',
           style: HistoryDrawLayout.headerStyle(),
@@ -277,6 +273,41 @@ class _Header extends StatelessWidget {
           maxLines: 1,
         ),
       ),
+    );
+  }
+}
+
+/// 名次字与方块同一条轨道：字心落在对应方块中心。
+class _RankHeads extends StatelessWidget {
+  const _RankHeads();
+
+  static const _cn = ['一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
+
+  @override
+  Widget build(BuildContext context) {
+    final size = HistoryDrawLayout.ballSize();
+    final style = HistoryDrawLayout.headerStyle();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final ball = w > 0 && size * 10 > w ? w / 10 : size;
+        final gap = w > ball * 10 ? (w - ball * 10) / 9 : 0.0;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            for (var i = 0; i < _cn.length; i++)
+              Positioned(
+                left: i * (ball + gap),
+                width: ball,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: Text(_cn[i], style: style, maxLines: 1),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -340,7 +371,7 @@ class _DataRow extends StatelessWidget {
         ),
         middle: LotteryBallRow(
           numbers: row.numbers,
-          expandSlots: true,
+          pinEdges: true,
           ballSize: HistoryDrawLayout.ballSize(),
           gap: HistoryDrawLayout.ballGap(),
           digitFontSize: HistoryDrawLayout.ballDigitSize(),

@@ -81,6 +81,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
     this.ballSize,
     this.gap,
     this.expandSlots = false,
+    this.pinEdges = false,
     this.digitFontSize,
     this.boxBoost = 0,
   });
@@ -90,6 +91,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
   final double? ballSize;
   final double? gap;
   final bool expandSlots;
+  final bool pinEdges;
   final double? digitFontSize;
   final double boxBoost;
 
@@ -113,6 +115,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
       gap: gap,
       placeholder: snap.placeholder,
       expandSlots: expandSlots,
+      pinEdges: pinEdges,
       digitFontSize: digitFontSize,
       boxBoost: boxBoost,
     );
