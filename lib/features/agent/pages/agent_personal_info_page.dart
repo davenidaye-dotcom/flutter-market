@@ -238,9 +238,10 @@ List<Map<String, dynamic>> _asMapList(dynamic v) {
   ];
 }
 
+/// 赔率按接口原值展示，只去掉末尾 0，不截成两位。
 String _numStr(dynamic v) {
   if (v == null) return '';
-  return displayNumber(v);
+  return displayNumber(v, maxDecimals: -1);
 }
 
 /// 平台限额：0 为不封顶。
