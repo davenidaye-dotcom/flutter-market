@@ -77,7 +77,24 @@ class _MarketBetPageState extends ConsumerState<MarketBetPage> {
         return g != null && LotteryPeriodHelper.inCloseWindow(g);
       }),
     );
-    final canBet = canPlaceBet && !gameClosed;
+    // 和聊天输入框同一规则：只在投注阶段可下注，封盘 / 开奖中都锁住
+    final betPhase = ref.watch(
+      roomLotteryLiveProvider(widget.roomId).select((s) {
+        final g = s.gameById(widget.gameId);
+        if (g == null) return 'none';
+        return LotteryPeriodHelper.phaseOf(g).name;
+      }),
+    );
+    final canBet = canPlaceBet &&
+        !gameClosed &&
+        betPhase == LotteryDisplayPhase.betting.name;
+    final blockedHint = gameClosed
+        ? '该游戏封盘中，暂不能投注'
+        : switch (betPhase) {
+            'drawing' => '开奖中，暂不能投注',
+            'sealed' || 'closed' => '封盘中，暂不能投注',
+            _ => null,
+          };
     final body = Column(
       children: [
         if (!widget.embedded)
@@ -87,6 +104,7 @@ class _MarketBetPageState extends ConsumerState<MarketBetPage> {
             roomId: widget.roomId,
             gameId: widget.gameId,
             canBet: canBet,
+            blockedHint: blockedHint,
             betGuard: _betGuard,
             onBetStart: widget.onBetStart,
             onBetFailed: widget.onBetFailed,
@@ -110,6 +128,7 @@ class _MarketBetBody extends ConsumerStatefulWidget {
     required this.gameId,
     required this.canBet,
     required this.betGuard,
+    this.blockedHint,
     this.onBetStart,
     this.onBetFailed,
     this.onBetSuccess,
@@ -118,6 +137,8 @@ class _MarketBetBody extends ConsumerStatefulWidget {
   final String roomId;
   final String gameId;
   final bool canBet;
+  /// 不能下注时点盘面的提示（封盘中 / 开奖中）。
+  final String? blockedHint;
   final SubmitGuard betGuard;
   final String Function(String command)? onBetStart;
   final void Function(String localId)? onBetFailed;
@@ -232,8 +253,24 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     return raw;
   }
 
+  void _showBlockedHint() {
+    final hint = widget.blockedHint;
+    if (hint == null) return;
+    final now = DateTime.now();
+    final last = _lastBlockedHintAt;
+    if (last != null && now.difference(last).inMilliseconds < 1500) return;
+    _lastBlockedHintAt = now;
+    AppToast.info(hint);
+  }
+
+  DateTime? _lastBlockedHintAt;
+
   void _toggle(String key) {
-    if (!widget.canBet || _submitting.value) return;
+    if (!widget.canBet) {
+      _showBlockedHint();
+      return;
+    }
+    if (_submitting.value) return;
     final now = DateTime.now();
     final last = _lastToggleAt;
     if (last != null && now.difference(last).inMilliseconds < 50) return;
@@ -262,7 +299,10 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
 
   /// 按盘面通道上一笔成功注单再下；始终先出明细确认，避免误触连发。
   Future<void> _repeatLast() async {
-    if (!widget.canBet) return;
+    if (!widget.canBet) {
+      _showBlockedHint();
+      return;
+    }
     if (_submitLocked || widget.betGuard.isBusy || _submitting.value) return;
     final accountId = ref.read(authSessionProvider).user?.id ?? '';
     final command = await BetRepeatStore.read(
@@ -409,7 +449,10 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   }
 
   Future<void> _submit() async {
-    if (!widget.canBet) return;
+    if (!widget.canBet) {
+      _showBlockedHint();
+      return;
+    }
     final selected = _selectedNotifier.value;
     if (selected.isEmpty) {
       AppToast.info('请选择玩法');
@@ -919,7 +962,6 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final drawing = LotteryPeriodHelper.showDrawingPlaceholders(game);
     return Container(
       color: Colors.white,
       padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 8.h),
@@ -943,31 +985,29 @@ class _StatusBar extends StatelessWidget {
           SizedBox(height: 8.h),
           Row(
             children: [
-              Text(
-                game.previousIssue ?? game.currentIssue,
-                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+              SizedBox(
+                width: 72.w,
+                child: LiveLatestDrawIssueText(
+                  roomId: roomId,
+                  gameId: gameId,
+                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                ),
               ),
               SizedBox(width: 6.w),
               Expanded(
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      if (drawing)
-                        for (var i = 0; i < 10; i++) ...[
-                          if (i > 0) SizedBox(width: 3.w),
-                          LotteryBall(number: 0, size: 20.w, placeholder: true),
-                        ]
-                      else
-                        for (var i = 0; i < game.previousResults.length; i++) ...[
-                          if (i > 0) SizedBox(width: 3.w),
-                          LotteryBall(number: game.previousResults[i], size: 20.w),
-                        ],
-                    ],
-                  ),
+                child: LiveLatestDrawBalls(
+                  roomId: roomId,
+                  gameId: gameId,
+                  ballSize: 20.w,
+                  gap: 3.w,
                 ),
               ),
-              Text('冠亚和', style: TextStyle(fontSize: 11.sp, color: const Color(0xFF7A7A7A))),
+              LiveLatestDrawSumText(
+                roomId: roomId,
+                gameId: gameId,
+                prefix: '冠亚和',
+                style: TextStyle(fontSize: 11.sp, color: const Color(0xFF7A7A7A)),
+              ),
               Icon(Icons.arrow_drop_down, size: 18.sp, color: AppColors.navBlue),
             ],
           ),

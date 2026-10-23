@@ -127,19 +127,30 @@ final class LotteryPeriodEngine {
           continue;
         }
         _noteDrawing(existing, now);
-        final advances = _incomingIssueAdvances(existing, g.currentIssue);
-        final release = _stuckLongEnough(
+        final settlesNow = _sameIssue(g.previousIssue ?? '', existing.model.currentIssue) &&
+            g.previousResults.any((n) => n > 0);
+        final holdDraw = _keepHoldingDraw(
           existing,
           now,
-          g.currentIssue,
-          g.openAtEpochMs,
+          settlesNow: settlesNow,
+          incomingIssue: g.currentIssue,
+          incomingPrev: g.previousIssue ?? '',
         );
+        final advances = holdDraw ? false : _incomingIssueAdvances(existing, g.currentIssue);
+        final release = holdDraw
+            ? false
+            : _stuckLongEnough(
+                existing,
+                now,
+                g.currentIssue,
+                g.openAtEpochMs,
+              );
         _arm(existing, now);
         if (advances || release) _clearArm(existing);
         final pinned = !advances && !release && _epochsFrozen(existing, now);
         existing.model = existing.model.copyWith(
           name: g.name.isNotEmpty ? g.name : existing.model.name,
-          currentIssue: g.currentIssue.isEmpty
+          currentIssue: g.currentIssue.isEmpty || holdDraw
               ? existing.model.currentIssue
               : (release && _olderThanCurrent(existing, g.currentIssue)
                   ? g.currentIssue
@@ -149,7 +160,7 @@ final class LotteryPeriodEngine {
           closeStartEpochMs: g.closeStartEpochMs ?? 0,
           closeEndEpochMs: g.closeEndEpochMs ?? 0,
         );
-        if (!pinned) {
+        if (!pinned && !holdDraw) {
           _applyEpochs(
             existing,
             openAtMs: g.openAtEpochMs,
@@ -157,11 +168,11 @@ final class LotteryPeriodEngine {
             now: now,
             force: release,
           );
-        } else {
+        } else if (!holdDraw) {
           _maybeUnstickDrawing(existing, g.openAtEpochMs, now);
         }
         _mergeHttpDraw(existing, g);
-        if (!pinned) _recoverStuckCountdown(existing, g, now);
+        if (!pinned && !holdDraw) _recoverStuckCountdown(existing, g, now);
         _noteDrawing(existing, now);
         _arm(existing, now);
         continue;
@@ -303,23 +314,33 @@ final class LotteryPeriodEngine {
     if (first) slot.wsSynced = true;
 
     _noteDrawing(slot, clock);
-    final advances = _incomingIssueAdvances(slot, issue);
-    final release = _stuckLongEnough(slot, clock, issue, openAtEpochMs);
+    final settlesNow = lastIssue != null &&
+        lastIssue.isNotEmpty &&
+        lastRanks.any((n) => n > 0) &&
+        _sameIssue(lastIssue, slot.model.currentIssue);
+    final holdDraw = _keepHoldingDraw(
+      slot,
+      clock,
+      settlesNow: settlesNow,
+      incomingIssue: issue,
+      incomingPrev: lastIssue ?? '',
+    );
+    final advances = holdDraw ? false : _incomingIssueAdvances(slot, issue);
+    final release = holdDraw ? false : _stuckLongEnough(slot, clock, issue, openAtEpochMs);
     _arm(slot, clock);
     if (advances || release) _clearArm(slot);
     final pinned = !advances && !release && _epochsFrozen(slot, clock);
     if (issue.isNotEmpty) {
       final rewind = release && _olderThanCurrent(slot, issue);
       final newer = _pickNewer(issue, slot.model.currentIssue);
-      if (advances || first || rewind) {
+      if ((advances || first || rewind) && !holdDraw) {
         // PERIOD_TICK/SNAPSHOT 的 issueNo 以服务端为准。开奖中太久时，收回来的期号也认。
         slot.model = slot.model.copyWith(currentIssue: rewind ? issue : newer);
       }
     }
 
-    // 封盘后钉死到换期。同期未封盘时，开奖时刻只允许提前，不能把剩余拉长。
-    // 开奖中停满 500 毫秒后，服务端这一期的开奖时刻若还在未来，则采纳并退出开奖中。
-    if (!pinned) {
+    // 封盘后钉死到换期。开奖时刻已到但当期号码还没到：停在开奖中，不采纳未来开奖时刻。
+    if (!pinned && !holdDraw) {
       _applyEpochs(
         slot,
         openAtMs: openAtEpochMs,
@@ -337,8 +358,9 @@ final class LotteryPeriodEngine {
         );
       }
     }
-    // 钉死与否都要尝试：开奖中停够后，同期仍在未来的开奖时刻把倒计时拉回来。
-    _maybeUnstickDrawing(slot, openAtEpochMs, clock);
+    if (!holdDraw) {
+      _maybeUnstickDrawing(slot, openAtEpochMs, clock);
+    }
     _noteDrawing(slot, clock);
     _arm(slot, clock);
 
@@ -433,19 +455,30 @@ final class LotteryPeriodEngine {
     }
     // 人在房间里本地节拍暂停时，也要从这次补丁开始算「开奖中停了多久」。
     _noteDrawing(slot, now);
-    final advances = _incomingIssueAdvances(slot, patch.currentIssue);
-    final release = _stuckLongEnough(
+    final settlesNow = _sameIssue(nextPrevIssue ?? '', slot.model.currentIssue) &&
+        nextResults.any((n) => n > 0);
+    final holdDraw = _keepHoldingDraw(
       slot,
       now,
-      patch.currentIssue,
-      patch.openAtEpochMs,
+      settlesNow: settlesNow,
+      incomingIssue: patch.currentIssue,
+      incomingPrev: nextPrevIssue ?? '',
     );
+    final advances = holdDraw ? false : _incomingIssueAdvances(slot, patch.currentIssue);
+    final release = holdDraw
+        ? false
+        : _stuckLongEnough(
+            slot,
+            now,
+            patch.currentIssue,
+            patch.openAtEpochMs,
+          );
     _arm(slot, now);
     if (advances || release) _clearArm(slot);
     final pinned = !advances && !release && _epochsFrozen(slot, now);
     slot.model = slot.model.copyWith(
       name: patch.name.isNotEmpty ? patch.name : slot.model.name,
-      currentIssue: patch.currentIssue.isEmpty
+      currentIssue: holdDraw || patch.currentIssue.isEmpty
           ? slot.model.currentIssue
           : (release && _olderThanCurrent(slot, patch.currentIssue)
               ? patch.currentIssue
@@ -457,8 +490,13 @@ final class LotteryPeriodEngine {
       closeEndEpochMs: patch.closeEndEpochMs,
     );
     if (pinned) {
-      // 封盘后钉死时仍要接受服务端「同期 openAt 被拉回未来」（换期/heal），否则一直开奖中
-      _maybeUnstickDrawing(slot, patch.openAtEpochMs, now);
+      if (!holdDraw) {
+        _maybeUnstickDrawing(slot, patch.openAtEpochMs, now);
+      }
+      return;
+    }
+    if (holdDraw) {
+      _arm(slot, now);
       return;
     }
     _applyEpochs(
@@ -655,8 +693,51 @@ final class LotteryPeriodEngine {
     }
   }
 
+  /// 同一期还在等号码时继续钉住。服务器当前期或上一期已经走过这一期，就放开。
+  bool _keepHoldingDraw(
+    _GameSlot slot,
+    DateTime now, {
+    required bool settlesNow,
+    required String incomingIssue,
+    required String incomingPrev,
+  }) {
+    if (!_holdDrawing(slot, now, settlesNow: settlesNow)) return false;
+    return !_serverMovedPastHold(slot, incomingIssue, incomingPrev);
+  }
+
+  /// 后台把时钟拨过开奖时刻后，补拉里的期号已经比钉住的这一期新。
+  bool _serverMovedPastHold(
+    _GameSlot slot,
+    String incomingIssue,
+    String incomingPrev,
+  ) {
+    final cur = slot.model.currentIssue.trim();
+    if (cur.isEmpty) return false;
+    if (incomingIssue.isNotEmpty && compareIssueNo(incomingIssue, cur) > 0) {
+      return true;
+    }
+    return incomingPrev.isNotEmpty && compareIssueNo(incomingPrev, cur) > 0;
+  }
+
+  /// 倒计时走到本期开奖时刻，号码还没写入 previousResults：不换期、不退出开奖中。
+  /// 没武装过本期（开奖时刻一进来就是过去）时不按住，让后续未来开奖时刻把倒计时拉回来。
+  bool _holdDrawing(_GameSlot slot, DateTime now, {bool settlesNow = false}) {
+    if (settlesNow) return false;
+    if (!_shownDrawing(slot, now)) return false;
+    final issue = slot.model.currentIssue.trim();
+    if (issue.isEmpty || !_sameIssue(slot.armedIssue, issue)) return false;
+    final armedOpen = slot.armedOpenAtMs;
+    if (armedOpen == null || armedOpen > now.millisecondsSinceEpoch) return false;
+    final prev = (slot.model.previousIssue ?? '').trim();
+    if (_sameIssue(prev, issue) && slot.model.previousResults.any((n) => n > 0)) {
+      return false;
+    }
+    return true;
+  }
+
   /// 开奖中已停满 [LotteryPeriodEngine.stuckDrawingGrace]，且服务端开奖时刻仍在未来。
   bool _shouldUnstickDrawing(_GameSlot slot, DateTime now, int? openAtMs) {
+    if (_holdDrawing(slot, now)) return false;
     if (openAtMs == null || openAtMs <= now.millisecondsSinceEpoch) return false;
     if (!_shownDrawing(slot, now)) return false;
     final since = slot.drawingSince;
@@ -722,6 +803,7 @@ final class LotteryPeriodEngine {
     int? openAtMs,
   ) {
     if (issue.isEmpty || openAtMs == null || openAtMs <= 0) return false;
+    if (_holdDrawing(slot, now)) return false;
     final current = slot.model.currentIssue;
     // 期号更旧、开奖时刻也已过去：是迟到的旧帧。开奖时刻还在未来：服务端把封盘窗里跳空的期号拉回来了。
     if (current.isNotEmpty &&

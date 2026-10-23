@@ -1570,18 +1570,20 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     pushLocalPage(context, page);
   }
 
-  /// 当前彩种是否处在后台封盘时间窗内
-  bool _gameClosedNow() {
+  Future<void> _submitBet() async {
+    if (!ref.read(authSessionProvider).canPlaceBet) return;
     final game = ref
         .read(roomLotteryLiveProvider(widget.roomId).notifier)
         .displayGameFor(_gameId);
-    return game != null && LotteryPeriodHelper.inCloseWindow(game);
-  }
-
-  Future<void> _submitBet() async {
-    if (!ref.read(authSessionProvider).canPlaceBet) return;
-    if (_gameClosedNow()) {
-      AppToast.info('封盘中，暂不能投注');
+    if (game == null) {
+      AppToast.info('彩种信息加载中');
+      return;
+    }
+    if (!LotteryPeriodHelper.canBetNow(game)) {
+      final phase = LotteryPeriodHelper.phaseOf(game);
+      AppToast.info(
+        phase == LotteryDisplayPhase.drawing ? '开奖中，暂不能投注' : '封盘中，暂不能投注',
+      );
       return;
     }
     final command = _betCtrl.text.trim();
@@ -1834,16 +1836,31 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     LotteryGameModel game,
     List<HistoryDrawRow> rows,
   ) {
-    final issue = game.previousIssue?.trim() ?? '';
+    final pending = LotteryPeriodHelper.awaitingDrawRow(game);
+    final missed = LotteryPeriodHelper.missedDrawIssue(game);
+    final prevIssue = game.previousIssue?.trim() ?? '';
     final balls = game.previousResults.where((n) => n > 0).toList();
-    if (issue.isEmpty || balls.isEmpty) {
+    // 未开奖期不进历史表。顶栏球号行显示上一期已开出的号码。
+    final placeholderIssue = missed ??
+        (pending && game.currentIssue.trim().isNotEmpty
+            ? game.currentIssue.trim()
+            : '');
+    if (placeholderIssue.isNotEmpty) {
+      rows = rows
+          .where((row) => !sameIssueNo(row.issue, placeholderIssue))
+          .toList(growable: false);
+    }
+    HistoryDrawRow? liveHead;
+    if (prevIssue.isNotEmpty && balls.isNotEmpty) {
+      liveHead = HistoryDrawRow(
+        issue: prevIssue,
+        numbers: balls,
+        summary: balls.length >= 2 ? '${balls[0] + balls[1]}' : '',
+      );
+    }
+    if (liveHead == null) {
       return rows.take(HistoryDrawPanel.maxCachedRows).toList(growable: false);
     }
-    final liveHead = HistoryDrawRow(
-      issue: issue,
-      numbers: balls,
-      summary: balls.length >= 2 ? '${balls[0] + balls[1]}' : '',
-    );
     // 历史面板要能上拉翻页：只做表头顶条合并，不能用断档截断 / pageSize=20 上限
     final out = <HistoryDrawRow>[liveHead];
     for (final row in rows) {
@@ -1897,14 +1914,30 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
     // 根 build 不 setState：倒计时/键盘/面板各自 ValueNotifier + Consumer select
     final canPlaceBet =
         ref.watch(authSessionProvider.select((s) => s.canPlaceBet));
-    // 后台封盘时间窗内：输入禁用、不可注单。select 只在布尔翻转时重建，不会每秒重绘整页。
-    final gameClosed = ref.watch(
+    // 只在投注阶段可输入。select 在相位翻转时重建，不会每秒重绘整页。
+    final betPhase = ref.watch(
       roomLotteryLiveProvider(widget.roomId).select((s) {
         final g = s.gameById(_gameId);
-        return g != null && LotteryPeriodHelper.inCloseWindow(g);
+        if (g == null) return 'none';
+        return LotteryPeriodHelper.phaseOf(g).name;
       }),
     );
-    final canBet = canPlaceBet && !gameClosed;
+    final canBet = canPlaceBet && betPhase == LotteryDisplayPhase.betting.name;
+    // 键盘/菜单打开时进入封盘：面板会隐藏，消息区底部按面板高度留的空也要一起收掉
+    if (!canBet &&
+        (_panel == _BottomPanel.keypad || _panel == _BottomPanel.menu)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_disposed || !mounted) return;
+        if (_panel == _BottomPanel.keypad || _panel == _BottomPanel.menu) {
+          _setPanel(_BottomPanel.none);
+        }
+      });
+    }
+    final betDisabledHint = switch (betPhase) {
+      'drawing' => '开奖中，暂不能投注',
+      'sealed' || 'closed' => '封盘中，暂不能投注',
+      _ => null,
+    };
     final isTrialAccount = ref.watch(
       roomLotteryLiveProvider(widget.roomId).select((s) => s.isTrialAccount),
     );
@@ -2213,7 +2246,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
                               }
                               return _ChatBetDock(
                                 canBet: canBet,
-                                gameClosed: gameClosed,
+                                betDisabledHint: betDisabledHint,
                                 isTrialAccount: isTrialAccount,
                                 submitting: submitting,
                                 panel: panel,
@@ -2339,7 +2372,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
 class _ChatBetDock extends StatelessWidget {
   const _ChatBetDock({
     required this.canBet,
-    this.gameClosed = false,
+    this.betDisabledHint,
     required this.isTrialAccount,
     required this.submitting,
     required this.panel,
@@ -2356,7 +2389,7 @@ class _ChatBetDock extends StatelessWidget {
   });
 
   final bool canBet;
-  final bool gameClosed;
+  final String? betDisabledHint;
   final bool isTrialAccount;
   final bool submitting;
   final _BottomPanel panel;
@@ -2407,7 +2440,7 @@ class _ChatBetDock extends StatelessWidget {
             BetInputBar(
               controller: controller,
               enabled: canBet,
-              disabledHint: gameClosed ? '封盘中，暂不能投注' : null,
+              disabledHint: betDisabledHint,
               submitting: submitting,
               menuOpen: panel == _BottomPanel.menu,
               keypadOpen: panel == _BottomPanel.keypad,
@@ -2477,38 +2510,28 @@ class _ChatHeader extends ConsumerWidget {
       ),
     );
     final isHost = ref.watch(authSessionProvider.select((s) => s.isHostSide));
-    // 右侧两列固宽左对齐（首字竖齐）；彩种名 Expanded，不够用 …
+    // 彩种名先占一整行。剩下的宽度再平分给两列，金额写不下的后半截换行。
     final pointsLabel = isHost ? '玩家总积分' : '积分';
     final turnoverLabel = isHost ? '玩家总流水' : '流水';
     final winLossLabel = isHost ? '玩家总输赢' : '输赢';
     final rebateLabel = isHost ? '玩家总回水' : '回水';
-    final statStyle = TextStyle(
+    final baseStyle = DefaultTextStyle.of(context).style;
+    final statStyle = baseStyle.merge(TextStyle(
       fontSize: isHost ? 10.sp : 11.sp,
       color: AppColors.textPrimary,
       height: 1.2,
-    );
-    // 列宽盖住「玩家总积分:999999.99」/「积分:999999.99」，保证标签完整、首字对齐
-    final colW = isHost ? 118.w : 86.w;
-    final title = GestureDetector(
-      onTap: onTapTitle,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: EdgeInsets.only(right: 4.w),
-        child: Row(
-          children: [
-            Flexible(
-              child: Text(
-                gameName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w600),
-              ),
-            ),
-            Icon(Icons.arrow_drop_down, size: 20.sp, color: AppColors.textPrimary),
-          ],
-        ),
-      ),
-    );
+    ));
+    final titleStyle = baseStyle.merge(TextStyle(
+      fontSize: 15.sp,
+      fontWeight: FontWeight.w600,
+      color: AppColors.textPrimary,
+      height: 1.1,
+    ));
+    final pointsText = displayNumber(wallet.$1);
+    final turnoverText = displayNumber(wallet.$2);
+    final winLossText = displayNumber(wallet.$3);
+    final rebateText = displayNumber(wallet.$4);
+    final statsRight = isHost ? 0.0 : 24.w;
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -2526,25 +2549,69 @@ class _ChatHeader extends ConsumerWidget {
                 icon: Icon(Icons.arrow_back_ios, size: 18.sp),
                 onPressed: onBack,
               ),
-              Expanded(child: title),
-              Padding(
-                padding: EdgeInsets.only(right: isHost ? 0 : 24.w),
+              Expanded(
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _statCol(
-                      width: colW,
-                      style: statStyle,
-                      top: '$pointsLabel:${displayNumber(wallet.$1)}',
-                      bottom: '$winLossLabel:${displayNumber(wallet.$3)}',
+                    GestureDetector(
+                      onTap: onTapTitle,
+                      behavior: HitTestBehavior.opaque,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            gameName,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: titleStyle,
+                          ),
+                          Icon(
+                            Icons.arrow_drop_down,
+                            size: 20.sp,
+                            color: AppColors.textPrimary,
+                          ),
+                        ],
+                      ),
                     ),
                     SizedBox(width: 6.w),
-                    _statCol(
-                      width: colW,
-                      style: statStyle,
-                      top: '$turnoverLabel:${displayNumber(wallet.$2)}',
-                      bottom: '$rebateLabel:${displayNumber(wallet.$4)}',
+                    Expanded(
+                      child: Padding(
+                        padding: EdgeInsets.only(right: statsRight),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final gap = 6.w;
+                            final inner = math.max(0.0, constraints.maxWidth - gap);
+                            final leftW = inner / 2;
+                            final rightW = inner - leftW;
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _headerStatRow(
+                                  leftW: leftW,
+                                  rightW: rightW,
+                                  gap: gap,
+                                  style: statStyle,
+                                  leftLabel: pointsLabel,
+                                  leftAmount: pointsText,
+                                  rightLabel: turnoverLabel,
+                                  rightAmount: turnoverText,
+                                ),
+                                SizedBox(height: 2.h),
+                                _headerStatRow(
+                                  leftW: leftW,
+                                  rightW: rightW,
+                                  gap: gap,
+                                  style: statStyle,
+                                  leftLabel: winLossLabel,
+                                  leftAmount: winLossText,
+                                  rightLabel: rebateLabel,
+                                  rightAmount: rebateText,
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -2556,39 +2623,125 @@ class _ChatHeader extends ConsumerWidget {
     );
   }
 
-  /// 固定列宽 + 左对齐 → 列内两行第一个字竖向对齐。
-  Widget _statCol({
-    required double width,
+  Widget _headerStatRow({
+    required double leftW,
+    required double rightW,
+    required double gap,
     required TextStyle style,
-    required String top,
-    required String bottom,
+    required String leftLabel,
+    required String leftAmount,
+    required String rightLabel,
+    required String rightAmount,
   }) {
-    return SizedBox(
-      width: width,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            top,
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.clip,
-            textAlign: TextAlign.left,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: leftW,
+          child: _HeaderStatLine(
+            label: leftLabel,
+            amount: leftAmount,
             style: style,
           ),
-          SizedBox(height: 2.h),
-          Text(
-            bottom,
-            maxLines: 1,
-            softWrap: false,
-            overflow: TextOverflow.clip,
-            textAlign: TextAlign.left,
+        ),
+        SizedBox(width: gap),
+        SizedBox(
+          width: rightW,
+          child: _HeaderStatLine(
+            label: rightLabel,
+            amount: rightAmount,
             style: style,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
+}
+
+double _singleLineWidth(BuildContext context, String text, TextStyle style) {
+  final painter = TextPainter(
+    text: TextSpan(text: text, style: style),
+    maxLines: 1,
+    textDirection: TextDirection.ltr,
+    textScaler: MediaQuery.textScalerOf(context),
+  )..layout();
+  final width = painter.width;
+  painter.dispose();
+  return width;
+}
+
+/// 同一列里先写「标签:金额」。这一列写不下的后半截换到下一行，不再裁掉。
+class _HeaderStatLine extends StatelessWidget {
+  const _HeaderStatLine({
+    required this.label,
+    required this.amount,
+    required this.style,
+  });
+
+  final String label;
+  final String amount;
+  final TextStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = '$label:$amount';
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final box = constraints.maxWidth;
+        if (!box.isFinite || _singleLineWidth(context, text, style) <= box + 0.5) {
+          return Text(text, maxLines: 1, softWrap: false, style: style);
+        }
+        final cut = _prefixThatFits(context, text, style, box);
+        if (cut <= 0 || cut >= text.length) {
+          return Text(
+            text,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            style: style,
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              text.substring(0, cut),
+              maxLines: 1,
+              softWrap: false,
+              style: style,
+            ),
+            Text(
+              text.substring(cut),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: style,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+int _prefixThatFits(
+  BuildContext context,
+  String text,
+  TextStyle style,
+  double maxWidth,
+) {
+  var lo = 0;
+  var hi = text.length;
+  while (lo < hi) {
+    final mid = (lo + hi + 1) >> 1;
+    if (_singleLineWidth(context, text.substring(0, mid), style) <= maxWidth) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo;
 }
 
 /// 游戏状态条：只读当前 [gameId] 的 live 态，展示用短号（后4位）。
@@ -2616,7 +2769,9 @@ class _ChatGameStatusSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final currentIssue = ref.watch(
       roomLotteryLiveProvider(roomId).select((s) {
-        final issue = s.gameById(gameId)?.currentIssue ?? '';
+        final g = s.gameById(gameId);
+        if (g == null) return '';
+        final issue = LotteryPeriodHelper.missedDrawIssue(g) ?? g.currentIssue;
         return issue.isEmpty ? '' : compactIssueNo(issue);
       }),
     );
@@ -2755,12 +2910,14 @@ class _GameStatusBar extends StatelessWidget {
                         gameId: gameId,
                         compact: true,
                         emptyLabel: '--',
+                        pendingPlaceholder: false,
                         style: HistoryDrawLayout.issueStyle(),
                       ),
                       middle: LiveLatestDrawBalls(
                         roomId: roomId,
                         gameId: gameId,
                         pinEdges: true,
+                        pendingPlaceholder: false,
                         ballSize: HistoryDrawLayout.ballSize(),
                         digitFontSize: HistoryDrawLayout.ballDigitSize(),
                         gap: HistoryDrawLayout.ballGap(),
@@ -2769,6 +2926,7 @@ class _GameStatusBar extends StatelessWidget {
                         roomId: roomId,
                         gameId: gameId,
                         prefix: '',
+                        pendingPlaceholder: false,
                         style: TextStyle(
                           fontSize: 11.sp,
                           height: 1.1,
@@ -2776,18 +2934,7 @@ class _GameStatusBar extends StatelessWidget {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      dt: ValueListenableBuilder<bool>(
-                        valueListenable: historyExpandedListenable,
-                        builder: (_, expanded, __) {
-                          return Icon(
-                            expanded
-                                ? Icons.keyboard_arrow_up
-                                : Icons.keyboard_arrow_down,
-                            color: AppColors.primary,
-                            size: 18.sp,
-                          );
-                        },
-                      ),
+                      dt: _historyChevron(),
                     ),
                     Positioned.fill(
                       child: GestureDetector(
@@ -2803,6 +2950,23 @@ class _GameStatusBar extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _historyChevron() {
+    return GestureDetector(
+      onTap: onToggleHistory,
+      behavior: HitTestBehavior.opaque,
+      child: ValueListenableBuilder<bool>(
+        valueListenable: historyExpandedListenable,
+        builder: (_, expanded, __) {
+          return Icon(
+            expanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+            color: AppColors.primary,
+            size: 18.sp,
+          );
+        },
+      ),
     );
   }
 
@@ -3073,8 +3237,14 @@ class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
     ref.listen(
       roomLotteryLiveProvider(widget.roomId).select((s) {
         final g = s.gameById(widget.gameId);
-        if (g == null) return null;
-        return (g.previousIssue, g.previousResults.join(','));
+        if (g == null) return '';
+        return latestDrawWatchKey(
+          currentIssue: g.currentIssue,
+          previousIssue: g.previousIssue,
+          previousResults: g.previousResults,
+          pendingDraw: LotteryPeriodHelper.missedDrawIssue(g) != null ||
+              LotteryPeriodHelper.awaitingDrawRow(g),
+        );
       }),
       (_, __) {
         if (mounted) widget.onEpochChange();

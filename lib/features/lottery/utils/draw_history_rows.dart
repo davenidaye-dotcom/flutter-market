@@ -77,6 +77,15 @@ int compareIssueNo(String a, String b) {
   return aShort ? byTail : -byTail;
 }
 
+/// 期号 −1（全号位数对齐）。当前期已经滚走、上一期还没出号时，横线行用这个期号。
+String decrementIssueNo(String issue) {
+  final t = issue.trim();
+  if (t.isEmpty) return t;
+  final n = int.tryParse(t);
+  if (n == null || n <= 0) return t;
+  return (n - 1).toString().padLeft(t.length, '0');
+}
+
 /// 期号 +1（全号位数对齐），用于「开奖已写入 previous 但 WS 尚未推下一期」的展示修正。
 String incrementIssueNo(String issue) {
   final t = issue.trim();
@@ -109,18 +118,19 @@ String preferFullIssueNo(String a, String b) {
   return ta.length >= tb.length ? ta : tb;
 }
 
-/// 顶栏最新开奖 select 键：仅上期期号/球号/无球时开奖态变化才更新。
+/// 顶栏最新开奖 select 键：期号、球号或「未开奖横线」变化才更新。
 String latestDrawWatchKey({
+  required String currentIssue,
   String? previousIssue,
   required List<int> previousResults,
-  required bool isDrawing,
+  required bool pendingDraw,
 }) {
+  final cur = currentIssue.trim().isNotEmpty ? issueCompareKey(currentIssue) : 0;
   final prev = previousIssue != null && previousIssue.trim().isNotEmpty
       ? issueCompareKey(previousIssue)
       : 0;
   final ranks = previousResults.where((n) => n > 0).toList();
-  if (ranks.isNotEmpty) return '$prev|${ranks.join(',')}';
-  return '$prev|drawing:${isDrawing ? 1 : 0}';
+  return '$cur|$prev|${ranks.join(',')}|${pendingDraw ? 1 : 0}';
 }
 
 /// 聊天页监听用：长/短号归一化，避免 PERIOD_TICK 与 HTTP 格式交替触发重建。

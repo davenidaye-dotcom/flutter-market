@@ -252,6 +252,24 @@ void main() {
       sealSeconds: 30,
       now: nextAt,
     );
+    final stillDrawing = engine.displayGame('JS_SC', nextAt);
+    expect(stillDrawing.currentIssue, '34136341');
+    expect(
+      LotteryPeriodHelper.phaseOf(stillDrawing, nextAt),
+      LotteryDisplayPhase.drawing,
+    );
+
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136342',
+      seconds: 75,
+      openAtEpochMs: nextAt.add(const Duration(seconds: 75)).millisecondsSinceEpoch,
+      sealAtEpochMs: nextAt.add(const Duration(seconds: 45)).millisecondsSinceEpoch,
+      sealSeconds: 30,
+      lastIssue: '34136341',
+      lastRanks: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      now: nextAt,
+    );
     final next = engine.displayGame('JS_SC', nextAt);
     expect(next.currentIssue, '34136342');
     expect(LotteryPeriodHelper.phaseOf(next, nextAt), LotteryDisplayPhase.betting);
@@ -259,7 +277,7 @@ void main() {
     expect(LotteryPeriodHelper.openRemainSeconds(next, nextAt), 75);
   });
 
-  test('开奖中停满 500 毫秒后，同期仍在未来的开奖时刻可以退出开奖中', () {
+  test('开奖中号码未到时，不因未来开奖时刻退出开奖中', () {
     final engine = LotteryPeriodEngine();
     final t0 = DateTime(2099, 6, 1, 12, 0, 0);
     final openAt = t0.add(const Duration(seconds: 10)).millisecondsSinceEpoch;
@@ -309,11 +327,31 @@ void main() {
       sealSeconds: 30,
       now: later,
     );
+    final held = engine.displayGame('JS_SC', later);
+    expect(held.currentIssue, '34136341');
+    expect(LotteryPeriodHelper.phaseOf(held, later), LotteryDisplayPhase.drawing);
+
+    engine.onDrawResult(
+      'JS_SC',
+      issue: '34136341',
+      ranks: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      now: later,
+    );
+    final nextOpen = later.add(const Duration(seconds: 18));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136342',
+      seconds: 18,
+      openAtEpochMs: nextOpen.millisecondsSinceEpoch,
+      sealAtEpochMs: later.millisecondsSinceEpoch,
+      sealSeconds: 30,
+      now: later,
+    );
     final recovered = engine.displayGame('JS_SC', later);
-    expect(recovered.currentIssue, '34136341');
+    expect(recovered.currentIssue, '34136342');
+    expect(recovered.previousIssue, '34136341');
     expect(LotteryPeriodHelper.phaseOf(recovered, later), LotteryDisplayPhase.sealed);
     expect(LotteryPeriodHelper.openRemainSeconds(recovered, later), 18);
-    expect(LotteryPeriodHelper.statusClockSeconds(recovered, later), 18);
   });
 
   test('同期开奖时刻被提前扣成开奖中后，本地秒针拉回还没到的开奖时刻', () {
@@ -442,7 +480,7 @@ void main() {
     expect(seeded.needsDrawRecovery('JS_SC', t0), isFalse);
   });
 
-  test('开奖中超过 20 秒后，快照里的未来开奖时刻盖过钉死', () {
+  test('开奖中号码未到时，超过 20 秒也不采纳未来开奖时刻', () {
     final engine = LotteryPeriodEngine();
     final t0 = DateTime(2099, 6, 1, 12, 0, 0);
     final openAt = t0.add(const Duration(seconds: 40)).millisecondsSinceEpoch;
@@ -476,8 +514,29 @@ void main() {
       sealSeconds: 10,
       now: later,
     );
+    final held = engine.displayGame('JS_SC', later);
+    expect(held.currentIssue, '34136341');
+    expect(LotteryPeriodHelper.phaseOf(held, later), LotteryDisplayPhase.drawing);
+    expect(engine.needsDrawRecovery('JS_SC', later), isTrue);
+
+    engine.onDrawResult(
+      'JS_SC',
+      issue: '34136341',
+      ranks: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      now: later,
+    );
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 30,
+      openAtEpochMs: serverOpen.millisecondsSinceEpoch,
+      sealAtEpochMs: later.add(const Duration(seconds: 20)).millisecondsSinceEpoch,
+      sealSeconds: 10,
+      now: later,
+    );
     final recovered = engine.displayGame('JS_SC', later);
     expect(recovered.currentIssue, '34136341');
+    expect(recovered.previousResults, const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(LotteryPeriodHelper.phaseOf(recovered, later), LotteryDisplayPhase.betting);
     expect(LotteryPeriodHelper.openRemainSeconds(recovered, later), 30);
     expect(engine.needsDrawRecovery('JS_SC', later), isFalse);

@@ -447,6 +447,7 @@ class _GameCard extends ConsumerWidget {
                 LiveLatestDrawIssueText(
                   roomId: roomId,
                   gameId: gameId,
+                  pendingPlaceholder: false,
                   style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
                 ),
                 SizedBox(width: 8.w),
@@ -462,7 +463,11 @@ class _GameCard extends ConsumerWidget {
             SizedBox(height: 10.h),
             Align(
               alignment: Alignment.centerLeft,
-              child: LiveLatestDrawBalls(roomId: roomId, gameId: gameId),
+              child: LiveLatestDrawBalls(
+                roomId: roomId,
+                gameId: gameId,
+                pendingPlaceholder: false,
+              ),
             ),
           ],
         ),

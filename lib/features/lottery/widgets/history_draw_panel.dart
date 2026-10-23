@@ -349,16 +349,23 @@ class _DataRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sum = row.numbers.length >= 2 ? row.numbers[0] + row.numbers[1] : 0;
+    final pending = row.numbers.length < 2;
+    final sum = pending ? 0 : row.numbers[0] + row.numbers[1];
     final size = sum >= 12 ? '大' : '小';
     final oddEven = sum % 2 == 0 ? '双' : '单';
-    final dt = row.numbers.length >= 10
+    final dt = !pending && row.numbers.length >= 10
         ? List.generate(5, (i) {
             final a = row.numbers[i];
             final b = row.numbers[9 - i];
             return a > b ? '龙' : '虎';
           }).join()
         : '';
+    final dashStyle = TextStyle(
+      fontSize: 11.sp,
+      height: 1.1,
+      color: const Color(0xFF5A5A5A),
+      fontWeight: FontWeight.w600,
+    );
 
     return SizedBox(
       height: HistoryDrawLayout.rowHeight(),
@@ -372,35 +379,35 @@ class _DataRow extends StatelessWidget {
         middle: LotteryBallRow(
           numbers: row.numbers,
           pinEdges: true,
+          placeholder: pending,
           ballSize: HistoryDrawLayout.ballSize(),
           gap: HistoryDrawLayout.ballGap(),
           digitFontSize: HistoryDrawLayout.ballDigitSize(),
           fontScale: HistoryDrawLayout.ballFontScale(),
         ),
-        gy: Text.rich(
-          TextSpan(
-            children: [
-              TextSpan(
-                text: '$sum'.padLeft(2, '0'),
-                style: TextStyle(
-                  fontSize: 11.sp,
-                  height: 1.1,
-                  color: const Color(0xFF5A5A5A),
-                  fontWeight: FontWeight.w600,
+        gy: pending
+            ? Text('—', style: dashStyle, textAlign: TextAlign.center, maxLines: 1)
+            : Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: '$sum'.padLeft(2, '0'),
+                      style: dashStyle,
+                    ),
+                    _coloredChars('$size$oddEven', fontSize: 11.sp),
+                  ],
                 ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
               ),
-              _coloredChars('$size$oddEven', fontSize: 11.sp),
-            ],
-          ),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-        ),
-        dt: Text.rich(
-          _coloredChars(dt, fontSize: 9.sp, weight: FontWeight.w500),
-          textAlign: TextAlign.center,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        dt: pending
+            ? Text('—', style: dashStyle, textAlign: TextAlign.center, maxLines: 1)
+            : Text.rich(
+                _coloredChars(dt, fontSize: 9.sp, weight: FontWeight.w500),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
       ),
     );
   }

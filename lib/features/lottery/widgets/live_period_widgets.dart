@@ -12,18 +12,47 @@ import '../utils/lottery_period_ui.dart';
 import '../../../core/time/server_clock.dart';
 
 /// 从房间 live 态读取最新开奖快照（不读 uiTick）。
+/// [pendingPlaceholder] 为 false 时，封盘/开奖中仍显示上一期已开出的号码。
 ({String issue, List<int> ranks, bool placeholder}) latestDrawSnapshot(
   RoomLotteryLiveState state,
-  String gameId,
-) {
+  String gameId, {
+  bool pendingPlaceholder = true,
+}) {
   final g = state.gameById(gameId);
   if (g == null) {
     return (issue: '', ranks: const <int>[], placeholder: false);
   }
+  if (pendingPlaceholder) {
+    final missed = LotteryPeriodHelper.missedDrawIssue(g);
+    if (missed != null) {
+      return (
+        issue: missed,
+        ranks: const <int>[],
+        placeholder: true,
+      );
+    }
+    if (LotteryPeriodHelper.awaitingDrawRow(g)) {
+      return (
+        issue: g.currentIssue.trim(),
+        ranks: const <int>[],
+        placeholder: true,
+      );
+    }
+  }
   final ranks = g.previousResults.where((n) => n > 0).toList(growable: false);
   final issue = g.previousIssue?.trim() ?? '';
-  final placeholder = ranks.isEmpty && g.isDrawing;
-  return (issue: issue, ranks: ranks, placeholder: placeholder);
+  return (issue: issue, ranks: ranks, placeholder: false);
+}
+
+String _latestDrawKey(LotteryGameModel? g) {
+  if (g == null) return '';
+  return latestDrawWatchKey(
+    currentIssue: g.currentIssue,
+    previousIssue: g.previousIssue,
+    previousResults: g.previousResults,
+    pendingDraw: LotteryPeriodHelper.missedDrawIssue(g) != null ||
+        LotteryPeriodHelper.awaitingDrawRow(g),
+  );
 }
 
 /// 上期期号：仅 [latestDrawWatchKey] 变化时重建。
@@ -36,6 +65,7 @@ class LiveLatestDrawIssueText extends ConsumerWidget {
     this.style,
     this.textAlign = TextAlign.center,
     this.emptyLabel = '--',
+    this.pendingPlaceholder = true,
   });
 
   final String roomId;
@@ -44,21 +74,20 @@ class LiveLatestDrawIssueText extends ConsumerWidget {
   final TextStyle? style;
   final TextAlign textAlign;
   final String emptyLabel;
+  final bool pendingPlaceholder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(
-      roomLotteryLiveProvider(roomId).select((s) {
-        final g = s.gameById(gameId);
-        if (g == null) return '';
-        return latestDrawWatchKey(
-          previousIssue: g.previousIssue,
-          previousResults: g.previousResults,
-          isDrawing: g.isDrawing,
-        );
-      }),
+      roomLotteryLiveProvider(roomId).select(
+        (s) => _latestDrawKey(s.gameById(gameId)),
+      ),
     );
-    final snap = latestDrawSnapshot(ref.read(roomLotteryLiveProvider(roomId)), gameId);
+    final snap = latestDrawSnapshot(
+      ref.read(roomLotteryLiveProvider(roomId)),
+      gameId,
+      pendingPlaceholder: pendingPlaceholder,
+    );
     final label = snap.issue.isEmpty
         ? emptyLabel
         : (compact ? compactIssueNo(snap.issue) : snap.issue);
@@ -84,6 +113,7 @@ class LiveLatestDrawBalls extends ConsumerWidget {
     this.pinEdges = false,
     this.digitFontSize,
     this.boxBoost = 0,
+    this.pendingPlaceholder = true,
   });
 
   final String roomId;
@@ -94,21 +124,20 @@ class LiveLatestDrawBalls extends ConsumerWidget {
   final bool pinEdges;
   final double? digitFontSize;
   final double boxBoost;
+  final bool pendingPlaceholder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(
-      roomLotteryLiveProvider(roomId).select((s) {
-        final g = s.gameById(gameId);
-        if (g == null) return '';
-        return latestDrawWatchKey(
-          previousIssue: g.previousIssue,
-          previousResults: g.previousResults,
-          isDrawing: g.isDrawing,
-        );
-      }),
+      roomLotteryLiveProvider(roomId).select(
+        (s) => _latestDrawKey(s.gameById(gameId)),
+      ),
     );
-    final snap = latestDrawSnapshot(ref.read(roomLotteryLiveProvider(roomId)), gameId);
+    final snap = latestDrawSnapshot(
+      ref.read(roomLotteryLiveProvider(roomId)),
+      gameId,
+      pendingPlaceholder: pendingPlaceholder,
+    );
     return LotteryBallRow(
       numbers: snap.ranks,
       ballSize: ballSize,
@@ -130,30 +159,40 @@ class LiveLatestDrawSumText extends ConsumerWidget {
     required this.gameId,
     this.prefix = '冠亚和',
     this.style,
+    this.pendingPlaceholder = true,
   });
 
   final String roomId;
   final String gameId;
   final String prefix;
   final TextStyle? style;
+  final bool pendingPlaceholder;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(
-      roomLotteryLiveProvider(roomId).select((s) {
-        final g = s.gameById(gameId);
-        if (g == null) return '';
-        return latestDrawWatchKey(
-          previousIssue: g.previousIssue,
-          previousResults: g.previousResults,
-          isDrawing: g.isDrawing,
-        );
-      }),
+      roomLotteryLiveProvider(roomId).select(
+        (s) => _latestDrawKey(s.gameById(gameId)),
+      ),
     );
-    final ranks = latestDrawSnapshot(
+    final snap = latestDrawSnapshot(
       ref.read(roomLotteryLiveProvider(roomId)),
       gameId,
-    ).ranks;
+      pendingPlaceholder: pendingPlaceholder,
+    );
+    if (snap.placeholder) {
+      final mark = prefix.trim().isEmpty ? '—' : ' —';
+      return Text(
+        '$prefix$mark',
+        style: style ??
+            TextStyle(
+              fontSize: 11.sp,
+              color: const Color(0xFF7A7A7A),
+              fontWeight: FontWeight.w500,
+            ),
+      );
+    }
+    final ranks = snap.ranks;
     var sumText = '';
     if (ranks.length >= 2) {
       final sum = ranks[0] + ranks[1];
@@ -248,11 +287,12 @@ class LiveLotteryPeriodCountdownRow extends ConsumerWidget {
     final notifier = ref.read(roomLotteryLiveProvider(roomId).notifier);
     final game = notifier.displayGameFor(gameId);
     if (game == null) return const SizedBox.shrink();
-    final issueLabel = compactIssueNo(game.currentIssue);
+    final missed = LotteryPeriodHelper.missedDrawIssue(game);
+    final issueLabel = compactIssueNo(missed ?? game.currentIssue);
 
     return LotteryPeriodCountdownRow(
       game: game,
-      issuePrefix: issuePrefix ?? issueLabel,
+      issuePrefix: missed != null ? issueLabel : (issuePrefix ?? issueLabel),
       showIssue: showIssue,
       compactCountdown: true,
       issueStyle: issueStyle,

@@ -39,13 +39,17 @@ class LotteryBall extends StatelessWidget {
         height: s,
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: const Color(0xFF5D4037),
+          color: const Color(0xFFE4E6EA),
           borderRadius: BorderRadius.circular(radius),
-          boxShadow: AppColors.ballBoxShadows,
         ),
         child: Text(
-          '-',
-          style: TextStyle(color: Colors.white, fontSize: s * fontScale),
+          '–',
+          style: TextStyle(
+            color: const Color(0xFF9AA0A6),
+            fontSize: s * fontScale,
+            height: 1,
+            fontWeight: FontWeight.w600,
+          ),
         ),
       );
     }

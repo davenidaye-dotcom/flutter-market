@@ -213,6 +213,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   final Set<String> _settleOptimisticApplied = {};
   /// WIN_LIST 若早于开奖卡片到达，先挂起，等 DRAW 上屏后再推，避免核对插在开奖上方闪一下。
   final Map<String, _PendingWinList> _pendingWinListByKey = {};
+  /// 开奖卡或封盘线已上屏、同期核对卡还没到时，每期只补拉一次聊天页。
+  final Map<String, Timer> _checkCardPullTimers = {};
+  final Set<String> _checkCardPullOnce = {};
   /// gameType → 近50期长龙 items（与后端 LONG_DRAGON / HTTP 同源）
   final Map<String, List<Map<String, dynamic>>> _longDragonByGame = {};
 
@@ -1855,6 +1858,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         BgmPrompt.playSeal(roomId, gameType, payload['issueNo']?.toString() ?? '');
       }
       _applySealEvent(type, gameType, payload);
+      if (type == 'SEALED') {
+        _scheduleMissingCheckCardPull(
+          gameType,
+          payload['issueNo']?.toString() ?? '',
+          win: false,
+        );
+      }
       return;
     }
 
@@ -1934,6 +1944,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
           pair: _pairOf(payload),
         );
       }
+      _scheduleMissingCheckCardPull(gameType, issue, win: true);
       // 官方出号后立即拉期态：服务端已换期时退出「开奖中」，勿等下一次 watchdog
       _scheduleRefreshGamesFromServer(immediate: true);
       _scheduleDrawWatchdog();
@@ -2516,7 +2527,92 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     // 开奖先落盘后再放行挂起的中奖核对，保证同帧顺序：开奖 → 核对。
     if (fullIssue.isNotEmpty) {
       _flushPendingWinList(gameType, fullIssue);
+      _scheduleMissingCheckCardPull(gameType, fullIssue, win: true);
     }
+  }
+
+  /// 封盘线或开奖卡已经在，同期核对卡还没有：补拉一次聊天页（历史接口会按注单补卡）。
+  void _scheduleMissingCheckCardPull(
+    String gameType,
+    String issue, {
+    required bool win,
+  }) {
+    final trimmed = issue.trim();
+    if (gameType.isEmpty || trimmed.isEmpty || !_isRecentIssue(gameType, trimmed)) {
+      return;
+    }
+    if (_hasCheckCard(gameType, trimmed, win: win)) return;
+    final id = '${win ? 'win' : 'rank'}|$gameType|${issueCompareKey(trimmed)}';
+    if (!_checkCardPullOnce.add(id)) return;
+    _checkCardPullTimers[id]?.cancel();
+    _checkCardPullTimers[id] = Timer(Duration(seconds: win ? 4 : 2), () {
+      _checkCardPullTimers.remove(id);
+      if (!mounted) return;
+      unawaited(_pullCheckCardIfMissing(gameType, trimmed, win: win, followUp: win));
+    });
+  }
+
+  bool _isRecentIssue(String gameType, String issue) {
+    final currentIssue = (state.gameById(gameType)?.currentIssue ?? '').trim();
+    if (int.tryParse(issue.trim()) == null || int.tryParse(currentIssue) == null) {
+      return false;
+    }
+    final key = issueCompareKey(issue.trim());
+    final current = issueCompareKey(currentIssue);
+    // 期号比的是后四位，跨 9999 → 0000 时按环算
+    final diff = (key - current) % 10000;
+    return diff == 0 || diff == 1 || diff == 9999;
+  }
+
+  /// 开奖那一次拉取同时看两张卡：封盘时竞猜卡漏了，这里也一起补。
+  bool _hasCheckCard(String gameType, String issue, {required bool win}) {
+    if (!_hasRankCard(gameType, issue)) return false;
+    if (!win) return true;
+    return ChatPushCache.instance
+        .hasDedupeKey(roomId, winListChatMessageId(gameType, issue));
+  }
+
+  /// 竞猜卡在且不是「暂无下注」配上本期已有下注回执的情况。
+  bool _hasRankCard(String gameType, String issue) {
+    final cache = ChatPushCache.instance;
+    if (!cache.hasDedupeKey(roomId, betRankChatMessageId(gameType, issue))) {
+      return false;
+    }
+    final target = issueCompareKey(issue);
+    var emptyCard = false;
+    var hasReceipt = false;
+    for (final m in cache.bufferedForGame(roomId, gameType)) {
+      final mIssue = extractIssue(m);
+      if (mIssue == null || issueCompareKey(mIssue) != target) continue;
+      if (m.type == ChatMessageType.betListCheck) {
+        final card = m.checkCard;
+        if (card != null && card.rows.isEmpty) emptyCard = true;
+      } else if (m.type == ChatMessageType.betReceipt) {
+        hasReceipt = true;
+      }
+    }
+    return !(emptyCard && hasReceipt);
+  }
+
+  Future<void> _pullCheckCardIfMissing(
+    String gameType,
+    String issue, {
+    required bool win,
+    required bool followUp,
+  }) async {
+    if (_hasCheckCard(gameType, issue, win: win)) return;
+    await loadChatMessagesFromServer(gameType);
+    if (!mounted || _chatResyncController.isClosed) return;
+    _chatResyncController.add(gameType);
+    if (!followUp || _hasCheckCard(gameType, issue, win: win)) return;
+    final id = 'win-again|$gameType|${issueCompareKey(issue)}';
+    if (!_checkCardPullOnce.add(id)) return;
+    _checkCardPullTimers[id]?.cancel();
+    _checkCardPullTimers[id] = Timer(const Duration(seconds: 6), () {
+      _checkCardPullTimers.remove(id);
+      if (!mounted) return;
+      unawaited(_pullCheckCardIfMissing(gameType, issue, win: true, followUp: false));
+    });
   }
 
   bool _pushChatOnce(
@@ -2727,6 +2823,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
     _resyncTimers.clear();
     _pendingWinListByKey.clear();
+    for (final timer in _checkCardPullTimers.values) {
+      timer.cancel();
+    }
+    _checkCardPullTimers.clear();
     _engine.reset();
     _chatBootstrapping.clear();
     _wsSub?.cancel();

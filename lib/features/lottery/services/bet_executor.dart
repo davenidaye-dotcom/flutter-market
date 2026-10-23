@@ -20,6 +20,7 @@ const _knownCodes = [
   'BET_TOO_FAST',
   'BET_PENDING',
   'SEALED',
+  'DRAWING',
 ];
 
 /// 玩家可读的下注错误；服务端文案为空或只是码本身时才用本地文案。
@@ -32,6 +33,7 @@ String betErrorMessage(ApiException e) {
     'BET_TOO_FAST' => '操作太快了，请稍后再试',
     'BET_PENDING' => '上一笔注单处理中，请稍候',
     'SEALED' => '已封盘',
+    'DRAWING' => '开奖中，暂不能投注',
     _ => msg,
   };
 }

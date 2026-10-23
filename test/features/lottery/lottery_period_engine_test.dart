@@ -990,4 +990,64 @@ void main() {
     expect(g.currentIssue, '21355069');
     expect(g.countdownSeconds, greaterThan(290));
   });
+
+  test('background jump keeps same issue drawing until server moves past', () {
+    final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34136341',
+      seconds: 75,
+      openAtEpochMs: openAt,
+      lastIssue: '34136340',
+      lastRanks: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      now: t0,
+    );
+    final later = t0.add(const Duration(minutes: 10));
+    final stuck = engine.displayGame('JS_SC', later);
+    expect(stuck.currentIssue, '34136341');
+    expect(stuck.isDrawing, isTrue);
+
+    final sameOpen =
+        later.add(const Duration(seconds: 40)).millisecondsSinceEpoch;
+    engine.mergeHttpSnapshot(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136341',
+          previousIssue: '34136340',
+          countdownSeconds: 40,
+          openAtEpochMs: sameOpen,
+          previousResults: const [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        ),
+      ],
+      later,
+    );
+    final still = engine.displayGame('JS_SC', later);
+    expect(still.currentIssue, '34136341');
+    expect(still.isDrawing, isTrue);
+
+    final nextOpen =
+        later.add(const Duration(seconds: 50)).millisecondsSinceEpoch;
+    engine.mergeHttpSnapshot(
+      [
+        LotteryGameModel(
+          id: 'JS_SC',
+          name: '极速赛车',
+          currentIssue: '34136348',
+          previousIssue: '34136347',
+          countdownSeconds: 50,
+          openAtEpochMs: nextOpen,
+          previousResults: const [10, 9, 8, 7, 6, 5, 4, 3, 2, 1],
+        ),
+      ],
+      later,
+    );
+    final recovered = engine.displayGame('JS_SC', later);
+    expect(recovered.currentIssue, '34136348');
+    expect(recovered.previousIssue, '34136347');
+    expect(recovered.previousResults, [10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+    expect(recovered.isDrawing, isFalse);
+    expect(recovered.countdownSeconds, 50);
+  });
 }

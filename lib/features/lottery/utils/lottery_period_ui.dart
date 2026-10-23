@@ -7,6 +7,7 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../shared/widgets/flip_countdown.dart';
 import '../../../core/time/server_clock.dart';
+import 'draw_history_rows.dart';
 
 /// 对齐《App期数封盘与开奖时间_20260923》与 plus-ui `lotteryFeed.ts`。
 /// - `openAtEpochMs` = 本期开奖时刻（距开奖终点）
@@ -105,6 +106,10 @@ abstract final class LotteryPeriodHelper {
       return LotteryDisplayPhase.closed;
     }
     final clock = now ?? ServerClock.now();
+    // 登录时时钟已滚到下一期，上一期号码还没到：顶栏停在开奖中，不走下一期倒计时。
+    if (missedDrawIssue(game, clock) != null) {
+      return LotteryDisplayPhase.drawing;
+    }
     final openLeft = openRemainSeconds(game, clock);
     // 开奖时刻还在未来就继续倒计时。isDrawing 只是上一帧的标记，不能把没到点的期钉死在开奖中。
     if (openLeft <= 0) {
@@ -136,9 +141,48 @@ abstract final class LotteryPeriodHelper {
     return openRemainSeconds(game, now);
   }
 
+  /// 登录时时钟往往已经滚到下一期，上一期号码还没落库。这 3 分钟里球号行仍显示灰色横线。
+  static const missedDrawWaitMs = 3 * 60 * 1000;
+
+  static int periodSecondsOf(LotteryGameModel game) {
+    return switch (game.id) {
+      'JS_SC' => 75,
+      'AZXY10' || 'TW_BG_Q' || 'TW_BG_H' => 300,
+      _ => 0,
+    };
+  }
+
+  /// 当前期比最近已开奖期号超前不止 1 期，且上一期开奖时刻起还没满 3 分钟。返回该未开奖期号。
+  static String? missedDrawIssue(LotteryGameModel game, [DateTime? now]) {
+    final openAt = game.openAtEpochMs ?? 0;
+    final periodSec = periodSecondsOf(game);
+    if (openAt <= 0 || periodSec <= 0) return null;
+    final cur = issueCompareKey(game.currentIssue);
+    final last = issueCompareKey(game.previousIssue ?? '');
+    if (cur <= 0 || last <= 0 || cur - last <= 1) return null;
+    final prevOpenAt = openAt - periodSec * 1000;
+    final t = (now ?? ServerClock.now()).millisecondsSinceEpoch;
+    if (t < prevOpenAt || t - prevOpenAt >= missedDrawWaitMs) return null;
+    return decrementIssueNo(game.currentIssue);
+  }
+
+  /// 封盘倒计时或开奖中，且当期号码还没写入上一期结果。
+  static bool awaitingDrawRow(LotteryGameModel game, [DateTime? now]) {
+    final phase = phaseOf(game, now);
+    if (phase != LotteryDisplayPhase.sealed &&
+        phase != LotteryDisplayPhase.drawing) {
+      return false;
+    }
+    final current = game.currentIssue.trim();
+    if (current.isEmpty) return false;
+    final prev = game.previousIssue?.trim() ?? '';
+    final hasRanks = game.previousResults.any((n) => n > 0);
+    if (hasRanks && sameIssueNo(prev, current)) return false;
+    return true;
+  }
+
   static bool showDrawingPlaceholders(LotteryGameModel game) {
-    return phaseOf(game) == LotteryDisplayPhase.drawing &&
-        game.previousResults.isEmpty;
+    return awaitingDrawRow(game);
   }
 
   static bool canBetNow(LotteryGameModel game, [DateTime? now]) {
