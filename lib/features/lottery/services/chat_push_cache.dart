@@ -722,6 +722,36 @@ class ChatPushCache {
     return true;
   }
 
+  /// 丢掉该彩种已在内存里的消息。后台挂起后用历史接口整页盖上之前先清掉，避免旧列表缺一截。
+  void dropGame(String roomId, String gameId) {
+    if (roomId.isEmpty || gameId.isEmpty) return;
+    final keys = _keysByRoom[roomId];
+    final buffer = _bufferByRoom[roomId];
+    if (buffer != null) {
+      final kept = <_CachedChatPush>[];
+      for (final entry in buffer) {
+        if (entry.push.gameId == gameId) {
+          keys?.remove(entry.dedupeKey);
+          continue;
+        }
+        kept.add(entry);
+      }
+      _bufferByRoom[roomId] = kept;
+    }
+    final live = _liveByRoom[roomId];
+    if (live != null) {
+      live.removeWhere((entry) {
+        if (entry.push.gameId != gameId) return false;
+        keys?.remove(entry.dedupeKey);
+        return true;
+      });
+    }
+    _tailOrder[roomId]?.remove(gameId);
+    _rebuildTailIndex(roomId);
+    _invalidateGameCache(roomId, gameId);
+    _schedulePersist(roomId);
+  }
+
   void clearLiveDedupe(String roomId, String gameId) {
     final keys = _keysByRoom[roomId];
     if (keys != null) {

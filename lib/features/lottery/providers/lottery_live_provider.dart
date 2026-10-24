@@ -735,6 +735,46 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         .isNotEmpty;
   }
 
+  /// 后台挂起太久再回来：旧连接多半已经半开，先强制重连，再丢掉该彩种内存消息，用历史接口整页盖上。
+  Future<void> replaceChatAfterBackground(String gameId) async {
+    if (!mounted || gameId.isEmpty) return;
+    if (!_wsDisposed) {
+      await _connectWs(
+        isHost: _ref.read(authSessionProvider).isHostSide,
+        games: state.games,
+        isReconnect: true,
+        force: true,
+      );
+      _ensureTickerRunning();
+    }
+    if (!mounted) return;
+    try {
+      final isHost = _ref.read(authSessionProvider).isHostSide;
+      final page = await _ref.read(lotteryRepositoryProvider).getChatPage(
+            roomId: roomId,
+            gameId: gameId,
+            asOwner: isHost,
+            limit: ChatPushCache.chatHistoryIssueLimit,
+          );
+      if (!mounted || page.messages.isEmpty) return;
+      ChatPushCache.instance.dropGame(roomId, gameId);
+      _chatHistory.remove(gameId);
+      _ingestServerChatMessages(gameId, page.messages);
+      if (!isHost) {
+        _noteNewestPage(
+          gameId,
+          page.messages,
+          nextBeforeSeq: page.nextBeforeSeq,
+          hasMore: page.hasMore,
+        );
+      }
+      _bumpDrawCache();
+      if (!_chatResyncController.isClosed) {
+        _chatResyncController.add(gameId);
+      }
+    } catch (_) {}
+  }
+
   /// 最新一页（≤50 条 + 开奖卡）。会员接口用响应头里的游标记下"往上翻"的起点。
   Future<void> loadChatMessagesFromServer(String gameId) async {
     try {
@@ -1437,13 +1477,31 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     required bool isHost,
     required List<LotteryGameModel> games,
     bool isReconnect = false,
+    bool force = false,
   }) {
     if (_wsDisposed) return Future.value();
-    return _wsConnectInflight ??=
-        _connectWsImpl(isHost: isHost, games: games, isReconnect: isReconnect)
-            .whenComplete(() {
+    if (force) {
+      _wsReconnectTimer?.cancel();
+      _wsReconnectTimer = null;
+      _wsReconnectAttempt = 0;
+      // 作废挂起期间没走完的连接，避免回来还等着那条已经死掉的握手。
+      _wsConnectGen++;
       _wsConnectInflight = null;
+    } else if (_wsConnectInflight != null) {
+      return _wsConnectInflight!;
+    }
+    late final Future<void> tracked;
+    tracked = _connectWsImpl(
+      isHost: isHost,
+      games: games,
+      isReconnect: isReconnect,
+    ).whenComplete(() {
+      if (identical(_wsConnectInflight, tracked)) {
+        _wsConnectInflight = null;
+      }
     });
+    _wsConnectInflight = tracked;
+    return tracked;
   }
 
   Future<void> _connectWsImpl({

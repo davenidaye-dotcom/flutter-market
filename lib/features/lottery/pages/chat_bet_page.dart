@@ -94,7 +94,10 @@ class ChatBetPage extends ConsumerStatefulWidget {
   ConsumerState<ChatBetPage> createState() => _ChatBetPageState();
 }
 
-class _ChatBetPageState extends ConsumerState<ChatBetPage> {
+class _ChatBetPageState extends ConsumerState<ChatBetPage>
+    with WidgetsBindingObserver {
+  /// 短于这个时间的切后台不重拉。挂起超过这段，推送已经断了，回来用历史整页盖上。
+  static const _backgroundReloadAfter = Duration(seconds: 30);
   final _messagesNotifier = _ChatListNotifier();
   final _betSlipsNotifier = ValueNotifier<List<BetSlipRow>>([]);
   final _betCtrl = TextEditingController();
@@ -145,6 +148,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   int _historyReadyGen = 0;
   String? _longDragonLoadedGameId;
   bool _pinnedToBottom = true;
+  DateTime? _backgroundedAt;
   final _showJumpBottomNotifier = ValueNotifier(false);
   Timer? _draftSaveTimer;
   Timer? _historyRowsDebounce;
@@ -1053,6 +1057,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _accountId = ref.read(authSessionProvider).user?.id ?? '';
     _scrollCtrl.addListener(_onScrollChanged);
     _betCtrl.addListener(_scheduleBetDraftSave);
@@ -1174,7 +1179,35 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _backgroundedAt ??= DateTime.now();
+      return;
+    }
+    if (state != AppLifecycleState.resumed) return;
+    final since = _backgroundedAt;
+    _backgroundedAt = null;
+    if (since == null) return;
+    if (DateTime.now().difference(since) < _backgroundReloadAfter) return;
+    unawaited(_reloadChatAfterBackground());
+  }
+
+  /// 和重新登录同一条历史。先拉到再盖上，失败时原来的消息还在。
+  Future<void> _reloadChatAfterBackground() async {
+    final gameId = _gameId;
+    final live = ref.read(roomLotteryLiveProvider(widget.roomId).notifier);
+    await live.replaceChatAfterBackground(gameId);
+    if (_disposed || !mounted || gameId != _gameId) return;
+    _pinnedToBottom = true;
+    _lastTimelineSig = null;
+    _syncMessagesFromCache(forceScroll: true);
+    _scheduleHistoryRowsRefresh();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unregisterAppBackLayer(_backLayer);
     _disposed = true;
     _chatSubGen++;
