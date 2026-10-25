@@ -72,7 +72,7 @@ class _HostAtmospherePageState extends ConsumerState<HostAtmospherePage> {
             .reloadGamesCatalog(),
       );
       setState(() => _dirty = false);
-      AppToast.success('气氛号设置已保存');
+      AppToast.success('机器人设置已保存');
     } catch (e) {
       AppToast.error(e.toString());
     }
@@ -81,7 +81,7 @@ class _HostAtmospherePageState extends ConsumerState<HostAtmospherePage> {
   @override
   Widget build(BuildContext context) {
     return HostSubPageScaffold(
-      title: '\u6c14\u6c1b\u53f7\u8bbe\u7f6e',
+      title: '机器人设置',
       body: _loading
           ? const AppPageLoading()
           : ListView(

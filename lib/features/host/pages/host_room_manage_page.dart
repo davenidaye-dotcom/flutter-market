@@ -140,7 +140,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     setState(() => _games = next);
     try {
       await _putGames(next);
-      AppToast.success(v ? '已开启气氛号' : '已关闭气氛号');
+      AppToast.success(v ? '已开启机器人' : '已关闭机器人');
     } catch (e) {
       if (mounted) setState(() => _games = prev);
       AppToast.error(e.toString());
@@ -154,7 +154,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     setState(() => _games = next);
     try {
       await _putGames(next);
-      AppToast.success(v ? '已全部打开气氛号' : '已全部关闭气氛号');
+      AppToast.success(v ? '已全部打开机器人' : '已全部关闭机器人');
     } catch (e) {
       if (mounted) setState(() => _games = prev);
       AppToast.error(e.toString());
@@ -493,7 +493,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
         children: [
           const Spacer(),
           SizedBox(width: 76, child: Text('游戏', textAlign: TextAlign.center, style: style)),
-          SizedBox(width: 76, child: Text('气氛号', textAlign: TextAlign.center, style: style)),
+          SizedBox(width: 76, child: Text('机器人', textAlign: TextAlign.center, style: style)),
         ],
       ),
     );
@@ -505,7 +505,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       padding: EdgeInsets.fromLTRB(16.w, 0, 8.w, 0),
       child: Row(
         children: [
-          Expanded(child: Text('气氛号全开', style: TextStyle(fontSize: 15.sp))),
+          Expanded(child: Text('机器人全开', style: TextStyle(fontSize: 15.sp))),
           const SizedBox(width: 76),
           SizedBox(
             width: 76,
