@@ -223,6 +223,8 @@ Future<String?> hostInputSheet(
   String? hint,
   String? suffixText,
   TextInputType? keyboardType,
+  bool keepKeyboardType = false,
+  List<TextInputFormatter>? inputFormatters,
   bool obscureText = false,
   String confirmText = '保存',
   String cancelText = '取消',
@@ -248,6 +250,8 @@ Future<String?> hostInputSheet(
                   obscureText: obscureText,
                   secureKeyboard: obscureText,
                   keyboardType: keyboardType,
+                  keepKeyboardType: keepKeyboardType,
+                  inputFormatters: inputFormatters,
                   textInputAction: TextInputAction.done,
                   scrollPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 160.h),
                   onSubmitted: (v) {

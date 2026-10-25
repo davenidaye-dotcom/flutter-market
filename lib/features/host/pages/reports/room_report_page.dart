@@ -133,6 +133,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
 
   @override
   Widget build(BuildContext context) {
+    final orderCount = _pick(['orderCount'], fraction: 0);
     final turnover = _pick(['turnover']);
     final rebate = _pick(['rebatePaid']);
     final gamePnl = _signedPick(['gamePnl']);
@@ -147,6 +148,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
           Padding(
             padding: EdgeInsets.symmetric(horizontal: 16.w),
             child: _SummaryCard(
+              orderCount: orderCount,
               turnover: turnover,
               rebate: rebate,
               gamePnl: gamePnl.text,
@@ -236,6 +238,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
 
 class _SummaryCard extends StatelessWidget {
   const _SummaryCard({
+    required this.orderCount,
     required this.turnover,
     required this.rebate,
     required this.gamePnl,
@@ -245,6 +248,7 @@ class _SummaryCard extends StatelessWidget {
     required this.totalPnlColor,
   });
 
+  final String orderCount;
   final String turnover;
   final String rebate;
   final String gamePnl;
@@ -256,60 +260,27 @@ class _SummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return HostWhiteCard(
-      padding: EdgeInsets.fromLTRB(14.w, 14.h, 10.w, 14.h),
-      child: Row(
+      padding: EdgeInsets.fromLTRB(8.w, 14.h, 8.w, 14.h),
+      child: Column(
         children: [
-          Expanded(
-            flex: 3,
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(child: _Metric(label: '流水', value: turnover)),
-                    Expanded(child: _Metric(label: '回水合计', value: rebate)),
-                  ],
-                ),
-                SizedBox(height: 12.h),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _Metric(label: '游戏盈亏', value: gamePnl, valueColor: gamePnlColor),
-                    ),
-                    Expanded(child: _Metric(label: '代理福利', value: agentWelfare)),
-                  ],
-                ),
-              ],
-            ),
+          Row(
+            children: [
+              Expanded(child: _Metric(label: '总注单', value: orderCount)),
+              Expanded(child: _Metric(label: '总注额', value: turnover)),
+              Expanded(child: _Metric(label: '回水合计', value: rebate)),
+            ],
           ),
-          Container(
-            width: 1,
-            height: 64.h,
-            margin: EdgeInsets.symmetric(horizontal: 8.w),
-            color: const Color(0xFFEEEEEE),
-          ),
-          Expanded(
-            flex: 2,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  '总盈亏',
-                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                ),
-                SizedBox(height: 6.h),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    totalPnl,
-                    style: TextStyle(
-                      fontSize: 22.sp,
-                      fontWeight: FontWeight.w700,
-                      color: totalPnlColor,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          SizedBox(height: 14.h),
+          Row(
+            children: [
+              Expanded(child: _Metric(label: '代理福利', value: agentWelfare)),
+              Expanded(
+                child: _Metric(label: '游戏总结果', value: gamePnl, valueColor: gamePnlColor),
+              ),
+              Expanded(
+                child: _Metric(label: '玩家总结果', value: totalPnl, valueColor: totalPnlColor),
+              ),
+            ],
           ),
         ],
       ),
@@ -327,16 +298,22 @@ class _Metric extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
-        SizedBox(height: 4.h),
         Text(
-          value,
-          style: TextStyle(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.w700,
-            color: valueColor ?? AppColors.textPrimary,
+          label,
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+        ),
+        SizedBox(height: 4.h),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 16.sp,
+              fontWeight: FontWeight.w700,
+              color: valueColor ?? AppColors.textPrimary,
+            ),
           ),
         ),
       ],

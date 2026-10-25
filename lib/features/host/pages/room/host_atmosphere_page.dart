@@ -44,7 +44,7 @@ class _HostAtmospherePageState extends ConsumerState<HostAtmospherePage> {
             .map((g) => (
                   (g['gameType'] ?? g['type'] ?? '').toString(),
                   (g['gameName'] ?? g['typeName'] ?? g['gameType'] ?? '').toString(),
-                  g['enabled'] != false,
+                  g['atmosphereEnabled'] == true || g['atmosphereEnabled'] == 1,
                 ))
             .toList();
         _loading = false;
@@ -59,12 +59,10 @@ class _HostAtmospherePageState extends ConsumerState<HostAtmospherePage> {
   Future<void> _save() async {
     try {
       await ref.read(ownerRepositoryProvider).updateGamesSettings({
-        'atmosphereEnabled': _roomEnabled,
-        'atmosphereJoinCount': _joinCount.round(),
         'items': _gameSwitches
             .map((g) => {
                   'gameType': g.$1.isEmpty ? g.$2 : g.$1,
-                  'enabled': _roomEnabled && g.$3,
+                  'atmosphereEnabled': _roomEnabled && g.$3,
                 })
             .toList(),
       });

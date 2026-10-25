@@ -125,11 +125,16 @@ class _HostMemberDetailPageState extends ConsumerState<HostMemberDetailPage> {
 
   Future<void> _creditDialog(String direction) async {
     final title = direction == 'UP' ? '给会员上分' : '给会员下分';
+    // 金额调数字键盘。安卓即安全键盘，不再换成可切中文的输入法。
     final amount = await hostInputSheet(
       context,
       title: title,
       hint: direction == 'UP' ? '请输入上分金额' : '请输入下分金额',
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      keepKeyboardType: true,
+      inputFormatters: [
+        FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
+      ],
       confirmText: '提交',
     );
     final v = num.tryParse(amount ?? '');

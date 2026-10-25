@@ -40,7 +40,7 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
   bool _joinAudit = false;
   bool _betConfirm = false;
   bool _showQuick = true;
-  List<(String, String, bool)> _games = [];
+  List<_RoomGame> _games = [];
   Map<String, dynamic> _room = {};
   bool _loading = true;
 
@@ -88,9 +88,14 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                 gt,
                 (g['gameName'] ?? g['typeName'] ?? gt).toString(),
               );
-              return (gt, gn, _asGameEnabled(g['enabled']));
+              return _RoomGame(
+                gt,
+                gn,
+                _asFlag(g['enabled']),
+                _asFlag(g['atmosphereEnabled']),
+              );
             })
-            .where((e) => e.$1.isNotEmpty || e.$2.isNotEmpty)
+            .where((e) => e.type.isNotEmpty || e.name.isNotEmpty)
             .toList();
         _loading = false;
       });
@@ -111,28 +116,61 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       );
       if (!ok || !mounted) return;
     }
+    final prev = [..._games];
     final next = [..._games];
-    next[i] = (next[i].$1, next[i].$2, v);
+    next[i] = next[i].copy(enabled: v);
     setState(() => _games = next);
     try {
-      await ref.read(ownerRepositoryProvider).updateGamesSettings({
-        'items': next
-            .map((g) => {
-                  'gameType': g.$1.isEmpty ? g.$2 : g.$1,
-                  'enabled': g.$3,
-                })
-            .toList(),
-      });
-      // 本端立刻刷新目录；会员端靠 WS afterCommit 推送
+      await _putGames(next);
       unawaited(
         ref
             .read(roomLotteryLiveProvider(widget.roomId).notifier)
             .reloadGamesCatalog(),
       );
     } catch (e) {
+      if (mounted) setState(() => _games = prev);
       AppToast.error(e.toString());
-      await _load();
     }
+  }
+
+  Future<void> _toggleAtmosphere(int i, bool v) async {
+    final prev = [..._games];
+    final next = [..._games];
+    next[i] = next[i].copy(atmosphere: v);
+    setState(() => _games = next);
+    try {
+      await _putGames(next);
+      AppToast.success(v ? '已开启气氛号' : '已关闭气氛号');
+    } catch (e) {
+      if (mounted) setState(() => _games = prev);
+      AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _toggleAllAtmosphere(bool v) async {
+    if (_games.isEmpty) return;
+    final prev = [..._games];
+    final next = [for (final g in _games) g.copy(atmosphere: v)];
+    setState(() => _games = next);
+    try {
+      await _putGames(next);
+      AppToast.success(v ? '已全部打开气氛号' : '已全部关闭气氛号');
+    } catch (e) {
+      if (mounted) setState(() => _games = prev);
+      AppToast.error(e.toString());
+    }
+  }
+
+  Future<void> _putGames(List<_RoomGame> rows) {
+    return ref.read(ownerRepositoryProvider).updateGamesSettings({
+      'items': rows
+          .map((g) => {
+                'gameType': g.type.isEmpty ? g.name : g.type,
+                'enabled': g.enabled,
+                'atmosphereEnabled': g.atmosphere,
+              })
+          .toList(),
+    });
   }
 
   Future<void> _toggleBetConfirm(bool v) async {
@@ -384,15 +422,12 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                                   ],
                                 ),
                               ),
+                              _gameColumns(),
+                              _atmosphereMaster(),
                               for (var i = 0; i < _games.length; i++) ...[
-                                if (i > 0)
-                                  const Divider(
-                                      height: 1, color: AppColors.divider),
-                                _switchTile(
-                                  _games[i].$2,
-                                  _games[i].$3,
-                                  (v) => _toggleGame(i, v),
-                                ),
+                                const Divider(
+                                    height: 1, color: AppColors.divider),
+                                _gameRow(i),
                               ],
                             ],
                           ),
@@ -449,9 +484,115 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
       ),
     );
   }
+
+  Widget _gameColumns() {
+    final style = TextStyle(fontSize: 11.sp, color: AppColors.textHint);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 0, 8.w, 0),
+      child: Row(
+        children: [
+          const Spacer(),
+          SizedBox(width: 76, child: Text('游戏', textAlign: TextAlign.center, style: style)),
+          SizedBox(width: 76, child: Text('气氛号', textAlign: TextAlign.center, style: style)),
+        ],
+      ),
+    );
+  }
+
+  Widget _atmosphereMaster() {
+    final allOn = _games.isNotEmpty && _games.every((g) => g.atmosphere);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 0, 8.w, 0),
+      child: Row(
+        children: [
+          Expanded(child: Text('气氛号全开', style: TextStyle(fontSize: 15.sp))),
+          const SizedBox(width: 76),
+          SizedBox(
+            width: 76,
+            child: Center(
+              child: Switch(
+                value: allOn,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.navBlue,
+                onChanged: _games.isEmpty ? null : _toggleAllAtmosphere,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _gameRow(int i) {
+    final g = _games[i];
+    final waiting = g.atmosphere && !g.enabled;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 0, 8.w, 0),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(g.name, style: TextStyle(fontSize: 15.sp)),
+                if (waiting)
+                  Text(
+                    '游戏关闭，本期不下注',
+                    style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                  ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 76,
+            child: Center(
+              child: Switch(
+                value: g.enabled,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.navBlue,
+                onChanged: (v) => _toggleGame(i, v),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 76,
+            child: Center(
+              child: Switch(
+                value: g.atmosphere,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                activeThumbColor: Colors.white,
+                activeTrackColor: AppColors.navBlue,
+                onChanged: (v) => _toggleAtmosphere(i, v),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
-bool _asGameEnabled(dynamic v) {
+class _RoomGame {
+  const _RoomGame(this.type, this.name, this.enabled, this.atmosphere);
+
+  final String type;
+  final String name;
+  final bool enabled;
+  final bool atmosphere;
+
+  _RoomGame copy({bool? enabled, bool? atmosphere}) {
+    return _RoomGame(
+      type,
+      name,
+      enabled ?? this.enabled,
+      atmosphere ?? this.atmosphere,
+    );
+  }
+}
+
+bool _asFlag(dynamic v) {
   if (v == true || v == 1) return true;
   if (v == false || v == 0) return false;
   if (v == null) return false;
