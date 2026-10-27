@@ -398,6 +398,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (!mounted) return;
     _engine.patchGame(patch, ServerClock.now());
     _publishGames();
+    _ensureShownDraw(patch.id);
     _ensureTickerRunning();
   }
 
@@ -1347,6 +1348,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         }
       }
       _publishGames();
+      for (final g in games) {
+        _ensureShownDraw(g.id);
+      }
       // 只重连当前登录房间。别的房间残留的连接不能改成房主身份。
       if (_isCurrentSessionRoom() &&
           state.games.isNotEmpty &&
@@ -1415,6 +1419,39 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   }
 
   // ── engine result → chat + state ──
+
+  /// 顶栏已经有本期号码、聊天里还没有开奖卡时补上。房主和玩家同一条路径。
+  /// 聊天还是空的先等历史接口，避免进房时用当前时间盖掉服务端时间。
+  void _ensureShownDraw(String gameId) {
+    if (!mounted || gameId.isEmpty) return;
+    final game = _engine.gameById(gameId);
+    if (game == null) return;
+    final issue = (game.previousIssue ?? '').trim();
+    final ranks = game.previousResults.where((n) => n > 0).toList(growable: false);
+    if (issue.isEmpty || ranks.isEmpty || !_isRecentIssue(gameId, issue)) return;
+    final cache = ChatPushCache.instance;
+    if (cache.bufferedForGame(roomId, gameId).isEmpty) return;
+    if (!_drawCardHasRanks(gameId, issue)) {
+      _pushDrawChat(gameId, issue, ranks);
+      return;
+    }
+    if (!cache.hasDedupeKey(roomId, winListChatMessageId(gameId, issue))) {
+      _scheduleMissingCheckCardPull(gameId, issue, win: true);
+    }
+  }
+
+  bool _drawCardHasRanks(String gameId, String issue) {
+    final target = issueCompareKey(issue);
+    if (target <= 0) return false;
+    for (final message in ChatPushCache.instance.bufferedForGame(roomId, gameId)) {
+      if (message.type != ChatMessageType.resultCard) continue;
+      final extracted = extractIssue(message);
+      if (extracted == null || issueCompareKey(extracted) != target) continue;
+      final have = message.drawRanks;
+      if (have != null && have.isNotEmpty) return true;
+    }
+    return false;
+  }
 
   void _applyEngineResult(String gameId, PeriodTickResult result) {
     _markPeriodSynced(gameId);
@@ -1991,17 +2028,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         ranks: ranks,
       );
       _applyEngineResult(gameType, result);
-      // 引擎若去重未产出 draw 事件，仍强制开奖卡上屏（后端已先于 WIN_LIST 推送）。
-      if (issue.isNotEmpty &&
-          !ChatPushCache.instance.hasDrawForIssue(roomId, gameType, issue)) {
-        _pushDrawChat(
-          gameType,
-          issue,
-          ranks,
-          seq: _seqOf(payload),
-          pair: _pairOf(payload),
-        );
-      }
+      // 期态可能已经把号码写进顶栏。这里仍按期号补卡：没有卡就插入，空卡就补号码。
+      _pushDrawChat(
+        gameType,
+        issue,
+        ranks,
+        seq: _seqOf(payload),
+        pair: _pairOf(payload),
+      );
       _scheduleMissingCheckCardPull(gameType, issue, win: true);
       // 官方出号后立即拉期态：服务端已换期时退出「开奖中」，勿等下一次 watchdog
       _scheduleRefreshGamesFromServer(immediate: true);

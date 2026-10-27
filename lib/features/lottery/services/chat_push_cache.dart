@@ -191,6 +191,12 @@ class ChatPushCache {
     }
     final keys = _keysByRoom[roomId]!;
     if (keys.contains(logicalKey)) {
+      if (normalized.type == ChatMessageType.resultCard &&
+          _fillDrawRanksIfMissing(roomId, logicalKey, normalized)) {
+        _invalidateGameCache(roomId, gameId);
+        _schedulePersist(roomId);
+        return true;
+      }
       if (_isSealDedupeKey(logicalKey) &&
           _replaceStoredContent(roomId, logicalKey, normalized)) {
         _invalidateGameCache(roomId, gameId);
@@ -518,6 +524,34 @@ class ChatPushCache {
       buffer[i] = _CachedChatPush(
         dedupeKey: logicalKey,
         push: LotteryChatPush(gameId: entry.push.gameId, message: incoming),
+      );
+      return true;
+    }
+    return false;
+  }
+
+  /// 先到的开奖卡没有号码时，后来带号码的同一期要补上，不能被去重挡掉。
+  bool _fillDrawRanksIfMissing(
+    String roomId,
+    String logicalKey,
+    ChatMessageModel incoming,
+  ) {
+    final ranks = incoming.drawRanks;
+    if (ranks == null || ranks.isEmpty) return false;
+    final buffer = _bufferByRoom[roomId];
+    if (buffer == null) return false;
+    for (var i = 0; i < buffer.length; i++) {
+      final entry = buffer[i];
+      if (entry.dedupeKey != logicalKey) continue;
+      final existing = entry.push.message;
+      final have = existing.drawRanks;
+      if (have != null && have.isNotEmpty) return false;
+      buffer[i] = _CachedChatPush(
+        dedupeKey: logicalKey,
+        push: LotteryChatPush(
+          gameId: entry.push.gameId,
+          message: existing.copyWith(drawRanks: ranks),
+        ),
       );
       return true;
     }

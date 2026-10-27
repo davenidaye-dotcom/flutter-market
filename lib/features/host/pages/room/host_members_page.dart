@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../../../shared/widgets/user_avatar.dart';
@@ -46,13 +47,17 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
   int _listReq = 0;
   int _statsReq = 0;
   Map<String, dynamic> _stats = {};
+  List<_RobotGame> _robotGames = [];
 
   @override
   void initState() {
     super.initState();
     _filter = widget.initialFilter.clamp(0, _tabs.length - 1);
     _scroll.addListener(_onScroll);
-    Future.microtask(() => _load(reset: true));
+    Future.microtask(() {
+      _load(reset: true);
+      _loadRobotGames();
+    });
   }
 
   @override
@@ -156,6 +161,57 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
     }
   }
 
+  Future<void> _loadRobotGames() async {
+    try {
+      final repo = ref.read(ownerRepositoryProvider);
+      var list = await repo.getGamesSettings();
+      if (list.isEmpty) list = await repo.getGames();
+      if (!mounted) return;
+      setState(() {
+        _robotGames = list
+            .map((g) {
+              final gt = (g['gameType'] ?? g['type'] ?? '').toString();
+              final gn = GameSeries.displayName(
+                gt,
+                (g['gameName'] ?? g['typeName'] ?? gt).toString(),
+              );
+              return _RobotGame(
+                gt,
+                gn,
+                _asFlag(g['enabled']),
+                _asFlag(g['atmosphereEnabled']),
+              );
+            })
+            .where((e) => e.type.isNotEmpty || e.name.isNotEmpty)
+            .toList();
+      });
+    } catch (_) {
+      // 成员列表不依赖机器人开关
+    }
+  }
+
+  Future<void> _toggleRobot(int i, bool v) async {
+    if (i < 0 || i >= _robotGames.length) return;
+    final prev = [..._robotGames];
+    final next = [..._robotGames];
+    next[i] = next[i].copy(atmosphere: v);
+    setState(() => _robotGames = next);
+    try {
+      await ref.read(ownerRepositoryProvider).updateGamesSettings({
+        'items': next
+            .map((g) => {
+                  'gameType': g.type.isEmpty ? g.name : g.type,
+                  'atmosphereEnabled': g.atmosphere,
+                })
+            .toList(),
+      });
+      AppToast.success(v ? '已开启机器人' : '已关闭机器人');
+    } catch (e) {
+      if (mounted) setState(() => _robotGames = prev);
+      AppToast.error(e.toString());
+    }
+  }
+
   Future<void> _createRobots() async {
     await pushHostPage(
       context,
@@ -244,6 +300,7 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
                           if (_filter == i) return;
                           setState(() => _filter = i);
                           _load(reset: true);
+                          if (i == 2) _loadRobotGames();
                         },
                         child: Container(
                           alignment: Alignment.center,
@@ -313,6 +370,27 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
             ),
           ),
           SizedBox(height: 12.h),
+          if (_filter == 2 && _robotGames.isNotEmpty) ...[
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    for (var i = 0; i < _robotGames.length; i++) ...[
+                      if (i > 0) const Divider(height: 1, color: AppColors.divider),
+                      _robotSwitchRow(i),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: 12.h),
+          ],
           Expanded(
             child: _loading
                 ? const AppPageLoading()
@@ -379,6 +457,59 @@ class _HostMembersPageState extends ConsumerState<HostMembersPage> {
       ),
     );
   }
+
+  Widget _robotSwitchRow(int i) {
+    final g = _robotGames[i];
+    final waiting = g.atmosphere && !g.enabled;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16.w, 2.h, 8.w, 2.h),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(g.name, style: TextStyle(fontSize: 15.sp)),
+                if (waiting)
+                  Text(
+                    '游戏关闭，本期不下注',
+                    style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
+                  ),
+              ],
+            ),
+          ),
+          Switch(
+            value: g.atmosphere,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            activeThumbColor: Colors.white,
+            activeTrackColor: AppColors.navBlue,
+            onChanged: (v) => _toggleRobot(i, v),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RobotGame {
+  const _RobotGame(this.type, this.name, this.enabled, this.atmosphere);
+
+  final String type;
+  final String name;
+  final bool enabled;
+  final bool atmosphere;
+
+  _RobotGame copy({bool? atmosphere}) {
+    return _RobotGame(type, name, enabled, atmosphere ?? this.atmosphere);
+  }
+}
+
+bool _asFlag(dynamic v) {
+  if (v == true || v == 1) return true;
+  if (v == false || v == 0) return false;
+  if (v == null) return false;
+  final s = '$v'.trim().toLowerCase();
+  return s == 'true' || s == '1';
 }
 
 class _StatsGrid extends StatelessWidget {

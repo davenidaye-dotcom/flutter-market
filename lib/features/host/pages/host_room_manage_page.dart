@@ -133,34 +133,6 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     }
   }
 
-  Future<void> _toggleAtmosphere(int i, bool v) async {
-    final prev = [..._games];
-    final next = [..._games];
-    next[i] = next[i].copy(atmosphere: v);
-    setState(() => _games = next);
-    try {
-      await _putGames(next);
-      AppToast.success(v ? '已开启机器人' : '已关闭机器人');
-    } catch (e) {
-      if (mounted) setState(() => _games = prev);
-      AppToast.error(e.toString());
-    }
-  }
-
-  Future<void> _toggleAllAtmosphere(bool v) async {
-    if (_games.isEmpty) return;
-    final prev = [..._games];
-    final next = [for (final g in _games) g.copy(atmosphere: v)];
-    setState(() => _games = next);
-    try {
-      await _putGames(next);
-      AppToast.success(v ? '已全部打开机器人' : '已全部关闭机器人');
-    } catch (e) {
-      if (mounted) setState(() => _games = prev);
-      AppToast.error(e.toString());
-    }
-  }
-
   Future<void> _putGames(List<_RoomGame> rows) {
     return ref.read(ownerRepositoryProvider).updateGamesSettings({
       'items': rows
@@ -422,8 +394,6 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
                                   ],
                                 ),
                               ),
-                              _gameColumns(),
-                              _atmosphereMaster(),
                               for (var i = 0; i < _games.length; i++) ...[
                                 const Divider(
                                     height: 1, color: AppColors.divider),
@@ -485,88 +455,19 @@ class _HostRoomManagePageState extends ConsumerState<HostRoomManagePage>
     );
   }
 
-  Widget _gameColumns() {
-    final style = TextStyle(fontSize: 11.sp, color: AppColors.textHint);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 0, 8.w, 0),
-      child: Row(
-        children: [
-          const Spacer(),
-          SizedBox(width: 76, child: Text('游戏', textAlign: TextAlign.center, style: style)),
-          SizedBox(width: 76, child: Text('机器人', textAlign: TextAlign.center, style: style)),
-        ],
-      ),
-    );
-  }
-
-  Widget _atmosphereMaster() {
-    final allOn = _games.isNotEmpty && _games.every((g) => g.atmosphere);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16.w, 0, 8.w, 0),
-      child: Row(
-        children: [
-          Expanded(child: Text('机器人全开', style: TextStyle(fontSize: 15.sp))),
-          const SizedBox(width: 76),
-          SizedBox(
-            width: 76,
-            child: Center(
-              child: Switch(
-                value: allOn,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                activeThumbColor: Colors.white,
-                activeTrackColor: AppColors.navBlue,
-                onChanged: _games.isEmpty ? null : _toggleAllAtmosphere,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _gameRow(int i) {
     final g = _games[i];
-    final waiting = g.atmosphere && !g.enabled;
     return Padding(
       padding: EdgeInsets.fromLTRB(16.w, 0, 8.w, 0),
       child: Row(
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(g.name, style: TextStyle(fontSize: 15.sp)),
-                if (waiting)
-                  Text(
-                    '游戏关闭，本期不下注',
-                    style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
-                  ),
-              ],
-            ),
-          ),
-          SizedBox(
-            width: 76,
-            child: Center(
-              child: Switch(
-                value: g.enabled,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                activeThumbColor: Colors.white,
-                activeTrackColor: AppColors.navBlue,
-                onChanged: (v) => _toggleGame(i, v),
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 76,
-            child: Center(
-              child: Switch(
-                value: g.atmosphere,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                activeThumbColor: Colors.white,
-                activeTrackColor: AppColors.navBlue,
-                onChanged: (v) => _toggleAtmosphere(i, v),
-              ),
-            ),
+          Expanded(child: Text(g.name, style: TextStyle(fontSize: 15.sp))),
+          Switch(
+            value: g.enabled,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            activeThumbColor: Colors.white,
+            activeTrackColor: AppColors.navBlue,
+            onChanged: (v) => _toggleGame(i, v),
           ),
         ],
       ),
