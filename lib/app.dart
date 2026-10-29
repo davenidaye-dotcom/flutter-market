@@ -45,6 +45,8 @@ class _LetouAppState extends ConsumerState<LetouApp> {
         AppToast.info('系统维护中');
       } else if (message.contains('其他地方')) {
         AppToast.info(message);
+      } else {
+        AppToast.info('请重新登录');
       }
     };
     WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -80,8 +80,9 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   late String _gameName;
   bool _loading = true;
   bool _saving = false;
-  /// 默认勾选：保存时同步同系列其它彩种
-  bool _syncSameSeries = true;
+  bool _limitLocked = false;
+  /// 默认不勾选；勾上后保存才同步同系列其它彩种
+  bool _syncSameSeries = false;
 
   final _stepCtrl = TextEditingController(text: '0.01');
   final _minLimitCtrl = TextEditingController(text: '1');
@@ -136,6 +137,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       }
       final gn = (data['gameName'] ?? '').toString();
       if (gn.isNotEmpty) _gameName = gn;
+      _limitLocked = data['limitLocked'] == true;
       _minLimitCtrl.text = _numText(firstMin ?? 1);
       if (!mounted) return;
       setState(() => _loading = false);
@@ -297,14 +299,16 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       final odds = double.tryParse(r.oddsCtrl.text.trim());
       final maxBet = num.tryParse(r.maxBetCtrl.text.trim());
       final period = num.tryParse(r.periodLimitCtrl.text.trim());
-      if (odds == null || maxBet == null || period == null) {
+      if (odds == null || (!_limitLocked && (maxBet == null || period == null))) {
         AppToast.error('${r.name} 请填写有效数字');
         return;
       }
-      final limitError = _limitError(r);
-      if (limitError != null) {
-        AppToast.error('${r.name}：$limitError');
-        return;
+      if (!_limitLocked) {
+        final limitError = _limitError(r);
+        if (limitError != null) {
+          AppToast.error('${r.name}：$limitError');
+          return;
+        }
       }
       for (final play in r.plays) {
         items.add({
@@ -350,7 +354,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
               value: _syncSameSeries,
               onChanged: _saving || _loading
                   ? null
-                  : (v) => setState(() => _syncSameSeries = v ?? true),
+                  : (v) => setState(() => _syncSameSeries = v ?? false),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             ),
@@ -403,6 +407,13 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
                     color: AppColors.textPrimary,
                   ),
                 ),
+                if (_limitLocked) ...[
+                  SizedBox(height: 6.h),
+                  Text(
+                    '限额跟随平台，不可修改',
+                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  ),
+                ],
                 SizedBox(height: 10.h),
                 if (_rows.isEmpty)
                   Padding(
@@ -487,7 +498,8 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
               controller: _minLimitCtrl,
               keyboardType: TextInputType.number,
               integer: true,
-              onChanged: (_) => setState(() {}),
+              readOnly: _limitLocked,
+              onChanged: _limitLocked ? null : (_) => setState(() {}),
             ),
           ),
         ],
@@ -539,9 +551,9 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
             children: [
               Expanded(child: _fieldCol('赔率', row.oddsCtrl, decimal: true)),
               SizedBox(width: 8.w),
-              Expanded(child: _fieldCol('单注限额', row.maxBetCtrl)),
+              Expanded(child: _fieldCol('单注限额', row.maxBetCtrl, readOnly: _limitLocked)),
               SizedBox(width: 8.w),
-              Expanded(child: _fieldCol('单期总限额', row.periodLimitCtrl)),
+              Expanded(child: _fieldCol('单期总限额', row.periodLimitCtrl, readOnly: _limitLocked)),
             ],
           ),
           if (limitError != null) ...[
@@ -553,7 +565,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     );
   }
 
-  Widget _fieldCol(String label, TextEditingController ctrl, {bool decimal = false}) {
+  Widget _fieldCol(String label, TextEditingController ctrl, {bool decimal = false, bool readOnly = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -565,7 +577,8 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
               ? const TextInputType.numberWithOptions(decimal: true)
               : TextInputType.number,
           integer: !decimal,
-          onChanged: decimal ? null : (_) => setState(() {}),
+          readOnly: readOnly,
+          onChanged: decimal || readOnly ? null : (_) => setState(() {}),
         ),
       ],
     );
@@ -626,12 +639,14 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     TextInputType? keyboardType,
     TextAlign textAlign = TextAlign.start,
     bool integer = false,
+    bool readOnly = false,
     ValueChanged<String>? onChanged,
   }) {
     return EmulatorSafeTextField(
       controller: controller,
       keyboardType: keyboardType,
       textAlign: textAlign,
+      readOnly: readOnly,
       onChanged: onChanged,
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(integer ? r'[0-9]' : r'[0-9.]')),
@@ -640,7 +655,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
         isDense: true,
         contentPadding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 10.h),
         filled: true,
-        fillColor: const Color(0xFFF7F8FA),
+        fillColor: readOnly ? const Color(0xFFEEF0F3) : const Color(0xFFF7F8FA),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8.r),
           borderSide: const BorderSide(color: Color(0xFFE5E5E5)),

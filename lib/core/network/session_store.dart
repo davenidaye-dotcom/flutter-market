@@ -25,6 +25,8 @@ class SessionStore {
   bool betConfirm = false;
   /// 房主「显示快捷」。关则聊天页不显示盘口入口。默认开。
   bool showQuick = true;
+  /// 房间号 → 数字房间 id。进过的房间都留着，两个房间页面各自订自己的频道。
+  final Map<String, String> _roomIdByCode = {};
 
   bool get hasToken => accessToken != null && accessToken!.isNotEmpty;
 
@@ -64,6 +66,7 @@ class SessionStore {
     ownerNickname = prefs.getString(_kOwnerNickname);
     betConfirm = prefs.getBool(_kBetConfirm) ?? false;
     showQuick = prefs.getBool(_kShowQuick) ?? true;
+    rememberRoom(roomCode: roomCode, roomId: roomId);
   }
 
   /// [epoch] 与当前代际不一致时不写入，避免快登覆盖刚完成的密码登录。
@@ -128,6 +131,7 @@ class SessionStore {
   }) async {
     if (epoch != null && this.epoch != epoch) return;
     final captured = this.epoch;
+    rememberRoom(roomCode: this.roomCode, roomId: this.roomId);
     this.roomId = roomId;
     this.roomCode = roomCode;
     if (roomName != null) this.roomName = roomName;
@@ -164,6 +168,30 @@ class SessionStore {
     if (showQuick != null) {
       await prefs.setBool(_kShowQuick, showQuick);
     }
+    rememberRoom(roomCode: this.roomCode, roomId: this.roomId);
+  }
+
+  /// 记下房间号和数字 id 的对应。房间号或 id 为空时忽略。
+  void rememberRoom({String? roomCode, String? roomId}) {
+    final code = roomCode?.trim() ?? '';
+    final id = roomId?.trim() ?? '';
+    if (code.isEmpty || id.isEmpty || int.tryParse(id) == null) return;
+    _roomIdByCode[code] = id;
+  }
+
+  /// 这个页面自己的数字房间 id。对得上当前会话，或以前记下的房间号。
+  String? numericForRoute(String route) {
+    final r = route.trim();
+    if (r.isEmpty) return null;
+    final id = roomId?.trim() ?? '';
+    final code = roomCode?.trim() ?? '';
+    if (id.isNotEmpty && int.tryParse(id) != null && (r == id || r == code)) {
+      return id;
+    }
+    final remembered = _roomIdByCode[r];
+    if (remembered != null && remembered.isNotEmpty) return remembered;
+    if (int.tryParse(r) != null && r.length >= 15) return r;
+    return null;
   }
 
   Future<void> setShowQuick(bool value) async {

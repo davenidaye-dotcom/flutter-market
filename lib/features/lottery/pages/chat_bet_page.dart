@@ -1452,15 +1452,23 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
     }
     switch (action) {
       case '取消':
-        _betCtrl.value = const TextEditingValue(
-          text: '取消',
-          selection: TextSelection.collapsed(offset: 2),
-        );
-        return;
       case '重复':
-        await _repeatLastBet();
-        return;
       case '梭哈':
+        final game = ref
+            .read(roomLotteryLiveProvider(widget.roomId).notifier)
+            .displayGameFor(_gameId);
+        if (game == null || !LotteryPeriodHelper.canBetNow(game)) return;
+        if (action == '取消') {
+          _betCtrl.value = const TextEditingValue(
+            text: '取消',
+            selection: TextSelection.collapsed(offset: 2),
+          );
+          return;
+        }
+        if (action == '重复') {
+          await _repeatLastBet();
+          return;
+        }
         _insertText('梭哈');
         return;
       case '上分':
@@ -1956,8 +1964,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
       }),
     );
     final canBet = canPlaceBet && betPhase == LotteryDisplayPhase.betting.name;
-    // 键盘/菜单打开时进入封盘：面板会隐藏，消息区底部按面板高度留的空也要一起收掉
-    if (!canBet &&
+    // 封盘只停投注。玩家的上分、下分和加号菜单留着，键盘置灰不收起。
+    if (!canPlaceBet &&
         (_panel == _BottomPanel.keypad || _panel == _BottomPanel.menu)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_disposed || !mounted) return;
@@ -2279,6 +2287,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
                               }
                               return _ChatBetDock(
                                 canBet: canBet,
+                                toolsEnabled: canPlaceBet,
                                 betDisabledHint: betDisabledHint,
                                 isTrialAccount: isTrialAccount,
                                 submitting: submitting,
@@ -2296,7 +2305,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
                                   // 历史下拉保持展开，仅再点顶栏球号行才关
                                 },
                                 onToggleMenu: () {
-                                  if (!canBet || !_acceptPanelToggle()) return;
+                                  if (!canPlaceBet || !_acceptPanelToggle()) return;
                                   _setPanel(
                                     panel == _BottomPanel.menu
                                         ? _BottomPanel.none
@@ -2405,6 +2414,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
 class _ChatBetDock extends StatelessWidget {
   const _ChatBetDock({
     required this.canBet,
+    required this.toolsEnabled,
     this.betDisabledHint,
     required this.isTrialAccount,
     required this.submitting,
@@ -2422,6 +2432,8 @@ class _ChatBetDock extends StatelessWidget {
   });
 
   final bool canBet;
+  /// 封盘期间仍可上分、下分、打开加号菜单。房主不可下注时为 false。
+  final bool toolsEnabled;
   final String? betDisabledHint;
   final bool isTrialAccount;
   final bool submitting;
@@ -2445,7 +2457,7 @@ class _ChatBetDock extends StatelessWidget {
             BetActionMenuPanel.panelHeight(context)
         ? BetKeypadPanel.panelHeight
         : BetActionMenuPanel.panelHeight(context);
-    final showPanel = canBet &&
+    final showPanel = (canBet || toolsEnabled) &&
         (panel == _BottomPanel.keypad || panel == _BottomPanel.menu);
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
     final trialDisabled = isTrialAccount ? _trialDisabled : const <String>{};
@@ -2473,6 +2485,7 @@ class _ChatBetDock extends StatelessWidget {
             BetInputBar(
               controller: controller,
               enabled: canBet,
+              menuEnabled: toolsEnabled,
               disabledHint: betDisabledHint,
               submitting: submitting,
               menuOpen: panel == _BottomPanel.menu,
@@ -2481,7 +2494,7 @@ class _ChatBetDock extends StatelessWidget {
               onToggleMenu: onToggleMenu,
               onSend: onSend,
             ),
-            if (canBet)
+            if (canBet || toolsEnabled)
               Offstage(
                 offstage: !showPanel,
                 child: ClipRect(
@@ -2497,6 +2510,7 @@ class _ChatBetDock extends StatelessWidget {
                           builder: (_, value, __) {
                             return BetKeypadPanel(
                               enabled: canBet,
+                              walletEnabled: toolsEnabled,
                               disabledActions: keypadDisabled,
                               currentText: value.text,
                               onInsert: onInsert,

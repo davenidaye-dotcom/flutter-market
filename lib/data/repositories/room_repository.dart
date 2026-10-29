@@ -26,7 +26,7 @@ class RoomRepository {
             : '房间不存在或不可进入',
       );
     }
-    return RoomModel(
+    final room = RoomModel(
       id: map['roomCode']?.toString() ?? roomCode,
       name: map['roomName']?.toString() ?? '',
       ownerNickname: map['ownerNickname']?.toString() ??
@@ -41,6 +41,11 @@ class RoomRepository {
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
       showQuick: _showQuickOn(map['showQuick']),
     );
+    SessionStore.instance.rememberRoom(
+      roomCode: room.roomCode,
+      roomId: room.numericId,
+    );
+    return room;
   }
 
   Future<RoomModel> enterRoom(String roomCode, {String? enterPassword}) async {
@@ -70,6 +75,7 @@ class RoomRepository {
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
       showQuick: _showQuickOn(map['showQuick']),
     );
+    SessionStore.instance.rememberRoom(roomCode: code, roomId: roomId);
     return RoomModel(
       id: code,
       name: roomName,
@@ -89,7 +95,7 @@ class RoomRepository {
       query: {'limit': limit},
     );
     if (data is! List) return const [];
-    return data.whereType<Map>().map((e) {
+    final list = data.whereType<Map>().map((e) {
       final m = Map<String, dynamic>.from(e);
       return RoomModel(
         id: m['roomCode']?.toString() ?? '',
@@ -99,6 +105,10 @@ class RoomRepository {
         playMode: m['playMode']?.toString() ?? 'REAL',
       );
     }).where((r) => r.id.isNotEmpty).toList();
+    for (final r in list) {
+      SessionStore.instance.rememberRoom(roomCode: r.id, roomId: r.numericId);
+    }
+    return list;
   }
 
   /// 从历史列表隐藏（软删）。[roomId] 为数字房间 ID。

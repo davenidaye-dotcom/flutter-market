@@ -83,8 +83,8 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   bool _loading = true;
   bool _saving = false;
   bool _unbound = false;
-  /// 默认勾选：保存时同步同系列
-  bool _syncSameSeries = true;
+  /// 默认不勾选；勾上后保存才同步同系列
+  bool _syncSameSeries = false;
   final _step = 0.01;
   List<_OddsRow> _rows = [];
 
@@ -348,7 +348,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                       value: _syncSameSeries,
                       onChanged: _saving
                           ? null
-                          : (v) => setState(() => _syncSameSeries = v ?? true),
+                          : (v) => setState(() => _syncSameSeries = v ?? false),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),

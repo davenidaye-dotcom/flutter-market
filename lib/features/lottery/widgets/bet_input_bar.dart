@@ -15,6 +15,7 @@ class BetInputBar extends StatelessWidget {
     this.menuOpen = false,
     this.keypadOpen = false,
     this.enabled = true,
+    this.menuEnabled = true,
     this.submitting = false,
     this.disabledHint,
   });
@@ -26,6 +27,8 @@ class BetInputBar extends StatelessWidget {
   final bool menuOpen;
   final bool keypadOpen;
   final bool enabled;
+  /// 封盘时输入不可用，加号菜单仍可打开。
+  final bool menuEnabled;
   final bool submitting;
   /// 不可输入时的占位文案；默认「房主不可下注」
   final String? disabledHint;
@@ -50,7 +53,9 @@ class BetInputBar extends StatelessWidget {
           builder: (_, value, _) {
             final empty = value.text.trim().isEmpty;
             final canSend = enabled && !submitting && !empty;
-            final showSend = !empty;
+            // 封盘不能发注。有残留文字时也留加号，方便打开上分下分菜单。
+            final showSend = enabled && !empty;
+            final allowMenu = menuEnabled && !submitting;
             return Row(
               // 单行：输入框高度=按钮高度，底对齐=视觉居中
               // 多行：按钮贴底，对齐最后一行文本
@@ -98,11 +103,11 @@ class BetInputBar extends StatelessWidget {
                   child: Material(
                     color: Colors.transparent,
                     child: InkWell(
-                      onTap: !enabled || submitting
+                      onTap: submitting
                           ? null
                           : (showSend
                               ? (canSend ? onSend : null)
-                              : onToggleMenu),
+                              : (allowMenu ? onToggleMenu : null)),
                       customBorder: const CircleBorder(),
                       child: Center(
                         child: submitting
@@ -120,7 +125,7 @@ class BetInputBar extends StatelessWidget {
                                   )
                                 : _CirclePlusIcon(
                                     size: 36.w,
-                                    active: enabled,
+                                    active: allowMenu,
                                     highlighted: menuOpen,
                                   ),
                       ),

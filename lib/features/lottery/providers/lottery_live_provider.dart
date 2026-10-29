@@ -1079,6 +1079,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     try {
       if (!warm) _engine.reset();
       final isHost = _ref.read(authSessionProvider).isHostSide;
+      if (!isHost) await _rememberPageRoom();
+      if (!mounted) return;
       final games = await _ref
           .read(lotteryRepositoryProvider)
           .getGames(roomId, asOwner: isHost);
@@ -1329,6 +1331,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
     try {
       final isHost = _ref.read(authSessionProvider).isHostSide;
+      if (!isHost) await _rememberPageRoom();
+      if (!mounted) return;
       final games = await _ref.read(lotteryRepositoryProvider).getGames(
             roomId,
             asOwner: isHost,
@@ -1648,6 +1652,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       'totalAmount': ack.totalAmount,
       'items': ack.items,
       'senderName': '机器人',
+      // 注单记在当前进房。别的房间页面不画这张本地回执。
+      'roomId': SessionStore.instance.roomId ?? '',
     });
   }
 
@@ -1662,16 +1668,56 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return false;
   }
 
-  /// 服务端房间频道要求数字 roomId。路由上的房间号经常是 roomCode，订上去会被拒绝。
+  /// 服务端房间频道要求数字 roomId。玩家订本页房间，房主仍订自己那一间。
   String _wsRoomKey() {
-    final stored = SessionStore.instance.roomId?.trim() ?? '';
-    if (int.tryParse(stored) != null) return stored;
-    // 房主路由上可能是房间号或占位值，订错房间就收不到玩家消息和全房合计
-    if (_wsIsHost) return '';
+    if (_wsIsHost) {
+      final stored = SessionStore.instance.roomId?.trim() ?? '';
+      if (int.tryParse(stored) != null) return stored;
+      return '';
+    }
+    return _pageNumeric();
+  }
+
+  String _pageNumeric() => SessionStore.instance.numericForRoute(roomId) ?? '';
+
+  bool _pageRoomResolving = false;
+
+  Future<void> _rememberPageRoom() async {
+    if (_pageNumeric().isNotEmpty) return;
     final route = roomId.trim();
-    if (int.tryParse(route) != null) return route;
-    if (stored.isNotEmpty) return stored;
-    return route;
+    if (route.isEmpty) return;
+    try {
+      final room = await _ref.read(roomRepositoryProvider).verifyRoom(route);
+      SessionStore.instance.rememberRoom(
+        roomCode: room.roomCode,
+        roomId: room.numericId,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _resolvePageRoomId() async {
+    if (_pageRoomResolving || _wsDisposed) return;
+    _pageRoomResolving = true;
+    try {
+      await _rememberPageRoom();
+    } finally {
+      _pageRoomResolving = false;
+    }
+    if (!mounted || _wsDisposed) return;
+    if (_pageNumeric().isNotEmpty) _syncWsSubscriptions();
+  }
+
+  /// 注单消息带了别的房间就丢掉。没有房间号的开奖、封盘仍保留。
+  bool _roomBetVisible(Map<String, dynamic> payload) {
+    final got = '${payload['roomId'] ?? ''}'.trim();
+    if (got.isEmpty) return true;
+    if (_wsIsHost) {
+      final id = SessionStore.instance.roomId?.trim() ?? '';
+      return id.isNotEmpty && got == id;
+    }
+    final page = _pageNumeric();
+    if (page.isEmpty) return false;
+    return got == page;
   }
 
   bool _hostRoomResolving = false;
@@ -1716,7 +1762,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (!_wsConnected || client == null) return;
     final roomNumeric = _wsRoomKey();
     if (roomNumeric.isEmpty) {
-      if (_wsIsHost) unawaited(_resolveHostRoomId());
+      if (_wsIsHost) {
+        unawaited(_resolveHostRoomId());
+      } else {
+        unawaited(_resolvePageRoomId());
+      }
       return;
     }
     final desired = <String>{
@@ -1800,6 +1850,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'CHECK_SELF') {
+      if (!_roomBetVisible(payload)) return;
       _onCheckSelf(event, payload);
       return;
     }
@@ -1964,6 +2015,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'CHAT') {
+      if (!_roomBetVisible(payload)) return;
       final issue = payload['issueNo']?.toString() ?? '';
       final content =
           (payload['content'] ?? payload['text'] ?? '').toString().trim();
@@ -2001,18 +2053,21 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         type == 'BET_LIST_CHECK' ||
         type == 'GUESS_LIST_CHECK' ||
         type == 'SEAL_BET_LIST') {
+      if (!_roomBetVisible(payload)) return;
       _onBetRankWs(gameType, payload);
       return;
     }
 
     // 开奖后中奖列表核对（后端 SettleExecutor → WIN_LIST）
     if (type == 'WIN_LIST' || type == 'WIN_CHECK' || type == 'WIN_LIST_CHECK') {
+      if (!_roomBetVisible(payload)) return;
       _onWinListWs(gameType, payload);
       return;
     }
 
     // 他人/本机机器人确认卡 / 投注失败卡
     if (type == 'BET_RECEIPT' || type == 'BET_FAIL' || type == 'BET_CANCEL_NOTICE') {
+      if (!_roomBetVisible(payload)) return;
       _onBetReceiptWs(gameType, payload);
       return;
     }

@@ -11,6 +11,7 @@ class BetKeypadPanel extends StatefulWidget {
     required this.onClearAll,
     required this.onAction,
     this.enabled = true,
+    this.walletEnabled = true,
     this.disabledActions = const {},
     this.currentText = '',
   });
@@ -20,6 +21,8 @@ class BetKeypadPanel extends StatefulWidget {
   final VoidCallback onClearAll;
   final ValueChanged<String> onAction;
   final bool enabled;
+  /// 封盘时投注键置灰，上分 / 下分仍可点。
+  final bool walletEnabled;
   /// 试玩号禁用：上分 / 下分
   final Set<String> disabledActions;
   /// 当前输入，用于玩法键互斥与禁连点
@@ -91,8 +94,8 @@ class BetKeypadPanel extends StatefulWidget {
 class _BetKeypadPanelState extends State<BetKeypadPanel> {
   DateTime? _lastKeyAt;
 
-  bool _acceptTap() {
-    if (!widget.enabled) return false;
+  bool _acceptTap({bool ignoreEnabled = false}) {
+    if (!ignoreEnabled && !widget.enabled) return false;
     final now = DateTime.now();
     final last = _lastKeyAt;
     if (last != null && now.difference(last).inMilliseconds < 60) {
@@ -101,6 +104,8 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
     _lastKeyAt = now;
     return true;
   }
+
+  bool _isWalletAction(String action) => action == '上分' || action == '下分';
 
   void _onKey(String key) {
     if (!_acceptTap()) return;
@@ -115,7 +120,14 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
   }
 
   void _onAction(String action) {
-    if (!_acceptTap()) return;
+    if (_isWalletAction(action)) {
+      if (!widget.walletEnabled || widget.disabledActions.contains(action)) {
+        return;
+      }
+      if (!_acceptTap(ignoreEnabled: true)) return;
+    } else if (!_acceptTap()) {
+      return;
+    }
     widget.onAction(action);
   }
 
@@ -133,6 +145,7 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
               child: _ActionRow(
                 onAction: _onAction,
                 enabled: widget.enabled,
+                walletEnabled: widget.walletEnabled,
                 disabledActions: widget.disabledActions,
               ),
             ),
@@ -176,11 +189,13 @@ class _ActionRow extends StatelessWidget {
   const _ActionRow({
     required this.onAction,
     required this.enabled,
+    required this.walletEnabled,
     this.disabledActions = const {},
   });
 
   final ValueChanged<String> onAction;
   final bool enabled;
+  final bool walletEnabled;
   final Set<String> disabledActions;
   static const _actions = ['上分', '取消', '梭哈', '重复', '下分'];
 
@@ -194,8 +209,9 @@ class _ActionRow extends StatelessWidget {
             child: Builder(
               builder: (_) {
                 final action = _actions[i];
-                final actionEnabled =
-                    enabled && !disabledActions.contains(action);
+                final wallet = action == '上分' || action == '下分';
+                final actionEnabled = !disabledActions.contains(action) &&
+                    (wallet ? walletEnabled : enabled);
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: actionEnabled ? () => onAction(action) : null,

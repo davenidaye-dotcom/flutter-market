@@ -81,8 +81,8 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
   final _stepCtrl = TextEditingController(text: '0.100');
   bool _loading = true;
   bool _saving = false;
-  /// 默认勾选：保存时同步同系列
-  bool _syncSameSeries = true;
+  /// 默认不勾选；勾上后保存才同步同系列
+  bool _syncSameSeries = false;
   int _gameIndex = 0;
   final List<({String type, String name})> _games = const [
     (type: 'JS_SC', name: '极速赛车'),
@@ -306,7 +306,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
                       value: _syncSameSeries,
                       onChanged: _loading || _saving
                           ? null
-                          : (v) => setState(() => _syncSameSeries = v ?? true),
+                          : (v) => setState(() => _syncSameSeries = v ?? false),
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       visualDensity: VisualDensity.compact,
                     ),

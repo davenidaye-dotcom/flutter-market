@@ -188,8 +188,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       context.go(dest);
     } catch (e) {
       if (e is ApiException && e.bizCode == 'LOGIN_SUPERSEDED') return;
-      final msg = e is ApiException ? e.message : e.toString();
-      AppToast.error(msg.isEmpty ? '系统维护中' : msg);
+      AppToast.error(loginFailureText(e));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

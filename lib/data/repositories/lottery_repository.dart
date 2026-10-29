@@ -102,8 +102,7 @@ class LotteryRepository {
         receiveTimeout: receiveTimeout,
       );
     } else {
-      final numeric = SessionStore.instance.roomId ??
-          (int.tryParse(roomId) != null ? roomId : null);
+      final numeric = SessionStore.instance.numericForRoute(roomId);
       data = await _client.get(
         '/member/rooms/games',
         query: {
@@ -254,12 +253,14 @@ class LotteryRepository {
         query: {'limit': limit},
       );
     } else {
+      final numeric = SessionStore.instance.numericForRoute(roomId);
       final res = await _client.getWithHeaders(
         '/member/rooms/messages',
         query: {
           'gameType': gameId,
           'size': size,
           if (beforeSeq != null && beforeSeq > 0) 'beforeSeq': beforeSeq,
+          if (numeric != null && numeric.isNotEmpty) 'roomId': numeric,
         },
       );
       data = res.data;
@@ -286,7 +287,13 @@ class LotteryRepository {
     int limit = 15,
   }) async {
     final _ = limit; // 服务端已忽略
-    final data = await _client.get('/member/rooms/messages/all');
+    final numeric = SessionStore.instance.numericForRoute(roomId);
+    final data = await _client.get(
+      '/member/rooms/messages/all',
+      query: {
+        if (numeric != null && numeric.isNotEmpty) 'roomId': numeric,
+      },
+    );
     if (data is! List) return const {};
     final grouped = <String, List<ChatMessageModel>>{};
     for (final item in data.whereType<Map>()) {
@@ -299,9 +306,31 @@ class LotteryRepository {
     return grouped;
   }
 
-  /// 会员/房主消息接口已按登录房间过滤。路由 roomId 是房间号，
-  /// 消息 roomId 是数字主键，不再按字符串相等丢掉下注和核对卡。
-  bool _visibleInRoom(Map raw, String roomId) => true;
+  /// 注单、确认卡、核对名单只留本页房间。开奖和封盘没有房间，两边都保留。
+  bool _visibleInRoom(Map raw, String routeRoomId) {
+    final msgType = raw['msgType']?.toString().toUpperCase() ?? '';
+    if (!_roomScopedBet(msgType)) return true;
+    final msgRoom = '${raw['roomId'] ?? ''}'.trim();
+    if (msgRoom.isEmpty) return true;
+    final page = SessionStore.instance.numericForRoute(routeRoomId);
+    if (page == null || page.isEmpty) return false;
+    return msgRoom == page;
+  }
+
+  bool _roomScopedBet(String msgType) {
+    return msgType == 'CHAT' ||
+        msgType == 'BET_RECEIPT' ||
+        msgType == 'BET_FAIL' ||
+        msgType == 'BET_CANCEL_NOTICE' ||
+        msgType == 'BET_RANK' ||
+        msgType == 'BET_LIST_CHECK' ||
+        msgType == 'GUESS_LIST_CHECK' ||
+        msgType == 'SEAL_BET_LIST' ||
+        msgType == 'WIN_LIST' ||
+        msgType == 'WIN_CHECK' ||
+        msgType == 'WIN_LIST_CHECK' ||
+        msgType == 'BET_FEED';
+  }
 
   ChatMessageModel _parseChatMessage(Map<String, dynamic> m) {
     final msgType = m['msgType']?.toString().toUpperCase() ?? 'CHAT';
