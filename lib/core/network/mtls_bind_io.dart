@@ -9,7 +9,12 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../security/vpn_guard.dart';
 import 'client_cert_store.dart';
 
-const _caAsset = 'assets/certs/flyroom_root_ca.crt';
+/// dev/test 连旧测试机，服务端证由私有根签发。pro 继续用生产根。
+const _appEnv = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
+const _trustPrivateRoot = _appEnv != 'pro';
+const _caAsset = _trustPrivateRoot
+    ? 'assets/certs/flyroom_root_ca.dev.crt'
+    : 'assets/certs/flyroom_root_ca.crt';
 
 List<int>? _caBytes;
 Future<void>? _loading;
@@ -86,15 +91,18 @@ Future<WebSocketChannel> connectFlyroomSocket(Uri uri) async {
   return channel;
 }
 
-/// 登录、换证不带客户端证，信系统公信根（Let's Encrypt）。
-/// 业务 API、WebSocket 带客户端证，只信包内 FlyRoom 根证书，不信系统证书。
+/// pro：登录、换证不带客户端证，信系统公信根。业务和 WebSocket 只信包内生产根。
+/// dev/test：测试机 443 的服务端证是私有根签的，登录也只信这张根，不信公网根。
 HttpClient _httpClient(bool presentClientCert) {
-  final context = SecurityContext(withTrustedRoots: !presentClientCert);
-  if (presentClientCert) {
+  final trustPublicRoots = !_trustPrivateRoot && !presentClientCert;
+  final context = SecurityContext(withTrustedRoots: trustPublicRoots);
+  if (!trustPublicRoots) {
     final ca = _caBytes;
     if (ca != null && ca.isNotEmpty) {
       context.setTrustedCertificatesBytes(ca);
     }
+  }
+  if (presentClientCert) {
     final store = ClientCertStore.instance;
     if (store.hasCert) {
       context.useCertificateChainBytes(utf8.encode(store.certPem!));
