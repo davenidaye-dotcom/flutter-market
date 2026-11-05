@@ -13,6 +13,7 @@ import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
 import '../../../data/repositories/lottery_repository.dart';
 import '../../../data/repositories/providers.dart';
+import '../../../shared/format/game_series.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../host/providers/host_apply_notice_provider.dart';
 import '../../host/providers/host_dash_dirty_provider.dart';
@@ -413,9 +414,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return true;
   }
 
-  Future<void> refreshWallet() async {
+  /// [seenRev] 用发出查询之前的顶栏代际。这期间来过资金帧，整包丢掉，避免旧数盖住结算推送。
+  Future<void> refreshWallet({int? seenRev}) async {
     if (!mounted) return;
-    final rev = _pointsRev;
+    final rev = seenRev ?? _pointsRev;
     if (_ref.read(authSessionProvider).isHostSide) {
       try {
         final dash = await _ref.read(ownerRepositoryProvider).getDashboard();
@@ -524,7 +526,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
             pageSize: HistoryDrawPanel.pageSize,
           );
       if (!mounted) return;
-      final rows = drawHistoryRowsFromApi(page.rows);
+      final rows = drawHistoryRowsFromApi(
+        page.rows,
+        keepZero: GameSeries.isPc28(gameId),
+      );
       final existing = _apiDrawRowsByGame[gameId] ?? const <HistoryDrawRow>[];
       final List<HistoryDrawRow> next;
       if (append) {
@@ -1246,12 +1251,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (applyBetConfirm) {
       unawaited(SessionStore.instance.setBetConfirm(fetchedBetConfirm));
     }
+    final walletFresh = pointsRev == _pointsRev;
     state = state.copyWith(
       announcement: announcement,
-      points: pointsRev == _pointsRev ? points : null,
-      turnover: turnover,
-      winLoss: winLoss,
-      rebate: rebate,
+      points: walletFresh ? points : null,
+      turnover: walletFresh ? turnover : null,
+      winLoss: walletFresh ? winLoss : null,
+      rebate: walletFresh ? rebate : null,
       isTrialAccount: isTrialAccount,
       betConfirm: applyBetConfirm ? fetchedBetConfirm : null,
       showQuick: applyFetched ? fetchedShowQuick : null,
@@ -1431,7 +1437,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     final game = _engine.gameById(gameId);
     if (game == null) return;
     final issue = (game.previousIssue ?? '').trim();
-    final ranks = game.previousResults.where((n) => n > 0).toList(growable: false);
+    final keepZero = GameSeries.isPc28(gameId);
+    final ranks = keepZero
+        ? game.previousResults.where((n) => n >= 0).toList(growable: false)
+        : game.previousResults.where((n) => n > 0).toList(growable: false);
     if (issue.isEmpty || ranks.isEmpty || !_isRecentIssue(gameId, issue)) return;
     final cache = ChatPushCache.instance;
     if (cache.bufferedForGame(roomId, gameId).isEmpty) return;
@@ -1587,6 +1596,8 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       unawaited(_pullShowQuick());
       if (isReconnect) {
         unawaited(_refreshGamesFromServer());
+        // 资金帧不重放。重连补一次整表，人留在房间里仍靠结算完成的推送。
+        unawaited(refreshWallet());
         _emitCs(const CsChatPush(resync: true));
       }
     } catch (_) {
@@ -1980,7 +1991,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       if (sealSeconds <= 0 && openAtMs > 0 && sealAtMs > 0 && openAtMs > sealAtMs) {
         sealSeconds = ((openAtMs - sealAtMs) / 1000).round();
       }
-      final lastRanks = _parseRanks(payload['lastRanks'] ?? payload['ranks']);
+      final lastRanks = _parseRanks(
+        payload['lastRanks'] ?? payload['ranks'],
+        keepZero: GameSeries.isPc28(gameType),
+      );
       final lastIssue = payload['lastIssueNo']?.toString() ?? '';
       final result = _engine.onPeriodTick(
         gameType,
@@ -2073,7 +2087,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'DRAW_RESULT') {
-      final ranks = _parseRanks(payload['ranks'] ?? payload['lastRanks']);
+      final ranks = _parseRanks(
+        payload['ranks'] ?? payload['lastRanks'],
+        keepZero: GameSeries.isPc28(gameType),
+      );
       final issue = payload['issueNo']?.toString() ?? '';
       if (ranks.isEmpty) return;
       BgmPrompt.playDraw(roomId, gameType, issue);
@@ -2128,7 +2145,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     var touched = false;
     final optKey = '$gameType|$issue|$myIdStr';
     final alreadyOptimistic = _settleOptimisticApplied.contains(optKey);
-    if (!alreadyOptimistic && myId != null && accounts is List) {
+    // 房主四个数是全房合计，等 ROOM_WALLET_SUMMARY。这里只给玩家预改自己的积分和输赢。
+    final hostHeader = _wsIsHost || _ref.read(authSessionProvider).isHostSide;
+    if (!hostHeader && !alreadyOptimistic && myId != null && accounts is List) {
       for (final raw in accounts) {
         if (raw is! Map) continue;
         final aid = raw['accountId'];
@@ -2150,11 +2169,12 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         break;
       }
     }
-    // 账本异步落库：单次短延迟对齐，避免 350+1200 双刷与中奖列表上屏抢帧。
+    // 终态资金帧若在这次查询往返期间到达，丢掉查询结果，顶栏留在推送上。
+    final seenRev = _pointsRev;
     unawaited(() async {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       if (!mounted) return;
-      await refreshWallet();
+      await refreshWallet(seenRev: seenRev);
     }());
     if (touched || truncated || alreadyOptimistic) {
       _bumpUiTick();
@@ -2606,9 +2626,13 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   int _pairOf(Map<String, dynamic> payload) =>
       int.tryParse('${payload['pair']}') ?? 0;
 
-  List<int> _parseRanks(dynamic ranks) {
+  List<int> _parseRanks(dynamic ranks, {bool keepZero = false}) {
     if (ranks is! List) return const [];
-    return ranks.map((x) => int.tryParse('$x') ?? 0).where((x) => x > 0).toList();
+    return ranks
+        .map((x) => int.tryParse('$x'))
+        .whereType<int>()
+        .where((x) => keepZero ? x >= 0 : x > 0)
+        .toList();
   }
 
   // ── chat push ──

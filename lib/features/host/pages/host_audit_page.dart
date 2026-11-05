@@ -32,12 +32,15 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = true;
+  /// 刷新（替换第 1 页）进行中。挡住滑到底的加载更多，避免它把本次刷新的序号冲掉。
+  bool _resetting = false;
   bool _acting = false;
   int _page = 1;
   static const _pageSize = 50;
   List<DateRangeQuickItem> _dayItems = [];
   int _loadGen = 0;
   DateTime? _lastLoadAt;
+  final _scroll = ScrollController();
 
   static const _statusKeys = ['ALL', 'PENDING', 'APPROVED', 'REJECTED'];
 
@@ -49,12 +52,31 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
   void initState() {
     super.initState();
     _dayItems = _buildDayItems();
+    _scroll.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _scroll.removeListener(_onScroll);
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// 只有列表能滚动、并且滑到接近底部时才翻页。不满一屏时 maxScrollExtent 为 0，不请求下一页。
+  void _onScroll() {
+    if (!_hasMore || _loadingMore || _loading || _resetting) return;
+    if (!_scroll.hasClients) return;
+    final pos = _scroll.position;
+    if (pos.maxScrollExtent <= 0) return;
+    if (pos.pixels >= pos.maxScrollExtent - 80) {
+      _load(reset: false);
+    }
   }
 
   Future<void> _load({bool fromPull = false, bool reset = true}) async {
     if (!reset) {
-      if (!_hasMore || _loadingMore || _loading) return;
+      if (!_hasMore || _loadingMore || _loading || _resetting) return;
     } else {
       final now = DateTime.now();
       // 进 Tab 时 initState + shell tick 可能连打两次，合并
@@ -63,6 +85,9 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
         return;
       }
       _lastLoadAt = now;
+      // 先挡住加载更多，且不要提前把 _hasMore 设回 true。
+      // 否则短列表的底部会立刻请求第 2 页，冲掉这次刷新，再把同一条追加进来。
+      _resetting = true;
     }
     final page = reset ? 1 : _page + 1;
     final gen = ++_loadGen;
@@ -70,11 +95,6 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
     final silent = !reset || fromPull || _items.isNotEmpty;
     if (!reset && mounted) {
       setState(() => _loadingMore = true);
-    } else if (reset && mounted) {
-      setState(() {
-        _page = 1;
-        _hasMore = true;
-      });
     }
     if (!silent && mounted) setState(() => _loading = true);
     try {
@@ -100,16 +120,21 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
       merged.sort((a, b) => b.time.compareTo(a.time));
       final more = results.any((raw) {
         final rows = hostRowsOf(raw);
-        final total = int.tryParse('${raw['total'] ?? rows.length}') ?? rows.length;
+        final total = _pageTotal(raw['total'], rows.length);
         return page * _pageSize < total && rows.isNotEmpty;
       });
       setState(() {
-        _items = reset ? merged : [..._items, ...merged];
-        _items.sort((a, b) => b.time.compareTo(a.time));
+        final next = reset
+            ? _dedupeAudits(merged)
+            : _dedupeAudits([..._items, ...merged]);
+        final grew = next.length > _items.length;
+        _items = next;
         _page = page;
-        _hasMore = more;
+        // 追加页若全是已有单号（分页溢出又回到第 1 页），停止再请求。
+        _hasMore = more && (reset || grew);
         _loading = false;
         _loadingMore = false;
+        _resetting = false;
       });
       // 同步底部 Tab / 标题角标
       await ref.read(hostPendingAuditProvider.notifier).refresh();
@@ -118,6 +143,7 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
       setState(() {
         _loading = false;
         _loadingMore = false;
+        _resetting = false;
       });
       AppToast.error(e.toString());
     }
@@ -246,6 +272,7 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                                   ],
                                 )
                               : ListView.separated(
+                                  controller: _scroll,
                                   physics: const AlwaysScrollableScrollPhysics(),
                                   padding: EdgeInsets.all(12.w),
                                   itemCount: _items.length + 1,
@@ -254,16 +281,14 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                                       : SizedBox(height: 8.h),
                                   itemBuilder: (_, i) {
                                     if (i == _items.length) {
-                                      if (_hasMore && !_loadingMore) {
-                                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                                          if (mounted) _load(reset: false);
-                                        });
-                                      }
+                                      final hint = _loadingMore
+                                          ? '加载中'
+                                          : (_hasMore ? '' : '没有更多了');
                                       return Padding(
                                         padding: EdgeInsets.only(top: 8.h),
                                         child: Center(
                                           child: Text(
-                                            _hasMore ? '加载中' : '没有更多了',
+                                            hint,
                                             style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
                                           ),
                                         ),
@@ -400,4 +425,21 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
       ),
     );
   }
+}
+
+int _pageTotal(dynamic raw, int fallback) {
+  if (raw is num) return raw.toInt();
+  final parsed = int.tryParse('$raw');
+  if (parsed != null) return parsed;
+  return fallback;
+}
+
+/// 同一申请单号只留一行。没有单号的行保留，避免把缺 id 的记录折叠掉。
+List<HostAuditItem> _dedupeAudits(List<HostAuditItem> items) {
+  final seen = <String>{};
+  final out = <HostAuditItem>[];
+  for (final item in items) {
+    if (item.id.isEmpty || seen.add(item.id)) out.add(item);
+  }
+  return out;
 }

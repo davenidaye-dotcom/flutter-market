@@ -26,7 +26,7 @@ class ChangePasswordPage extends ConsumerStatefulWidget {
     this.agentUsername,
   });
 
-  /// 房主首次登录强制改密，不可返回
+  /// 房主被要求改密时不可返回
   final bool force;
 
   /// 飞单：改已绑定代理会员密码
@@ -62,6 +62,10 @@ class _ChangePasswordPageState extends ConsumerState<ChangePasswordPage> {
     }
     if (_newCtrl.text != _confirmCtrl.text) {
       AppToast.info('两次新密码不一致');
+      return;
+    }
+    if (_newCtrl.text == _oldCtrl.text) {
+      AppToast.info('新密码不能与旧密码相同');
       return;
     }
 

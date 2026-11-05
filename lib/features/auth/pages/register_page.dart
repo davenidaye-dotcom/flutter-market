@@ -11,6 +11,7 @@ import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../credential_rules.dart';
+import 'aliyun_captcha_page.dart';
 
 class RegisterPage extends ConsumerStatefulWidget {
   const RegisterPage({super.key});
@@ -54,11 +55,20 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       return;
     }
 
+    FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _loading = true);
     try {
-      await ref
-          .read(authRepositoryProvider)
-          .register(username: username, password: password);
+      final param = await AliyunCaptchaPage.open(context);
+      if (!mounted) return;
+      if (param == null || param.isEmpty) {
+        AppToast.info('已取消安全验证');
+        return;
+      }
+      await ref.read(authRepositoryProvider).register(
+            username: username,
+            password: password,
+            captchaToken: param,
+          );
       if (!mounted) return;
       AppToast.success('注册成功');
       final account = (username: username, password: password);

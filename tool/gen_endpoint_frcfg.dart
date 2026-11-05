@@ -4,8 +4,8 @@
 /// ```bash
 /// dart run tool/gen_endpoint_frcfg.dart \
 ///   --env=dev \
-///   --api=http://207.148.105.182/api/v1 \
-///   --ws=ws://207.148.105.182/ws/v1 \
+///   --api=https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5 \
+///   --ws=wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5 \
 ///   --sign-kid=1 \
 ///   --sign-secret='eT4uY8nBFr9kQx2m6cH1jR5!P7vL0sW#'
 /// ```

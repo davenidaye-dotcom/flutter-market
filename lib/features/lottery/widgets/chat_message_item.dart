@@ -4,7 +4,10 @@ import '../../../config/theme/app_colors.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../utils/draw_result_parse.dart';
+import '../utils/pc28_format.dart';
+import '../../../shared/format/game_series.dart';
 import 'lottery_result_stage.dart';
+import 'pc28_draw_formula.dart';
 
 bool _isRobotName(String raw) {
   final s = raw.trim();
@@ -36,8 +39,10 @@ class ChatMessageItem extends StatelessWidget {
   });
 
   final ChatMessageModel message;
+
   /// 开奖卡左下角游戏名；不传则显示「开奖结果」
   final String? gameName;
+
   /// 兼容旧调用，封盘文案已改回纯文字气泡，不再使用。
   final String? roomId;
   final String? gameId;
@@ -90,7 +95,9 @@ class ChatMessageItem extends StatelessWidget {
                         ? _displaySender(message.sender)
                         : '${_displaySender(message.sender)}  ${message.time}',
                     style: TextStyle(
-                        fontSize: 12.sp, color: AppColors.textSecondary),
+                      fontSize: 12.sp,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   SizedBox(height: 4.h),
                   // 封盘预警/封盘线：原版浅橙条（含第N期，无图片壳）
@@ -99,6 +106,9 @@ class ChatMessageItem extends StatelessWidget {
                       content: message.content,
                       issueNo: message.issueNo,
                     )
+                  else if (message.type == ChatMessageType.resultCard &&
+                      GameSeries.isPc28(gameId))
+                    _buildRobotSystemBody()
                   else
                     Container(
                       width: double.infinity,
@@ -122,7 +132,7 @@ class ChatMessageItem extends StatelessWidget {
 
   Widget _buildRobotSystemBody() {
     if (message.type == ChatMessageType.resultCard) {
-      return _ResultCard(message: message, gameName: gameName);
+      return _ResultCard(message: message, gameName: gameName, gameId: gameId);
     }
     if (message.type == ChatMessageType.system) {
       return _SystemNotice(content: message.content, issueNo: message.issueNo);
@@ -164,14 +174,22 @@ class _RobotBubble extends StatelessWidget {
                 Text(
                   () {
                     final name = _displaySender(message.sender);
-                    return message.time.trim().isEmpty ? name : '$name  ${message.time}';
+                    return message.time.trim().isEmpty
+                        ? name
+                        : '$name  ${message.time}';
                   }(),
-                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: AppColors.textSecondary,
+                  ),
                 ),
                 SizedBox(height: 4.h),
                 Container(
                   constraints: BoxConstraints(maxWidth: 0.78.sw),
-                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 8.h),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: 12.w,
+                    vertical: 8.h,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF2F2F2),
                     borderRadius: BorderRadius.circular(8.r),
@@ -230,8 +248,9 @@ class _UserBetBubble extends StatelessWidget {
       ),
     );
     final body = Column(
-      crossAxisAlignment:
-          mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: mine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         Text(
           meta,
@@ -246,19 +265,12 @@ class _UserBetBubble extends StatelessWidget {
       padding: EdgeInsets.only(bottom: 12.h),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment:
-            mine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: mine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: mine
-            ? [
-                Flexible(child: body),
-                SizedBox(width: 8.w),
-                avatar,
-              ]
-            : [
-                avatar,
-                SizedBox(width: 8.w),
-                Flexible(child: body),
-              ],
+            ? [Flexible(child: body), SizedBox(width: 8.w), avatar]
+            : [avatar, SizedBox(width: 8.w), Flexible(child: body)],
       ),
     );
   }
@@ -297,17 +309,19 @@ class _SystemNotice extends StatelessWidget {
 }
 
 class _ResultCard extends StatelessWidget {
-  const _ResultCard({required this.message, this.gameName});
+  const _ResultCard({required this.message, this.gameName, this.gameId});
 
   final ChatMessageModel message;
   final String? gameName;
+  final String? gameId;
 
   @override
   Widget build(BuildContext context) {
     final parsed = DrawResultParse.parse(message.content);
     final issueRaw = message.issueNo ?? parsed.issueNo;
-    final issue =
-        issueRaw != null && issueRaw.isNotEmpty ? issueRaw.trim() : null;
+    final issue = issueRaw != null && issueRaw.isNotEmpty
+        ? issueRaw.trim()
+        : null;
     final ranks = (message.drawRanks != null && message.drawRanks!.isNotEmpty)
         ? message.drawRanks!
         : parsed.ranks;
@@ -315,6 +329,13 @@ class _ResultCard extends StatelessWidget {
         ranks.isEmpty &&
         message.content.trim().isEmpty) {
       return const SizedBox.shrink();
+    }
+
+    if (GameSeries.isPc28(gameId) && Pc28Format.valid(ranks)) {
+      final title = (gameName != null && gameName!.trim().isNotEmpty)
+          ? gameName!.trim()
+          : '加拿大PC28';
+      return _Pc28ResultCard(title: title, issue: issue, ranks: ranks);
     }
 
     final title = (gameName != null && gameName!.trim().isNotEmpty)
@@ -337,6 +358,196 @@ class _ResultCard extends StatelessWidget {
             gyBody: lotteryGyBody(ranks),
             dtBody: lotteryDragonTigerBody(ranks),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Pc28ResultCard extends StatelessWidget {
+  const _Pc28ResultCard({
+    required this.title,
+    required this.issue,
+    required this.ranks,
+  });
+
+  final String title;
+  final String? issue;
+  final List<int> ranks;
+
+  static const _blue = Color(0xFF1E88E5);
+  static const _muted = Color(0xFF9E9E9E);
+
+  @override
+  Widget build(BuildContext context) {
+    final sum = Pc28Format.sumOf(ranks);
+    final combo = Pc28Format.combo(sum);
+    final wave = Pc28Format.wave(sum);
+    final extreme = Pc28Format.extreme(sum);
+    final bao = Pc28Format.leopard(ranks);
+    final dt = Pc28Format.dragonTiger(ranks);
+    final shownIssue = issue?.trim() ?? '';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8.r),
+      child: ColoredBox(
+        color: const Color(0xFF111111),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(height: 4, color: Pc28Format.colorOf(sum)),
+            Padding(
+              padding: EdgeInsets.fromLTRB(10.w, 10.h, 10.w, 10.h),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (shownIssue.isNotEmpty) ...[
+                    SizedBox(height: 2.h),
+                    Text(
+                      '第$shownIssue期',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: const Color(0xFFB0B0B0),
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: 8.h),
+                  Pc28DrawFormula(numbers: ranks, ballSize: 22, gap: 4),
+                  SizedBox(height: 8.h),
+                  Row(
+                    children: [
+                      Expanded(child: _tag('大小', _comboText(combo))),
+                      SizedBox(width: 4.w),
+                      Expanded(
+                        child: _tag(
+                          '波',
+                          _waveValue(wave, Pc28Format.colorOf(sum)),
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Expanded(
+                        child: _tag(
+                          '龙虎',
+                          Text(dt, style: _valueStyle(_dtColor(dt))),
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Expanded(
+                        child: _tag(
+                          '极',
+                          Text(
+                            extreme.isEmpty ? '无' : extreme,
+                            style: _valueStyle(
+                              extreme.isEmpty ? _muted : AppColors.danger,
+                            ),
+                          ),
+                          hot: extreme.isNotEmpty,
+                        ),
+                      ),
+                      SizedBox(width: 4.w),
+                      Expanded(
+                        child: _tag(
+                          '豹',
+                          Text(
+                            bao ? '豹子' : '无',
+                            style: _valueStyle(bao ? Colors.white : _muted),
+                          ),
+                          solid: bao,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  TextStyle _valueStyle(Color color) => TextStyle(
+    fontSize: 12.sp,
+    height: 1.1,
+    fontWeight: FontWeight.w600,
+    color: color,
+  );
+
+  Widget _comboText(String combo) {
+    return Text.rich(
+      TextSpan(
+        children: [
+          for (final ch in combo.split(''))
+            TextSpan(text: ch, style: _valueStyle(_comboColor(ch))),
+        ],
+      ),
+      textAlign: TextAlign.center,
+      maxLines: 1,
+    );
+  }
+
+  Widget _waveValue(String wave, Color color) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 8.w,
+          height: 8.w,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        SizedBox(width: 3.w),
+        Text(wave, style: _valueStyle(color)),
+      ],
+    );
+  }
+
+  Color _comboColor(String ch) {
+    if (ch == '大' || ch == '双') return AppColors.danger;
+    if (ch == '小' || ch == '单') return _blue;
+    return AppColors.textPrimary;
+  }
+
+  Color _dtColor(String dt) {
+    return switch (dt) {
+      '龙' => AppColors.danger,
+      '虎' => _blue,
+      _ => const Color(0xFF5A5A5A),
+    };
+  }
+
+  Widget _tag(
+    String name,
+    Widget value, {
+    bool hot = false,
+    bool solid = false,
+  }) {
+    final nameColor = solid ? Colors.white : _muted;
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 4.h, horizontal: 2.w),
+      decoration: BoxDecoration(
+        color: solid
+            ? AppColors.danger
+            : hot
+            ? const Color(0xFFFFE4E8)
+            : const Color(0xFF2A2A2A),
+        borderRadius: BorderRadius.circular(4.r),
+      ),
+      child: Column(
+        children: [
+          Text(
+            name,
+            maxLines: 1,
+            style: TextStyle(fontSize: 10.sp, height: 1.1, color: nameColor),
+          ),
+          SizedBox(height: 2.h),
+          value,
         ],
       ),
     );

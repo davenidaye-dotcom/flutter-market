@@ -146,8 +146,9 @@ abstract final class LotteryPeriodHelper {
 
   static int periodSecondsOf(LotteryGameModel game) {
     return switch (game.id) {
-      'JS_SC' => 75,
+      'JS_SC' || 'JS_FT' => 75,
       'AZXY10' || 'TW_BG_Q' || 'TW_BG_H' => 300,
+      'CA_PC28' => 210,
       _ => 0,
     };
   }
@@ -176,7 +177,7 @@ abstract final class LotteryPeriodHelper {
     final current = game.currentIssue.trim();
     if (current.isEmpty) return false;
     final prev = game.previousIssue?.trim() ?? '';
-    final hasRanks = game.previousResults.any((n) => n > 0);
+    final hasRanks = game.previousResults.any((n) => n >= 0);
     if (hasRanks && sameIssueNo(prev, current)) return false;
     return true;
   }

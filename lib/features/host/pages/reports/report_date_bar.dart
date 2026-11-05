@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../shared/utils/business_day.dart';
+import '../../../wallet/widgets/date_range_filter.dart';
 
 class ReportQuickItem {
   const ReportQuickItem({
@@ -27,6 +28,8 @@ class ReportDateBar extends StatelessWidget {
     required this.onQuickTap,
     required this.onCustomTap,
     this.quickItems,
+    this.gameType,
+    this.onGameType,
   });
 
   /// -1 = 自定义；>=0 = [quickItems] 下标
@@ -36,6 +39,10 @@ class ReportDateBar extends StatelessWidget {
   final ValueChanged<int> onQuickTap;
   final VoidCallback onCustomTap;
   final List<ReportQuickItem>? quickItems;
+
+  /// 非空时在日期胶囊下面再排一行彩种。空或 ALL 表示「全部」。
+  final String? gameType;
+  final ValueChanged<String>? onGameType;
 
   static String format(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -153,6 +160,14 @@ class ReportDateBar extends StatelessWidget {
               ],
             ),
           ),
+          if (onGameType != null) ...[
+            SizedBox(height: 10.h),
+            ReportGameChipRow(
+              gameType: gameType,
+              onGameType: onGameType!,
+              outlined: false,
+            ),
+          ],
         ],
       ),
     );

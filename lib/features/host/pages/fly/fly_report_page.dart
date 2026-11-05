@@ -4,6 +4,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/format/display_number.dart';
+import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../../wallet/widgets/date_range_filter.dart';
 import '../../data/host_mock.dart';
@@ -24,6 +25,7 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
   Map<String, dynamic> _data = {};
   bool _loading = false;
   bool _unbound = false;
+  String _gameType = GameSeries.filterAll;
 
   @override
   void initState() {
@@ -54,6 +56,7 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
       final data = await repo.getFeipanReports(
         startDate: DateRangeFilter.format(start),
         endDate: DateRangeFilter.format(end),
+        category: _gameType,
       );
       if (!mounted) return;
       setState(() {
@@ -166,6 +169,11 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
             onPickStart: () => pickDate(isStart: true),
             onPickEnd: () => pickDate(isStart: false),
             onQuery: onQuery,
+            gameType: _gameType,
+            onGameType: (code) {
+              setState(() => _gameType = code);
+              _load();
+            },
           ),
           SizedBox(height: 8.h),
           Expanded(

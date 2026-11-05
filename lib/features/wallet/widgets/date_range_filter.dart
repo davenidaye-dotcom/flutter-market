@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../shared/utils/business_day.dart';
 
 class DateRangeQuickItem {
@@ -27,6 +28,8 @@ class DateRangeFilter extends StatelessWidget {
     required this.onPickEnd,
     required this.onQuery,
     this.quickItems,
+    this.gameType,
+    this.onGameType,
   });
 
   final int quickIndex;
@@ -37,6 +40,10 @@ class DateRangeFilter extends StatelessWidget {
   final VoidCallback onPickEnd;
   final VoidCallback onQuery;
   final List<DateRangeQuickItem>? quickItems;
+
+  /// 非空时在日期胶囊下面再排一行彩种。空或 ALL 表示「全部」。
+  final String? gameType;
+  final ValueChanged<String>? onGameType;
 
   static String format(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -113,6 +120,14 @@ class DateRangeFilter extends StatelessWidget {
               ],
             ),
           ),
+          if (onGameType != null) ...[
+            SizedBox(height: 10.h),
+            ReportGameChipRow(
+              gameType: gameType,
+              onGameType: onGameType!,
+              outlined: true,
+            ),
+          ],
           SizedBox(height: 10.h),
           Row(
             children: [
@@ -275,4 +290,93 @@ mixin DateRangePageMixin<T extends StatefulWidget> on State<T> {
   }
 
   void onQuery();
+}
+
+/// 报表彩种胶囊。outlined 对齐飞单日期胶囊，否则对齐房间日期胶囊。
+class ReportGameChipRow extends StatelessWidget {
+  const ReportGameChipRow({
+    super.key,
+    required this.gameType,
+    required this.onGameType,
+    required this.outlined,
+  });
+
+  final String? gameType;
+  final ValueChanged<String> onGameType;
+  final bool outlined;
+
+  bool _active(String code) {
+    final cur = (gameType ?? GameSeries.filterAll).trim().toUpperCase();
+    final normalized = cur.isEmpty ? GameSeries.filterAll : cur;
+    return normalized == code.toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (var i = 0; i < GameSeries.filterCodes.length; i++) ...[
+            if (i > 0) SizedBox(width: 8.w),
+            _ReportGameChip(
+              label: GameSeries.filterLabel(GameSeries.filterCodes[i]),
+              active: _active(GameSeries.filterCodes[i]),
+              outlined: outlined,
+              onTap: () => onGameType(GameSeries.filterCodes[i]),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportGameChip extends StatelessWidget {
+  const _ReportGameChip({
+    required this.label,
+    required this.active,
+    required this.outlined,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final bool outlined;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color bg;
+    final Color fg;
+    final BoxBorder? border;
+    if (outlined) {
+      bg = active ? AppColors.navBlue : Colors.white;
+      fg = active ? Colors.white : AppColors.navBlue;
+      border = Border.all(color: active ? AppColors.navBlue : const Color(0xFFD0E8F8));
+    } else {
+      bg = active ? AppColors.navBlue : Colors.transparent;
+      fg = active ? Colors.white : AppColors.textPrimary;
+      border = null;
+    }
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(16.r),
+          border: border,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13.sp,
+            color: fg,
+            fontWeight: !outlined && active ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
 }

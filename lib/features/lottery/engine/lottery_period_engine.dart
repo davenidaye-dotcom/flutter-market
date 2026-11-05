@@ -128,7 +128,7 @@ final class LotteryPeriodEngine {
         }
         _noteDrawing(existing, now);
         final settlesNow = _sameIssue(g.previousIssue ?? '', existing.model.currentIssue) &&
-            g.previousResults.any((n) => n > 0);
+            g.previousResults.any((n) => n >= 0);
         final holdDraw = _keepHoldingDraw(
           existing,
           now,
@@ -316,7 +316,7 @@ final class LotteryPeriodEngine {
     _noteDrawing(slot, clock);
     final settlesNow = lastIssue != null &&
         lastIssue.isNotEmpty &&
-        lastRanks.any((n) => n > 0) &&
+        lastRanks.any((n) => n >= 0) &&
         _sameIssue(lastIssue, slot.model.currentIssue);
     final holdDraw = _keepHoldingDraw(
       slot,
@@ -456,7 +456,7 @@ final class LotteryPeriodEngine {
     // 人在房间里本地节拍暂停时，也要从这次补丁开始算「开奖中停了多久」。
     _noteDrawing(slot, now);
     final settlesNow = _sameIssue(nextPrevIssue ?? '', slot.model.currentIssue) &&
-        nextResults.any((n) => n > 0);
+        nextResults.any((n) => n >= 0);
     final holdDraw = _keepHoldingDraw(
       slot,
       now,
@@ -729,7 +729,7 @@ final class LotteryPeriodEngine {
     final armedOpen = slot.armedOpenAtMs;
     if (armedOpen == null || armedOpen > now.millisecondsSinceEpoch) return false;
     final prev = (slot.model.previousIssue ?? '').trim();
-    if (_sameIssue(prev, issue) && slot.model.previousResults.any((n) => n > 0)) {
+    if (_sameIssue(prev, issue) && slot.model.previousResults.any((n) => n >= 0)) {
       return false;
     }
     return true;

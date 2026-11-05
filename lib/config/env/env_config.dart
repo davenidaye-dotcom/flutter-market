@@ -38,20 +38,20 @@ class EnvConfig {
   static bool get requestsAllowed =>
       environment != AppEnvironment.pro || hasEndpoint;
 
-  // 开发、测试的内置地址，也用于生成加密配置。生产拉不到 OSS 时不用它发请求。
+  // 开发、测试走测试机。生产内置地址只用于生成 OSS；拉不到 OSS 时不发请求。
   static String get builtinApiBaseUrl => switch (environment) {
-        AppEnvironment.dev => 'https://207.148.105.182/api/v1',
-        AppEnvironment.test => 'https://207.148.105.182/api/v1',
-        AppEnvironment.pro => 'https://207.148.105.182/api/v1',
+        AppEnvironment.dev => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
+        AppEnvironment.test => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
+        AppEnvironment.pro => 'https://207.148.105.182/api/v1/zuipjrqpd4e3bchvcr',
       };
 
   /// 登录和换证也走 443。认证请求不带客户端证，optional 下照常通过。
   static String get builtinAuthBaseUrl => builtinApiBaseUrl;
 
   static String get builtinWsBaseUrl => switch (environment) {
-        AppEnvironment.dev => 'wss://207.148.105.182/ws/v1',
-        AppEnvironment.test => 'wss://207.148.105.182/ws/v1',
-        AppEnvironment.pro => 'wss://207.148.105.182/ws/v1',
+        AppEnvironment.dev => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
+        AppEnvironment.test => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
+        AppEnvironment.pro => 'wss://207.148.105.182/ws/v1/zuipjrqpd4e3bchvcr',
       };
 
   /// HTTP API prefix (no trailing slash). 生产且没有 OSS 线路时为空。

@@ -95,6 +95,7 @@ class LotteryBallRow extends StatelessWidget {
     /// 指定后数字用这个绝对字号，不随方框变大。
     this.digitFontSize,
     this.palette,
+    this.slotCount = 10,
     @Deprecated('勿再加大吃掉间隔，保留参数仅为兼容调用')
     this.boxBoost = 0,
   });
@@ -108,6 +109,7 @@ class LotteryBallRow extends StatelessWidget {
   final double fontScale;
   final double? digitFontSize;
   final Map<int, Color>? palette;
+  final int slotCount;
   final double boxBoost;
 
   @override
@@ -119,8 +121,8 @@ class LotteryBallRow extends StatelessWidget {
           final maxH = constraints.maxHeight;
           if (maxH.isFinite && maxH > 0 && maxH < size) size = maxH;
           final maxW = constraints.maxWidth;
-          if (maxW.isFinite && maxW > 0 && size * 10 > maxW) {
-            size = maxW / 10;
+          if (maxW.isFinite && maxW > 0 && size * slotCount > maxW) {
+            size = maxW / slotCount;
           }
           size = math.max(1, size);
           final scale = digitFontSize != null && digitFontSize! > 0
@@ -129,7 +131,7 @@ class LotteryBallRow extends StatelessWidget {
           return Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: List.generate(
-              10,
+              slotCount,
               (i) => LotteryBall(
                 number: i < numbers.length ? numbers[i] : 0,
                 size: size,
@@ -187,9 +189,9 @@ class LotteryBallRow extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: List.generate(
-          10,
+          slotCount,
           (i) => Padding(
-            padding: EdgeInsets.only(right: i < 9 ? spacing : 0),
+            padding: EdgeInsets.only(right: i < slotCount - 1 ? spacing : 0),
             child: LotteryBall(
               number: i < numbers.length ? numbers[i] : 0,
               size: ballSize,

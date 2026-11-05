@@ -6,6 +6,7 @@ import 'api_exception.dart';
 import 'client_cert_refresh.dart';
 import 'client_cert_store.dart';
 import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
+import 'must_change_password.dart';
 import 'session_kick.dart';
 import 'session_store.dart';
 import '../security/api_request_signer.dart';
@@ -42,6 +43,7 @@ class ApiClient {
             response.data,
             response.statusCode,
           );
+          MustChangePassword.consider(response.data);
           handler.next(response);
         },
         onError: (error, handler) {
@@ -50,6 +52,7 @@ class ApiClient {
             error.response?.data,
             error.response?.statusCode,
           );
+          MustChangePassword.consider(error.response?.data);
           handler.next(error);
         },
       ),

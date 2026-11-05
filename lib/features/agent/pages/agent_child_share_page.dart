@@ -38,6 +38,7 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     'AZXY10': '澳洲幸运10',
     'TW_BG_Q': '宾果赛车(前)',
     'TW_BG_H': '宾果赛车(后)',
+    'JS_FT': '极速飞艇',
   };
 
   @override

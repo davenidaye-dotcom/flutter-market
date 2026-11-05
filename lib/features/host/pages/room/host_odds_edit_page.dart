@@ -6,7 +6,9 @@ import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
 import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../../../shared/widgets/keyboard_list_reveal.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../../shared/widgets/stable_screen_metrics.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
@@ -43,18 +45,28 @@ class _OddsRow {
     required this.oddsCtrl,
     required this.maxBetCtrl,
     required this.periodLimitCtrl,
-  });
+  }) : oddsFocus = FocusNode(),
+       maxBetFocus = FocusNode(),
+       periodFocus = FocusNode(),
+       cardKey = GlobalKey();
 
   final List<_OddsPlay> plays;
   final String name;
   final TextEditingController oddsCtrl;
   final TextEditingController maxBetCtrl;
   final TextEditingController periodLimitCtrl;
+  final FocusNode oddsFocus;
+  final FocusNode maxBetFocus;
+  final FocusNode periodFocus;
+  final GlobalKey cardKey;
 
   void dispose() {
     oddsCtrl.dispose();
     maxBetCtrl.dispose();
     periodLimitCtrl.dispose();
+    oddsFocus.dispose();
+    maxBetFocus.dispose();
+    periodFocus.dispose();
   }
 }
 
@@ -74,22 +86,34 @@ class _ParsedOdd {
   final dynamic period;
 }
 
-class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
+class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage>
+    with WidgetsBindingObserver {
   final List<_OddsRow> _rows = [];
   late String _gameType;
   late String _gameName;
   bool _loading = true;
   bool _saving = false;
   bool _limitLocked = false;
+
   /// 默认不勾选；勾上后保存才同步同系列其它彩种
   bool _syncSameSeries = false;
 
   final _stepCtrl = TextEditingController(text: '0.01');
   final _minLimitCtrl = TextEditingController(text: '1');
+  final _stepFocus = FocusNode();
+  final _minFocus = FocusNode();
+  final _stepKey = GlobalKey();
+  final _minKey = GlobalKey();
+  final _scroll = ScrollController();
+  double _keyboard = 0;
+  GlobalKey? _focusedKey;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _bindFocus(_stepFocus, _stepKey);
+    _bindFocus(_minFocus, _minKey);
     _gameType = widget.gameType;
     _gameName = widget.gameName;
     Future.microtask(_loadOdds);
@@ -97,10 +121,82 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _scroll.dispose();
     _stepCtrl.dispose();
     _minLimitCtrl.dispose();
+    _stepFocus.dispose();
+    _minFocus.dispose();
     _clearRows();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (!mounted) return;
+    final next = realKeyboardInset(context);
+    if ((next - _keyboard).abs() < 0.5) return;
+    setState(() => _keyboard = next);
+    _scheduleReveal(animate: false);
+  }
+
+  void _bindFocus(FocusNode node, GlobalKey key) {
+    node.addListener(() {
+      if (!mounted || !node.hasFocus) return;
+      _focusedKey = key;
+      _scheduleReveal(animate: true);
+    });
+  }
+
+  void _bindRow(_OddsRow row) {
+    _bindFocus(row.oddsFocus, row.cardKey);
+    _bindFocus(row.maxBetFocus, row.cardKey);
+    _bindFocus(row.periodFocus, row.cardKey);
+  }
+
+  void _scheduleReveal({required bool animate}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _revealFocused(animate: animate);
+    });
+  }
+
+  /// 保存按钮在顶栏，列表下方没有底栏。
+  double _listCover(BuildContext context) {
+    return keyboardListCover(
+      keyboard: _keyboard,
+      safeBottom: MediaQuery.paddingOf(context).bottom,
+      barHeight: 0,
+    );
+  }
+
+  void _revealFocused({required bool animate}) {
+    if (_keyboard <= 0 || !_scroll.hasClients) return;
+    final ctx = _focusedKey?.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || !box.attached) return;
+    final view = View.of(context);
+    final screenH = view.physicalSize.height / view.devicePixelRatio;
+    final rowBottom = box.localToGlobal(Offset(0, box.size.height)).dy;
+    final delta = keyboardRevealDelta(
+      rowBottom: rowBottom,
+      keyboardTop: screenH - _keyboard,
+    );
+    if (delta <= 0.5) return;
+    final position = _scroll.position;
+    if (!position.hasContentDimensions) return;
+    final next = (position.pixels + delta).clamp(0.0, position.maxScrollExtent);
+    if ((next - position.pixels).abs() < 0.5) return;
+    if (animate) {
+      position.animateTo(
+        next,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    position.jumpTo(next);
   }
 
   void _clearRows() {
@@ -113,9 +209,12 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   Future<void> _loadOdds({bool silent = false}) async {
     if (!silent && mounted) setState(() => _loading = true);
     try {
-      final data =
-          await ref.read(ownerRepositoryProvider).getOdds(gameType: _gameType);
-      final items = hostRowsOf(data.containsKey('items') ? data['items'] : data);
+      final data = await ref
+          .read(ownerRepositoryProvider)
+          .getOdds(gameType: _gameType);
+      final items = hostRowsOf(
+        data.containsKey('items') ? data['items'] : data,
+      );
       _clearRows();
       num? firstMin;
       final parsed = <_ParsedOdd>[];
@@ -124,22 +223,28 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
             ? m['minBet'] as num
             : num.tryParse('${m['minBet']}') ?? 1;
         firstMin ??= minBet;
-        parsed.add(_ParsedOdd(
-          code: (m['playCode'] ?? '').toString(),
-          storedName: (m['playName'] ?? m['playCode'] ?? '').toString(),
-          odds: m['odds'] ?? 0,
-          maxBet: m['maxBet'] ?? m['minBet'] ?? 20000,
-          period: m['periodLimit'] ?? 0,
-        ));
+        parsed.add(
+          _ParsedOdd(
+            code: (m['playCode'] ?? '').toString(),
+            storedName: (m['playName'] ?? m['playCode'] ?? '').toString(),
+            odds: m['odds'] ?? 0,
+            maxBet: m['maxBet'] ?? m['minBet'] ?? 20000,
+            period: m['periodLimit'] ?? 0,
+          ),
+        );
       }
       for (final row in _mergeOdds(parsed)) {
+        _bindRow(row);
         _rows.add(row);
       }
       final gn = (data['gameName'] ?? '').toString();
       if (gn.isNotEmpty) _gameName = gn;
       _limitLocked = data['limitLocked'] == true;
       _minLimitCtrl.text = _numText(firstMin ?? 1);
-      if (!mounted) return;
+      if (!mounted) {
+        _clearRows();
+        return;
+      }
       setState(() => _loading = false);
     } catch (e) {
       if (!mounted) return;
@@ -158,6 +263,12 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
         if (it.code.toUpperCase() == code) return it;
       }
       return null;
+    }
+
+    if (items.isNotEmpty && items.every((it) => it.code.toUpperCase().startsWith('P28-'))) {
+      return [
+        for (final it in items) _pairRow(it.storedName, it, [it]),
+      ];
     }
 
     bool used(String code) =>
@@ -194,7 +305,9 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     return _OddsRow(
       plays: plays,
       name: name,
-      oddsCtrl: TextEditingController(text: _numText(shown.odds, keepDecimal: true)),
+      oddsCtrl: TextEditingController(
+        text: _numText(shown.odds, keepDecimal: true),
+      ),
       maxBetCtrl: TextEditingController(text: _numText(shown.maxBet)),
       periodLimitCtrl: TextEditingController(text: _numText(shown.period)),
     );
@@ -253,7 +366,10 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
                 padding: EdgeInsets.symmetric(vertical: 12.h),
                 child: Text(
                   '切换彩种',
-                  style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               for (final g in games)
@@ -283,7 +399,11 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
     final maxBet = num.tryParse(r.maxBetCtrl.text.trim());
     final period = num.tryParse(r.periodLimitCtrl.text.trim());
     final minLimit = num.tryParse(_minLimitCtrl.text.trim());
-    if (maxBet != null && period != null && maxBet > 0 && period > 0 && maxBet > period) {
+    if (maxBet != null &&
+        period != null &&
+        maxBet > 0 &&
+        period > 0 &&
+        maxBet > period) {
       return '单注限额不能大于单期总限额';
     }
     if (minLimit != null && maxBet != null && maxBet > 0 && minLimit > maxBet) {
@@ -299,7 +419,8 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       final odds = double.tryParse(r.oddsCtrl.text.trim());
       final maxBet = num.tryParse(r.maxBetCtrl.text.trim());
       final period = num.tryParse(r.periodLimitCtrl.text.trim());
-      if (odds == null || (!_limitLocked && (maxBet == null || period == null))) {
+      if (odds == null ||
+          (!_limitLocked && (maxBet == null || period == null))) {
         AppToast.error('${r.name} 请填写有效数字');
         return;
       }
@@ -393,7 +514,13 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       body: _loading
           ? const AppPageLoading()
           : ListView(
-              padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
+              controller: _scroll,
+              padding: EdgeInsets.fromLTRB(
+                16.w,
+                8.h,
+                16.w,
+                24.h + _listCover(context),
+              ),
               children: [
                 _gameCard(),
                 SizedBox(height: 10.h),
@@ -411,7 +538,10 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
                   SizedBox(height: 6.h),
                   Text(
                     '限额跟随平台，不可修改',
-                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                 ],
                 SizedBox(height: 10.h),
@@ -421,7 +551,10 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
                     child: Center(
                       child: Text(
                         '暂无数据',
-                        style: TextStyle(fontSize: 14.sp, color: AppColors.textHint),
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: AppColors.textHint,
+                        ),
                       ),
                     ),
                   )
@@ -454,7 +587,11 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
                 color: AppColors.navBlue.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(8.r),
               ),
-              child: Icon(Icons.bar_chart_rounded, color: AppColors.navBlue, size: 20.sp),
+              child: Icon(
+                Icons.bar_chart_rounded,
+                color: AppColors.navBlue,
+                size: 20.sp,
+              ),
             ),
             SizedBox(width: 10.w),
             Expanded(
@@ -464,7 +601,10 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
               ),
             ),
             if (canSwitch) ...[
-              Text('切换', style: TextStyle(fontSize: 13.sp, color: AppColors.navBlue)),
+              Text(
+                '切换',
+                style: TextStyle(fontSize: 13.sp, color: AppColors.navBlue),
+              ),
               SizedBox(width: 2.w),
               Icon(Icons.swap_horiz, size: 18.sp, color: AppColors.navBlue),
             ],
@@ -483,23 +623,31 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
       ),
       child: Column(
         children: [
-          _labeledRow(
-            '统一调节赔率',
-            child: _stepperField(
-              controller: _stepCtrl,
-              onMinus: () => _adjustAll(-1),
-              onPlus: () => _adjustAll(1),
+          KeyedSubtree(
+            key: _stepKey,
+            child: _labeledRow(
+              '统一调节赔率',
+              child: _stepperField(
+                controller: _stepCtrl,
+                focusNode: _stepFocus,
+                onMinus: () => _adjustAll(-1),
+                onPlus: () => _adjustAll(1),
+              ),
             ),
           ),
           SizedBox(height: 12.h),
-          _labeledRow(
-            '最低限额',
-            child: _boxField(
-              controller: _minLimitCtrl,
-              keyboardType: TextInputType.number,
-              integer: true,
-              readOnly: _limitLocked,
-              onChanged: _limitLocked ? null : (_) => setState(() {}),
+          KeyedSubtree(
+            key: _minKey,
+            child: _labeledRow(
+              '最低限额',
+              child: _boxField(
+                controller: _minLimitCtrl,
+                focusNode: _minFocus,
+                keyboardType: TextInputType.number,
+                integer: true,
+                readOnly: _limitLocked,
+                onChanged: _limitLocked ? null : (_) => setState(() {}),
+              ),
             ),
           ),
         ],
@@ -510,69 +658,109 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   Widget _playCard(int index, _OddsRow row) {
     final no = (index + 1).toString().padLeft(2, '0');
     final limitError = _limitError(row);
-    return Container(
-      padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 14.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12.r),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
-                decoration: BoxDecoration(
-                  color: AppColors.navBlue.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4.r),
-                ),
-                child: Text(
-                  no,
-                  style: TextStyle(
-                    fontSize: 12.sp,
-                    color: AppColors.navBlue,
-                    fontWeight: FontWeight.w700,
+    return KeyedSubtree(
+      key: row.cardKey,
+      child: Container(
+        padding: EdgeInsets.fromLTRB(12.w, 12.h, 12.w, 14.h),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                  decoration: BoxDecoration(
+                    color: AppColors.navBlue.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4.r),
+                  ),
+                  child: Text(
+                    no,
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: AppColors.navBlue,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Text(
-                  row.name,
-                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: Text(
+                    row.name,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
+              ],
+            ),
+            SizedBox(height: 12.h),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _fieldCol(
+                    '赔率',
+                    row.oddsCtrl,
+                    row.oddsFocus,
+                    decimal: true,
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: _fieldCol(
+                    '单注限额',
+                    row.maxBetCtrl,
+                    row.maxBetFocus,
+                    readOnly: _limitLocked,
+                  ),
+                ),
+                SizedBox(width: 8.w),
+                Expanded(
+                  child: _fieldCol(
+                    '单期总限额',
+                    row.periodLimitCtrl,
+                    row.periodFocus,
+                    readOnly: _limitLocked,
+                  ),
+                ),
+              ],
+            ),
+            if (limitError != null) ...[
+              SizedBox(height: 6.h),
+              Text(
+                limitError,
+                style: TextStyle(fontSize: 12.sp, color: AppColors.danger),
               ),
             ],
-          ),
-          SizedBox(height: 12.h),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: _fieldCol('赔率', row.oddsCtrl, decimal: true)),
-              SizedBox(width: 8.w),
-              Expanded(child: _fieldCol('单注限额', row.maxBetCtrl, readOnly: _limitLocked)),
-              SizedBox(width: 8.w),
-              Expanded(child: _fieldCol('单期总限额', row.periodLimitCtrl, readOnly: _limitLocked)),
-            ],
-          ),
-          if (limitError != null) ...[
-            SizedBox(height: 6.h),
-            Text(limitError, style: TextStyle(fontSize: 12.sp, color: AppColors.danger)),
           ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _fieldCol(String label, TextEditingController ctrl, {bool decimal = false, bool readOnly = false}) {
+  Widget _fieldCol(
+    String label,
+    TextEditingController ctrl,
+    FocusNode focusNode, {
+    bool decimal = false,
+    bool readOnly = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+        Text(
+          label,
+          style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+        ),
         SizedBox(height: 6.h),
         _boxField(
           controller: ctrl,
+          focusNode: focusNode,
           keyboardType: decimal
               ? const TextInputType.numberWithOptions(decimal: true)
               : TextInputType.number,
@@ -598,6 +786,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
 
   Widget _stepperField({
     required TextEditingController controller,
+    required FocusNode focusNode,
     required VoidCallback onMinus,
     required VoidCallback onPlus,
   }) {
@@ -608,6 +797,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
         Expanded(
           child: _boxField(
             controller: controller,
+            focusNode: focusNode,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             textAlign: TextAlign.center,
           ),
@@ -636,6 +826,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
 
   Widget _boxField({
     required TextEditingController controller,
+    FocusNode? focusNode,
     TextInputType? keyboardType,
     TextAlign textAlign = TextAlign.start,
     bool integer = false,
@@ -644,12 +835,18 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage> {
   }) {
     return EmulatorSafeTextField(
       controller: controller,
+      focusNode: focusNode,
       keyboardType: keyboardType,
+      keepKeyboardType: true,
+      textInputAction: TextInputAction.done,
+      scrollPadding: EdgeInsets.zero,
       textAlign: textAlign,
       readOnly: readOnly,
       onChanged: onChanged,
       inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(integer ? r'[0-9]' : r'[0-9.]')),
+        FilteringTextInputFormatter.allow(
+          RegExp(integer ? r'[0-9]' : r'[0-9.]'),
+        ),
       ],
       decoration: InputDecoration(
         isDense: true,

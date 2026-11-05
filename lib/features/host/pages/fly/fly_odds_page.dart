@@ -8,7 +8,9 @@ import '../../../../shared/format/display_number.dart';
 import '../../../../shared/format/game_series.dart';
 import '../../../../shared/format/play_odds_merge.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../../../shared/widgets/keyboard_list_reveal.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../../shared/widgets/stable_screen_metrics.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
@@ -43,7 +45,8 @@ class _OddsRow {
     required this.maxBet,
     required this.periodLimit,
     required this.controller,
-  });
+  }) : focusNode = FocusNode(),
+       rowKey = GlobalKey();
 
   final List<String> playCodes;
   final String playName;
@@ -51,14 +54,20 @@ class _OddsRow {
   final double? memberOdds;
   final double? oddsMax;
   final double? oddsMin;
+
   /// 平台单注最高、单期总限额：飞单那一刻按它们判断，只读
   final double? maxBet;
   final double? periodLimit;
   bool limitOpen = false;
   double odds;
   final TextEditingController controller;
+  final FocusNode focusNode;
+  final GlobalKey rowKey;
 
-  void dispose() => controller.dispose();
+  void dispose() {
+    controller.dispose();
+    focusNode.dispose();
+  }
 }
 
 /// 某个彩种的飞单赔率。飞单赔率可输入，抽佣比例随输入变化，保存时一次提交。
@@ -78,14 +87,19 @@ class FlyOddsPage extends ConsumerStatefulWidget {
   ConsumerState<FlyOddsPage> createState() => _FlyOddsPageState();
 }
 
-class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
+class _FlyOddsPageState extends ConsumerState<FlyOddsPage>
+    with WidgetsBindingObserver {
   bool _dirty = false;
   bool _loading = true;
   bool _saving = false;
   bool _unbound = false;
+
   /// 默认不勾选；勾上后保存才同步同系列
   bool _syncSameSeries = false;
   final _step = 0.01;
+  final _scroll = ScrollController();
+  final _barKey = GlobalKey();
+  double _keyboard = 0;
   List<_OddsRow> _rows = [];
 
   bool get _pk10 => GameSeries.isPk10(widget.gameType);
@@ -93,13 +107,88 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Future.microtask(_load);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _scroll.dispose();
     _clearRows();
     super.dispose();
+  }
+
+  @override
+  void didChangeMetrics() {
+    if (!mounted) return;
+    final next = realKeyboardInset(context);
+    if ((next - _keyboard).abs() < 0.5) return;
+    setState(() => _keyboard = next);
+    _scheduleReveal(animate: false);
+  }
+
+  void _watchRow(_OddsRow row) {
+    row.focusNode.addListener(() {
+      if (!mounted || !row.focusNode.hasFocus) return;
+      _scheduleReveal(animate: true);
+    });
+  }
+
+  void _scheduleReveal({required bool animate}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _revealFocused(animate: animate);
+    });
+  }
+
+  /// 键盘伸进列表的高度。底栏用实际高度，不把底栏抬起来。
+  double _listCover(BuildContext context) {
+    final bar = _barKey.currentContext?.findRenderObject();
+    final barH = bar is RenderBox && bar.hasSize
+        ? bar.size.height
+        : (8.h + 44.h + 16.h);
+    return keyboardListCover(
+      keyboard: _keyboard,
+      safeBottom: MediaQuery.paddingOf(context).bottom,
+      barHeight: barH,
+    );
+  }
+
+  void _revealFocused({required bool animate}) {
+    if (_keyboard <= 0 || !_scroll.hasClients) return;
+    _OddsRow? row;
+    for (final item in _rows) {
+      if (item.focusNode.hasFocus) {
+        row = item;
+        break;
+      }
+    }
+    final ctx = row?.rowKey.currentContext;
+    if (ctx == null) return;
+    final box = ctx.findRenderObject();
+    if (box is! RenderBox || !box.hasSize || !box.attached) return;
+    final view = View.of(context);
+    final screenH = view.physicalSize.height / view.devicePixelRatio;
+    final rowBottom = box.localToGlobal(Offset(0, box.size.height)).dy;
+    final delta = keyboardRevealDelta(
+      rowBottom: rowBottom,
+      keyboardTop: screenH - _keyboard,
+    );
+    if (delta <= 0.5) return;
+    final position = _scroll.position;
+    if (!position.hasContentDimensions) return;
+    final next = (position.pixels + delta).clamp(0.0, position.maxScrollExtent);
+    if ((next - position.pixels).abs() < 0.5) return;
+    if (animate) {
+      position.animateTo(
+        next,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+      return;
+    }
+    position.jumpTo(next);
   }
 
   void _clearRows() {
@@ -143,7 +232,8 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
         final odds = _num(shown['odds']) ?? 0;
         final ceiling = _num(shown['oddsMax']) ?? _playOddsCeiling[code];
         final floor = _num(shown['oddsMin']);
-        final room = _num(shown['roomOdds']) ?? roomByCode[code] ?? roomByCode[m.name];
+        final room =
+            _num(shown['roomOdds']) ?? roomByCode[code] ?? roomByCode[m.name];
         final memberOdds = _num(shown['memberOdds']);
         rows.add(
           _OddsRow(
@@ -156,9 +246,12 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
             oddsMin: floor,
             maxBet: _num(shown['maxBet']),
             periodLimit: _num(shown['periodLimit']),
-            controller: TextEditingController(text: displayNumber(odds, maxDecimals: 4)),
+            controller: TextEditingController(
+              text: displayNumber(odds, maxDecimals: 4),
+            ),
           ),
         );
+        _watchRow(rows.last);
       }
       if (!mounted) {
         for (final row in rows) {
@@ -184,7 +277,9 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
     try {
       final data = await repo.getOdds(gameType: widget.gameType);
       final map = <String, double>{};
-      for (final m in hostRowsOf(data.containsKey('items') ? data['items'] : data)) {
+      for (final m in hostRowsOf(
+        data.containsKey('items') ? data['items'] : data,
+      )) {
         final odds = _num(m['odds']);
         if (odds == null) continue;
         final code = (m['playCode'] ?? '').toString();
@@ -210,8 +305,8 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
 
   double? _rangeMin(_OddsRow row) {
     final max = _rangeMax(row);
-    final floor = row.oddsMin ??
-        (row.oddsMax == null ? null : row.oddsMax! * 0.96);
+    final floor =
+        row.oddsMin ?? (row.oddsMax == null ? null : row.oddsMax! * 0.96);
     if (max == null) return floor;
     if (floor == null) return max;
     return floor > max ? max : floor;
@@ -268,10 +363,7 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
       }
       row.odds = double.parse(odds.toStringAsFixed(3));
       for (final code in row.playCodes) {
-        items.add({
-          'playCode': code,
-          'odds': row.odds,
-        });
+        items.add({'playCode': code, 'odds': row.odds});
       }
     }
     final doSync = _syncSameSeries && _pk10;
@@ -355,7 +447,10 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                   ),
                   Text(
                     '同步同类型',
-                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12.sp,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   SizedBox(width: 8.w),
                 ],
@@ -364,101 +459,125 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
       body: _loading
           ? const AppPageLoading()
           : _unbound
-              ? _unboundBody()
-              : Column(
-                  children: [
-                    Padding(
-                      padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 0),
-                      child: HostWhiteCard(
-                        padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '统一调节飞单赔率',
-                                style: TextStyle(fontSize: 14.sp),
-                              ),
+          ? _unboundBody()
+          : Column(
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 0),
+                  child: HostWhiteCard(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 8.w,
+                      vertical: 4.h,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '统一调节飞单赔率',
+                            style: TextStyle(fontSize: 14.sp),
+                          ),
+                        ),
+                        _stepBtn(Icons.add, () => _adjustAll(_step)),
+                        Container(
+                          width: 56.w,
+                          alignment: Alignment.center,
+                          padding: EdgeInsets.symmetric(vertical: 6.h),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFFE6EAF0)),
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Text(
+                            _step.toStringAsFixed(2),
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w600,
                             ),
-                            _stepBtn(Icons.add, () => _adjustAll(_step)),
-                            Container(
-                              width: 56.w,
-                              alignment: Alignment.center,
-                              padding: EdgeInsets.symmetric(vertical: 6.h),
-                              decoration: BoxDecoration(
-                                border: Border.all(color: const Color(0xFFE6EAF0)),
-                                borderRadius: BorderRadius.circular(8.r),
-                              ),
-                              child: Text(
-                                _step.toStringAsFixed(2),
-                                style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                            _stepBtn(Icons.remove, () => _adjustAll(-_step)),
-                          ],
+                          ),
+                        ),
+                        _stepBtn(Icons.remove, () => _adjustAll(-_step)),
+                      ],
+                    ),
+                  ),
+                ),
+                if (_dirty)
+                  Padding(
+                    padding: EdgeInsets.only(top: 6.h, right: 16.w),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        '未保存',
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          color: AppColors.danger,
                         ),
                       ),
                     ),
-                    if (_dirty)
-                      Padding(
-                        padding: EdgeInsets.only(top: 6.h, right: 16.w),
-                        child: Align(
-                          alignment: Alignment.centerRight,
+                  ),
+                Expanded(
+                  child: _rows.isEmpty
+                      ? Center(
                           child: Text(
-                            '未保存',
-                            style: TextStyle(fontSize: 12.sp, color: AppColors.danger),
+                            '暂无数据',
+                            style: TextStyle(color: AppColors.textHint),
                           ),
-                        ),
-                      ),
-                    Expanded(
-                      child: _rows.isEmpty
-                          ? Center(
-                              child: Text('暂无数据', style: TextStyle(color: AppColors.textHint)),
-                            )
-                          : ListView(
-                              padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 16.h),
-                              children: [
-                                HostWhiteCard(
-                                  padding: EdgeInsets.zero,
-                                  child: Column(
-                                    children: [
-                                      _head(),
-                                      for (var i = 0; i < _rows.length; i++) ...[
-                                        const Divider(height: 1, color: AppColors.divider),
-                                        _line(_rows[i]),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ],
+                        )
+                      : ListView(
+                          controller: _scroll,
+                          padding: EdgeInsets.fromLTRB(
+                            12.w,
+                            10.h,
+                            12.w,
+                            16.h + _listCover(context),
+                          ),
+                          children: [
+                            HostWhiteCard(
+                              padding: EdgeInsets.zero,
+                              child: Column(
+                                children: [
+                                  _head(),
+                                  for (var i = 0; i < _rows.length; i++) ...[
+                                    const Divider(
+                                      height: 1,
+                                      color: AppColors.divider,
+                                    ),
+                                    _line(_rows[i]),
+                                  ],
+                                ],
+                              ),
                             ),
+                          ],
+                        ),
+                ),
+              ],
+            ),
+      bottomBar: _loading || _unbound
+          ? null
+          : KeyedSubtree(
+              key: _barKey,
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 16.h),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: HostPrimaryButton(
+                        label: _saving ? '...' : '保存',
+                        enabled: !_saving,
+                        onPressed: _save,
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: _barBtn(
+                        label: '重置',
+                        enabled: !_saving,
+                        fg: const Color(0xFFE85D6C),
+                        bg: const Color(0xFFFFF1F2),
+                        border: const Color(0xFFFFD0D4),
+                        onTap: _reset,
+                      ),
                     ),
                   ],
                 ),
-      bottomBar: _loading || _unbound
-          ? null
-          : Padding(
-              padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 16.h),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: HostPrimaryButton(
-                      label: _saving ? '...' : '保存',
-                      enabled: !_saving,
-                      onPressed: _save,
-                    ),
-                  ),
-                  SizedBox(width: 8.w),
-                  Expanded(
-                    child: _barBtn(
-                      label: '重置',
-                      enabled: !_saving,
-                      fg: const Color(0xFFE85D6C),
-                      bg: const Color(0xFFFFF1F2),
-                      border: const Color(0xFFFFD0D4),
-                      onTap: _reset,
-                    ),
-                  ),
-                ],
               ),
             ),
     );
@@ -511,46 +630,70 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
   }
 
   Widget _head() {
-    final style = TextStyle(fontSize: 11.sp, color: AppColors.textSecondary, height: 1.2);
+    final style = TextStyle(
+      fontSize: 11.sp,
+      color: AppColors.textSecondary,
+      height: 1.2,
+    );
     return Padding(
       padding: EdgeInsets.fromLTRB(8.w, 10.h, 8.w, 10.h),
       child: Row(
         children: [
           Expanded(flex: 24, child: Text('玩法', style: style)),
-          Expanded(flex: 16, child: Text('房间赔率', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 22, child: Text('飞单赔率', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 22, child: Text('抽佣比例', textAlign: TextAlign.center, style: style)),
-          Expanded(flex: 16, child: Text('网盘限额', textAlign: TextAlign.right, style: style)),
+          Expanded(
+            flex: 16,
+            child: Text('房间赔率', textAlign: TextAlign.center, style: style),
+          ),
+          Expanded(
+            flex: 22,
+            child: Text('飞单赔率', textAlign: TextAlign.center, style: style),
+          ),
+          Expanded(
+            flex: 22,
+            child: Text('抽佣比例', textAlign: TextAlign.center, style: style),
+          ),
+          Expanded(
+            flex: 16,
+            child: Text('网盘限额', textAlign: TextAlign.right, style: style),
+          ),
         ],
       ),
     );
   }
 
   Widget _line(_OddsRow row) {
-    if (!row.limitOpen) return _lineMain(row);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _lineMain(row),
-        Container(
-          color: const Color(0xFFF5F7FA),
-          padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 8.h),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '平台单注限额 ${_limitText(row.maxBet)} · 单期总限额 ${_limitText(row.periodLimit)}',
-                style: TextStyle(fontSize: 12.sp, color: const Color(0xFF333333)),
-              ),
-              SizedBox(height: 2.h),
-              Text(
-                '飞单时超过任一项，这张单不飞',
-                style: TextStyle(fontSize: 10.sp, color: AppColors.textHint),
-              ),
-            ],
+    if (!row.limitOpen) {
+      return KeyedSubtree(key: row.rowKey, child: _lineMain(row));
+    }
+    return KeyedSubtree(
+      key: row.rowKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _lineMain(row),
+          Container(
+            color: const Color(0xFFF5F7FA),
+            padding: EdgeInsets.fromLTRB(10.w, 8.h, 10.w, 8.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '平台单注限额 ${_limitText(row.maxBet)} · 单期总限额 ${_limitText(row.periodLimit)}',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: const Color(0xFF333333),
+                  ),
+                ),
+                SizedBox(height: 2.h),
+                Text(
+                  '飞单时超过任一项，这张单不飞',
+                  style: TextStyle(fontSize: 10.sp, color: AppColors.textHint),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -580,8 +723,15 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
             flex: 22,
             child: EmulatorSafeTextField(
               controller: row.controller,
+              focusNode: row.focusNode,
               enabled: !_saving,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              keepKeyboardType: true,
+              textInputAction: TextInputAction.done,
+              // 这一页自己把整行滚到键盘上沿，不用输入框默认的 120。
+              scrollPadding: EdgeInsets.zero,
               textAlign: TextAlign.center,
               inputFormatters: [
                 FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
@@ -589,7 +739,10 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
               style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w700),
               decoration: InputDecoration(
                 isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 6.h),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 4.w,
+                  vertical: 6.h,
+                ),
                 filled: true,
                 fillColor: Colors.white,
                 border: OutlineInputBorder(
@@ -621,7 +774,10 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                 Text(
                   _commissionText(row),
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 if (range.isNotEmpty) ...[
                   Text(
@@ -632,7 +788,11 @@ class _FlyOddsPageState extends ConsumerState<FlyOddsPage> {
                   Text(
                     range,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 9.sp, color: AppColors.textHint, height: 1.2),
+                    style: TextStyle(
+                      fontSize: 9.sp,
+                      color: AppColors.textHint,
+                      height: 1.2,
+                    ),
                   ),
                 ],
               ],

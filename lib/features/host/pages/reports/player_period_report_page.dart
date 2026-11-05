@@ -21,6 +21,7 @@ class PlayerPeriodReportPage extends ConsumerStatefulWidget {
     this.initialStart,
     this.initialEnd,
     this.initialQuickIndex = 0,
+    this.initialGameType = GameSeries.filterAll,
   });
 
   final String roomId;
@@ -29,6 +30,7 @@ class PlayerPeriodReportPage extends ConsumerStatefulWidget {
   final DateTime? initialStart;
   final DateTime? initialEnd;
   final int initialQuickIndex;
+  final String initialGameType;
 
   @override
   ConsumerState<PlayerPeriodReportPage> createState() => _PlayerPeriodReportPageState();
@@ -45,12 +47,16 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
   bool _loadingMore = false;
   bool _hasMore = true;
   late String _titleName;
+  late String _gameType;
   final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _titleName = widget.displayName;
+    _gameType = widget.initialGameType.trim().isEmpty
+        ? GameSeries.filterAll
+        : widget.initialGameType.trim();
     if (widget.initialStart != null && widget.initialEnd != null) {
       start = widget.initialStart!;
       end = widget.initialEnd!;
@@ -101,6 +107,7 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
             accountId: widget.accountId,
             startDate: apiStartDate,
             endDate: apiEndDate,
+            category: _gameType,
             pageNum: page,
             pageSize: _pageSize,
           );
@@ -205,6 +212,11 @@ class _PlayerPeriodReportPageState extends ConsumerState<PlayerPeriodReportPage>
             quickItems: quickItems,
             onQuickTap: onQuickTap,
             onCustomTap: pickCustomRange,
+            gameType: _gameType,
+            onGameType: (code) {
+              setState(() => _gameType = code);
+              _load(reset: true);
+            },
           ),
           SizedBox(height: 12.h),
           Expanded(

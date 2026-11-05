@@ -1,0 +1,122 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <script>
+    window.AliyunCaptchaConfig = { region: "cn", prefix: "1k5s16e" };
+  </script>
+  <style>
+    html, body { margin: 0; background: #fff; font-family: sans-serif; }
+    body { padding: 0 8px 4px; }
+    #captcha-element { width: 100%; min-height: 40px; }
+    #button {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="captcha-element"></div>
+  <button id="button" type="button" tabindex="-1" aria-hidden="true"></button>
+  <script>
+    function report(payload) {
+      if (!window.AliyunCaptchaBridge) return false;
+      AliyunCaptchaBridge.postMessage(JSON.stringify(payload));
+      return true;
+    }
+    var lastHeight = 0;
+    function measure() {
+      var bottom = 48;
+      var nodes = document.body.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.id === "button") continue;
+        var style = window.getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden") continue;
+        var rect = node.getBoundingClientRect();
+        if (rect.height < 2 || rect.width < 2) continue;
+        if (rect.bottom > bottom) bottom = rect.bottom;
+      }
+      var h = Math.ceil(bottom);
+      if (Math.abs(h - lastHeight) < 2) return;
+      lastHeight = h;
+      report({ ok: false, height: h });
+    }
+    function slideLayout() {
+      // 官方宽度最低 320，再用 rem 缩到约 240，拖程短一些。
+      return { width: 320, rem: 0.75 };
+    }
+    function initCaptcha() {
+      if (typeof window.initAliyunCaptcha !== "function") {
+        report({ ok: false, msg: "安全验证加载失败" });
+        return;
+      }
+      var layout = slideLayout();
+      try {
+        window.initAliyunCaptcha({
+          SceneId: "1x1kohduf",
+          mode: "embed",
+          element: "#captcha-element",
+          button: "#button",
+          language: "cn",
+          delayBeforeSuccess: false,
+          rem: layout.rem,
+          slideStyle: { width: layout.width, height: 40 },
+          success: function (captchaVerifyParam) {
+            report({ ok: true, param: captchaVerifyParam });
+          },
+          fail: function () {},
+          getInstance: function (instance) {
+            window.captcha = instance;
+            report({ ok: false, ready: true });
+            measure();
+          },
+          onError: function (errorInfo) {
+            var msg = (errorInfo && (errorInfo.msg || errorInfo.message)) || "安全验证加载失败";
+            report({ ok: false, msg: String(msg) });
+          }
+        });
+      } catch (e) {
+        report({ ok: false, msg: "安全验证加载失败" });
+      }
+    }
+    function loadSdk() {
+      var script = document.createElement("script");
+      script.src = "https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js";
+      script.onload = function () { initWhenSized(0); };
+      script.onerror = function () { report({ ok: false, msg: "安全验证加载失败" }); };
+      document.head.appendChild(script);
+      setTimeout(function () {
+        if (typeof window.initAliyunCaptcha !== "function") {
+          report({ ok: false, msg: "安全验证加载失败" });
+        }
+      }, 8000);
+    }
+    function initWhenSized(tries) {
+      var box = document.getElementById("captcha-element");
+      var available = box ? box.clientWidth : 0;
+      if (available < 8 && tries < 20) {
+        setTimeout(function () { initWhenSized(tries + 1); }, 50);
+        return;
+      }
+      initCaptcha();
+    }
+    function boot() {
+      if (!window.AliyunCaptchaBridge) {
+        setTimeout(boot, 50);
+        return;
+      }
+      loadSdk();
+      if (window.MutationObserver) {
+        var observer = new MutationObserver(function () { measure(); });
+        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+      }
+    }
+    boot();
+  </script>
+</body>
+</html>

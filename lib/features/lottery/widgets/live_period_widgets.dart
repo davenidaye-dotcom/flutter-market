@@ -4,11 +4,14 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../../config/theme/app_colors.dart';
 import '../../../data/models/lottery_game_model.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../shared/widgets/flip_countdown.dart';
 import '../../../shared/widgets/lottery_ball.dart';
 import '../providers/lottery_live_provider.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
+import '../utils/pc28_format.dart';
+import 'pc28_draw_formula.dart';
 import '../../../core/time/server_clock.dart';
 
 /// 从房间 live 态读取最新开奖快照（不读 uiTick）。
@@ -39,7 +42,9 @@ import '../../../core/time/server_clock.dart';
       );
     }
   }
-  final ranks = g.previousResults.where((n) => n > 0).toList(growable: false);
+  final ranks = GameSeries.isPc28(gameId)
+      ? g.previousResults.where((n) => n >= 0).toList(growable: false)
+      : g.previousResults.where((n) => n > 0).toList(growable: false);
   final issue = g.previousIssue?.trim() ?? '';
   return (issue: issue, ranks: ranks, placeholder: false);
 }
@@ -138,6 +143,15 @@ class LiveLatestDrawBalls extends ConsumerWidget {
       gameId,
       pendingPlaceholder: pendingPlaceholder,
     );
+    if (GameSeries.isPc28(gameId)) {
+      final nums = snap.ranks.length >= 3 ? snap.ranks.sublist(0, 3) : snap.ranks;
+      return Pc28DrawFormula(
+        numbers: nums,
+        placeholder: snap.placeholder || !Pc28Format.valid(nums),
+        ballSize: ballSize ?? 22,
+        gap: gap ?? 6,
+      );
+    }
     return LotteryBallRow(
       numbers: snap.ranks,
       ballSize: ballSize,
@@ -193,6 +207,18 @@ class LiveLatestDrawSumText extends ConsumerWidget {
       );
     }
     final ranks = snap.ranks;
+    if (GameSeries.isPc28(gameId)) {
+      final body = Pc28Format.valid(ranks) ? '${Pc28Format.sumOf(ranks)}' : '—';
+      return Text(
+        body,
+        style: style ??
+            TextStyle(
+              fontSize: 11.sp,
+              color: const Color(0xFFE53935),
+              fontWeight: FontWeight.w600,
+            ),
+      );
+    }
     var sumText = '';
     if (ranks.length >= 2) {
       final sum = ranks[0] + ranks[1];

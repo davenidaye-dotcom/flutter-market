@@ -1,39 +1,43 @@
-import 'dart:math' as math;
-
 import '../widgets/history_draw_panel.dart';
 import '../../../data/models/chat_message_model.dart';
 
-List<int> parseDrawRanksField(dynamic raw) {
+List<int> parseDrawRanksField(dynamic raw, {bool keepZero = false}) {
   if (raw is List) {
     return raw
-        .map((e) => int.tryParse('$e') ?? 0)
-        .where((n) => n > 0)
+        .map((e) => int.tryParse('$e') ?? -1)
+        .where((n) => keepZero ? n >= 0 : n > 0)
         .toList(growable: false);
   }
   if (raw is String && raw.isNotEmpty) {
     return raw
         .split(RegExp(r'[,\s]+'))
-        .map((e) => int.tryParse(e.trim()) ?? 0)
-        .where((n) => n > 0)
+        .map((e) => int.tryParse(e.trim()) ?? -1)
+        .where((n) => keepZero ? n >= 0 : n > 0)
         .toList(growable: false);
   }
   return const [];
 }
 
 /// 将 `/member/games/{gameType}/history` 响应转为面板行，最新在前。
-List<HistoryDrawRow> drawHistoryRowsFromApi(List<Map<String, dynamic>> raw) {
+List<HistoryDrawRow> drawHistoryRowsFromApi(
+  List<Map<String, dynamic>> raw, {
+  bool keepZero = false,
+}) {
   final rows = <HistoryDrawRow>[];
   final seen = <String>{};
   for (final m in raw) {
     final issue = m['issueNo']?.toString() ?? '';
-    final ranks = parseDrawRanksField(m['ranks']);
+    final ranks = parseDrawRanksField(m['ranks'], keepZero: keepZero);
     if (issue.isEmpty || ranks.isEmpty || seen.contains(issue)) continue;
     seen.add(issue);
+    final sum = keepZero && ranks.length >= 3
+        ? ranks[0] + ranks[1] + ranks[2]
+        : (ranks.length >= 2 ? ranks[0] + ranks[1] : 0);
     rows.add(
       HistoryDrawRow(
         issue: issue,
         numbers: ranks,
-        summary: ranks.length >= 2 ? '${ranks[0] + ranks[1]}' : '',
+        summary: ranks.length >= 2 ? '$sum' : '',
       ),
     );
   }
@@ -129,7 +133,7 @@ String latestDrawWatchKey({
   final prev = previousIssue != null && previousIssue.trim().isNotEmpty
       ? issueCompareKey(previousIssue)
       : 0;
-  final ranks = previousResults.where((n) => n > 0).toList();
+  final ranks = previousResults.where((n) => n >= 0).toList();
   return '$cur|$prev|${ranks.join(',')}|${pendingDraw ? 1 : 0}';
 }
 

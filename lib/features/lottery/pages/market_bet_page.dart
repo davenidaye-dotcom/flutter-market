@@ -24,6 +24,8 @@ import '../widgets/live_period_widgets.dart';
 import '../utils/draw_history_rows.dart';
 import '../utils/lottery_period_ui.dart';
 import '../utils/bet_play_codec.dart';
+import '../utils/pc28_format.dart';
+import '../../../shared/format/game_series.dart';
 import '../utils/bet_repeat_helper.dart';
 
 /// 盘口下注详情 — 快捷 / 两面 / 1-10名 / 冠亚和
@@ -211,6 +213,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   }
 
   String _oddsForUi(String uiKey) {
+    if (GameSeries.isPc28(widget.gameId)) {
+      return _roomOdd(Pc28Format.oddsKey(uiKey));
+    }
     final key = oddsKeyOf(uiKeyToPlayCode(uiKey));
     final direct = _roomOdd(key);
     if (direct.isNotEmpty) return direct;
@@ -381,7 +386,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
       final amount = num.tryParse(parts.last);
       if (amount == null || amount <= 0) return null;
       final uiKey = parts.sublist(0, parts.length - 1).join('/');
-      final code = uiKeyToPlayCode(uiKey);
+      final code = GameSeries.isPc28(widget.gameId)
+          ? Pc28Format.playCode(uiKey)
+          : uiKeyToPlayCode(uiKey);
       if (code == null) return null;
       items.add({'playCode': code, 'amount': amount});
     }
@@ -470,7 +477,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
     final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
     final machineItems = <Map<String, dynamic>>[];
     for (final key in selected) {
-      final code = uiKeyToPlayCode(key);
+      final code = GameSeries.isPc28(widget.gameId)
+          ? Pc28Format.playCode(key)
+          : uiKeyToPlayCode(key);
       if (code == null) {
         AppToast.error('玩法无法识别: $key');
         return;
@@ -569,7 +578,9 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _SideTabs(
-                tabs: _tabs,
+                tabs: GameSeries.isPc28(widget.gameId)
+                    ? const ['两面', '定位', '色波', '龙虎']
+                    : _tabs,
                 current: _tab,
                 onTap: _setTab,
               ),
@@ -632,12 +643,98 @@ class _MarketBetBodyState extends ConsumerState<_MarketBetBody> {
   }
 
   Widget _buildBody(Set<String> selected) {
+    if (GameSeries.isPc28(widget.gameId)) {
+      return switch (_tab) {
+        0 => _pc28Grid(selected, const ['大', '小', '单', '双', '大单', '大双', '小单', '小双', '极大', '极小'], columns: 2),
+        1 => _pc28Pos(selected),
+        2 => _pc28Grid(selected, const ['红波', '蓝波', '绿波', '豹子'], columns: 2),
+        _ => _pc28Grid(selected, const ['龙', '虎', '和'], columns: 3),
+      };
+    }
     return switch (_tab) {
       0 => _buildQuick(selected),
       1 => _buildTwoSides(selected),
       2 => _buildRankNumbers(selected),
       _ => _buildSum(selected),
     };
+  }
+
+  Widget _pc28Grid(Set<String> selected, List<String> labels, {required int columns}) {
+    return ListView(
+      padding: EdgeInsets.all(10.w),
+      children: [
+        for (var i = 0; i < labels.length; i += columns)
+          Padding(
+            padding: EdgeInsets.only(bottom: 8.h),
+            child: Row(
+              children: [
+                for (var j = 0; j < columns; j++) ...[
+                  if (j > 0) SizedBox(width: 8.w),
+                  Expanded(
+                    child: i + j < labels.length
+                        ? _OddsCell(
+                            label: labels[i + j],
+                            odds: _oddsForUi(labels[i + j]),
+                            selected: selected.contains(labels[i + j]),
+                            expand: true,
+                            stacked: true,
+                            onTap: () => _toggle(labels[i + j]),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        if (labels.contains('红波'))
+          Padding(
+            padding: EdgeInsets.only(top: 4.h),
+            child: Text(
+              '黄波（0、13、14、27）不能下注，开出则红蓝绿都不中',
+              style: TextStyle(fontSize: 12.sp, color: const Color(0xFF888888)),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _pc28Pos(Set<String> selected) {
+    return ListView(
+      padding: EdgeInsets.all(10.w),
+      children: [
+        for (final ball in [1, 2, 3]) ...[
+          Padding(
+            padding: EdgeInsets.only(bottom: 6.h, top: ball == 1 ? 0 : 4.h),
+            child: Text('第$ball球', style: TextStyle(fontSize: 13.sp)),
+          ),
+          _pc28DigitRow(selected, ball, 0),
+          _pc28DigitRow(selected, ball, 5),
+        ],
+      ],
+    );
+  }
+
+  Widget _pc28DigitRow(Set<String> selected, int ball, int from) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8.h),
+      child: Row(
+        children: [
+          for (var n = from; n < from + 5; n++) ...[
+            if (n > from) SizedBox(width: 6.w),
+            Expanded(
+              child: _OddsCell(
+                label: '$n',
+                odds: _oddsForUi('$ball/$n'),
+                selected: selected.contains('$ball/$n'),
+                expand: true,
+                stacked: true,
+                onTap: () => _toggle('$ball/$n'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildQuick(Set<String> selected) {
@@ -994,20 +1091,34 @@ class _StatusBar extends StatelessWidget {
                 ),
               ),
               SizedBox(width: 6.w),
-              Expanded(
-                child: LiveLatestDrawBalls(
+              if (GameSeries.isPc28(gameId)) ...[
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: LiveLatestDrawBalls(
+                      roomId: roomId,
+                      gameId: gameId,
+                      ballSize: 26,
+                      gap: 3,
+                    ),
+                  ),
+                ),
+              ] else ...[
+                Expanded(
+                  child: LiveLatestDrawBalls(
+                    roomId: roomId,
+                    gameId: gameId,
+                    ballSize: 20.w,
+                    gap: 3.w,
+                  ),
+                ),
+                LiveLatestDrawSumText(
                   roomId: roomId,
                   gameId: gameId,
-                  ballSize: 20.w,
-                  gap: 3.w,
+                  prefix: '冠亚和',
+                  style: TextStyle(fontSize: 11.sp, color: const Color(0xFF7A7A7A)),
                 ),
-              ),
-              LiveLatestDrawSumText(
-                roomId: roomId,
-                gameId: gameId,
-                prefix: '冠亚和',
-                style: TextStyle(fontSize: 11.sp, color: const Color(0xFF7A7A7A)),
-              ),
+              ],
               Icon(Icons.arrow_drop_down, size: 18.sp, color: AppColors.navBlue),
             ],
           ),
@@ -1140,6 +1251,7 @@ class _OddsCell extends StatelessWidget {
     required this.selected,
     required this.onTap,
     this.expand = false,
+    this.stacked = false,
   });
 
   final String label;
@@ -1147,6 +1259,7 @@ class _OddsCell extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
   final bool expand;
+  final bool stacked;
 
   @override
   Widget build(BuildContext context) {
@@ -1154,28 +1267,43 @@ class _OddsCell extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: expand ? null : (MediaQuery.sizeOf(context).width - 72.w - 16.w - 6.w) / 2,
-        height: 44.h,
+        height: stacked ? 52.h : 44.h,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: selected ? const Color(0xFFE3F2FD) : Colors.white,
           borderRadius: BorderRadius.circular(4.r),
           border: Border.all(color: selected ? AppColors.navBlue : const Color(0xFFE0E0E0)),
         ),
-        child: RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: label,
-                style: TextStyle(fontSize: 15.sp, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
-              ),
-              if (odds.isNotEmpty)
-                TextSpan(
-                  text: '  $odds',
-                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+        child: stacked
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(fontSize: 15.sp, color: AppColors.textPrimary, fontWeight: FontWeight.w500, height: 1.1),
+                  ),
+                  if (odds.isNotEmpty)
+                    Text(
+                      odds,
+                      style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary, height: 1.1),
+                    ),
+                ],
+              )
+            : RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: label,
+                      style: TextStyle(fontSize: 15.sp, color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+                    ),
+                    if (odds.isNotEmpty)
+                      TextSpan(
+                        text: '  $odds',
+                        style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                      ),
+                  ],
                 ),
-            ],
-          ),
-        ),
+              ),
       ),
     );
   }

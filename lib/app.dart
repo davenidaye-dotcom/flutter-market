@@ -11,6 +11,7 @@ import 'config/env/env_config.dart';
 import 'config/router/app_router.dart';
 import 'config/router/route_paths.dart';
 import 'config/theme/app_theme.dart';
+import 'core/network/must_change_password.dart';
 import 'core/network/session_kick.dart';
 import 'core/network/session_store.dart';
 import 'core/network/session_watch.dart';
@@ -35,6 +36,20 @@ class _LetouAppState extends ConsumerState<LetouApp> {
     super.initState();
     // 首帧后撤 splash，不依赖 LoginPage 是否挂载
     unawaited(BgmPrompt.setEnabled(false));
+    MustChangePassword.handler = () {
+      final user = ref.read(authSessionProvider).user;
+      if (user == null || !user.isHostSide) return;
+      if (!user.forceChangePassword) {
+        ref.read(authSessionProvider.notifier).requirePasswordChange();
+      }
+      final router = ref.read(routerProvider);
+      final uri = router.state.uri;
+      if (uri.path == RoutePaths.changePassword && uri.queryParameters['force'] == '1') {
+        return;
+      }
+      dismissAllShellCovers();
+      router.go('${RoutePaths.changePassword}?force=1');
+    };
     SessionKick.handler = () {
       final message = SessionKick.takePendingMessage();
       dismissAllShellCovers();
@@ -75,6 +90,7 @@ class _LetouAppState extends ConsumerState<LetouApp> {
     if (SessionKick.handler != null) {
       SessionKick.handler = null;
     }
+    MustChangePassword.handler = null;
     super.dispose();
   }
 

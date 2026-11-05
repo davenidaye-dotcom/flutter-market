@@ -153,5 +153,13 @@ class LotteryGameModel {
       countdownSeconds: 240,
       previousResults: [5, 7, 10, 8, 2, 1, 9, 3, 4, 6],
     ),
+    LotteryGameModel(
+      id: 'JS_FT',
+      name: '极速飞艇',
+      currentIssue: '54852493',
+      previousIssue: '54852492',
+      countdownSeconds: 75,
+      previousResults: [7, 9, 2, 6, 1, 3, 10, 4, 5, 8],
+    ),
   ];
 }

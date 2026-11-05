@@ -127,8 +127,13 @@ class LotteryRepository {
     return data.whereType<Map>().map((e) {
       final m = Map<String, dynamic>.from(e);
       final ranks = m['lastRanks'];
+      final keepZero = GameSeries.isPc28(m['gameType']?.toString());
       final List<int> previousResults = ranks is List
-          ? ranks.map((x) => int.tryParse('$x') ?? 0).where((x) => x > 0).toList()
+          ? ranks
+              .map((x) => int.tryParse('$x'))
+              .whereType<int>()
+              .where((x) => keepZero ? x >= 0 : x > 0)
+              .toList()
           : const <int>[];
       final countdown = m['countdownSeconds'];
       final seconds = countdown is int ? countdown : int.tryParse('$countdown') ?? 0;

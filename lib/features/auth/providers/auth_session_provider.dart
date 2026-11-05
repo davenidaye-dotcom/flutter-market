@@ -100,6 +100,13 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
     state = AuthSession(user: user.copyWith(avatarUrl: avatarUrl));
   }
 
+  /// 业务接口拒绝后补上强制改密，路由会把房主留在改密页。
+  void requirePasswordChange() {
+    final user = state.user;
+    if (user == null || user.forceChangePassword) return;
+    state = AuthSession(user: user.copyWith(forceChangePassword: true));
+  }
+
   Future<void> logout() async {
     final username = state.user?.username;
     final cleared = await _ref.read(authRepositoryProvider).logout();

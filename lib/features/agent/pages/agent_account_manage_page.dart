@@ -159,9 +159,9 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     }
   }
 
-  static const _btnGreen = Color(0xFF4CAF50);
-  static const _btnCoral = Color(0xFFE57373);
-  static const _btnTeal = Color(0xFF4E9BA3);
+  static const _btnGreen = Color(0xFF6DA944);
+  static const _btnCoral = Color(0xFFCF6965);
+  static const _btnTeal = Color(0xFF41909D);
   static const _typeGreen = Color(0xFF81C784);
   static const _statusBlue = Color(0xFF64B5F6);
 
@@ -463,6 +463,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     _syncDrillBack();
     return AgentPageFrame(
       title: '账户管理',
+      onRefresh: _load,
       child: Column(
         children: [
           SizedBox(height: 8.h),

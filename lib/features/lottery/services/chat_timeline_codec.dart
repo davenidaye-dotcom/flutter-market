@@ -50,7 +50,11 @@ ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
   );
   final ranksRaw = json['drawRanks'];
   final List<int>? drawRanks = ranksRaw is List
-      ? ranksRaw.map((e) => int.tryParse('$e') ?? 0).where((e) => e > 0).toList()
+      ? ranksRaw
+          .map((e) => int.tryParse('$e'))
+          .whereType<int>()
+          .where((e) => e >= 0)
+          .toList()
       : null;
   final accountId = json['accountId']?.toString().trim();
   return ChatMessageModel(

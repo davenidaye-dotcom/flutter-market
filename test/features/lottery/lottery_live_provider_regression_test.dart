@@ -148,6 +148,42 @@ void main() {
     expect(g.previousIssue, '34136376');
     expect(g.previousIssue, isNot(g.currentIssue));
   });
+
+  test('settle wallet push is not overwritten by the delayed wallet query', () async {
+    final live = container.read(roomLotteryLiveProvider(roomId).notifier);
+    await live.ensureLoaded();
+
+    live.debugInjectWsEvent({
+      'event': 'SETTLE_RESULT',
+      'gameType': gameId,
+      'data': {
+        'issueNo': '34136376',
+        'roomId': roomId,
+        'accounts': [
+          {'accountId': 10001, 'winAmount': 20, 'winLoss': 8},
+        ],
+      },
+    });
+    live.debugInjectWsEvent({
+      'event': 'WALLET_DELTA',
+      'data': {
+        'roomId': roomId,
+        'accountId': 10001,
+        'available': 11000,
+        'turnover': 720,
+        'winLoss': 56,
+        'rebate': 3,
+        'walletSeq': 1,
+      },
+    });
+
+    await Future<void>.delayed(const Duration(milliseconds: 700));
+    final header = container.read(roomLotteryLiveProvider(roomId));
+    expect(header.points, 11000);
+    expect(header.turnover, 720);
+    expect(header.winLoss, 56);
+    expect(header.rebate, 3);
+  });
 }
 
 class _FixedAuthSessionNotifier extends AuthSessionNotifier {

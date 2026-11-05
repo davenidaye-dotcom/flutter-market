@@ -58,6 +58,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     {'type': 'AZXY10', 'typeName': '澳洲幸运10'},
     {'type': 'TW_BG_Q', 'typeName': '宾果赛车(前)'},
     {'type': 'TW_BG_H', 'typeName': '宾果赛车(后)'},
+    {'type': 'JS_FT', 'typeName': '极速飞艇'},
   ];
 
   String get _gameLabel => _gameIndex == 0
@@ -1019,24 +1020,13 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             SizedBox(height: 8.h),
             Row(
               children: [
-                Expanded(
-                  child: AgentMetric(
-                    label: '注单',
-                    value: _ticketSumNum('orderCount'),
-                  ),
-                ),
-                Expanded(
-                  child: AgentMetric(
-                    label: '流水',
-                    value: _ticketSumNum('betAmount'),
-                  ),
-                ),
-                Expanded(
-                  child: AgentMetric(
-                    label: '结果',
-                    value: _ticketSumNum('result'),
-                    signed: true,
-                  ),
+                Text('注单 ${displayNumber(_ticketSumNum('orderCount'))}', style: _ticketLineStyle()),
+                SizedBox(width: 16.w),
+                Text('流水 ${displayNumber(_ticketSumNum('betAmount'))}', style: _ticketLineStyle()),
+                SizedBox(width: 16.w),
+                Text(
+                  '结果 ${displayNumber(_ticketSumNum('result'))}',
+                  style: _ticketLineStyle(color: _ticketMoneyColor(_ticketSumNum('result'), signed: true)),
                 ),
               ],
             ),
@@ -1062,23 +1052,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             ),
           ),
           SizedBox(height: 8.h),
-          Row(
-            children: [
-              Expanded(
-                child: AgentMetric(
-                  label: '流水',
-                  value: _ticketSumNum('betAmount'),
-                ),
-              ),
-              Expanded(child: AgentMetric(label: '注单', value: count)),
-              Expanded(
-                child: AgentMetric(
-                  label: '结果',
-                  value: _ticketSumNum('result'),
-                  signed: true,
-                ),
-              ),
-            ],
+          _ticketMetricGrid(
+            lead: Text('合计', style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+            count: count,
+            turnover: _ticketSumNum('betAmount'),
+            result: _ticketSumNum('result'),
           ),
         ],
       ),
@@ -1089,38 +1067,81 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     return GestureDetector(
       onTap: () => _openTicketIssue(g),
       child: _surface(
-        child: Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '${g['issueNo'] ?? '—'}',
-                    style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
-                  ),
-                  SizedBox(height: 2.h),
-                  Text(
-                    '${g['gameName'] ?? g['gameType'] ?? '—'}',
-                    style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                  ),
-                ],
+        child: _ticketMetricGrid(
+          lead: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${g['issueNo'] ?? '—'}',
+                style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600),
               ),
-            ),
-            Expanded(
-              child: AgentMetric(label: '注单', value: g['orderCount']),
-            ),
-            Expanded(
-              child: AgentMetric(label: '流水', value: g['betAmount']),
-            ),
-            Expanded(
-              child: AgentMetric(label: '结果', value: g['result'], signed: true),
-            ),
-            Icon(Icons.chevron_right, size: 18.sp, color: AppColors.textHint),
-          ],
+              SizedBox(height: 2.h),
+              Text(
+                '${g['gameName'] ?? g['gameType'] ?? '—'}',
+                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+          count: g['orderCount'],
+          turnover: g['betAmount'],
+          result: g['result'],
+          chevron: true,
         ),
       ),
+    );
+  }
+
+  /// 期列表：左列收窄，注单 / 流水 / 结果加宽并右对齐，数字与文字同字号。
+  Widget _ticketMetricGrid({
+    required Widget lead,
+    required dynamic count,
+    required dynamic turnover,
+    required dynamic result,
+    bool chevron = false,
+  }) {
+    return Row(
+      children: [
+        Expanded(flex: 5, child: lead),
+        Expanded(flex: 3, child: _ticketCol('注单', count)),
+        Expanded(
+          flex: 4,
+          child: Padding(
+            padding: EdgeInsets.only(left: 8.w),
+            child: _ticketCol('流水', turnover),
+          ),
+        ),
+        Expanded(
+          flex: 4,
+          child: Padding(
+            padding: EdgeInsets.only(left: 8.w),
+            child: _ticketCol('结果', result, signed: true),
+          ),
+        ),
+        if (chevron)
+          Icon(Icons.chevron_right, size: 18.sp, color: AppColors.textHint)
+        else
+          SizedBox(width: 18.sp),
+      ],
+    );
+  }
+
+  Widget _ticketCol(String label, dynamic value, {bool signed = false}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(label, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+        SizedBox(height: 2.h),
+        Text(
+          displayNumber(value),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w600,
+            color: _ticketMoneyColor(value, signed: signed),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1129,36 +1150,125 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       ...row,
       'title': row['title'] ?? row['contentOdds'],
     });
+    final result = row['itemResult'] ?? row['selfResult'];
+    final source = _ticketSourceLabel(row['source']?.toString());
+    final time = _fmtTicketTime(row['betAt'] ?? row['createdAt']);
+    final meta = [
+      if (source.isNotEmpty) source,
+      if (time.isNotEmpty) time,
+    ].join(' / ');
+    final fly = row['source']?.toString() == 'OWNER_FLIGHT';
+    final player = _ticketPlayerLine(row, play);
     return _surface(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
+              Text(
+                row['issueNo']?.toString() ?? '—',
+                style: _ticketLineStyle(),
+              ),
+              SizedBox(width: 8.w),
               Expanded(
                 child: Text(
-                  row['issueNo']?.toString() ?? '—',
-                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700),
+                  play,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _ticketLineStyle(),
                 ),
               ),
+              SizedBox(width: 8.w),
               Text(
                 _bizStatusLabel(row['status']?.toString()),
-                style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
               ),
             ],
           ),
           SizedBox(height: 6.h),
-          Text(play, style: TextStyle(fontSize: 13.sp, color: const Color(0xFF333333))),
-          SizedBox(height: 12.h),
           Row(
             children: [
-              Expanded(child: AgentMetric(label: '金额', value: row['amount'])),
-              Expanded(child: AgentMetric(label: '结果', value: row['itemResult'] ?? row['selfResult'], signed: true)),
+              Text('金额 ${displayNumber(row['amount'])}', style: _ticketLineStyle()),
+              SizedBox(width: 16.w),
+              Text(
+                '结果 ${displayNumber(result)}',
+                style: _ticketLineStyle(color: _ticketMoneyColor(result, signed: true)),
+              ),
             ],
           ),
+          if (meta.isNotEmpty) ...[
+            SizedBox(height: 4.h),
+            Text(meta, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+          ],
+          if (fly && player.isNotEmpty) ...[
+            SizedBox(height: 2.h),
+            Text(player, style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary)),
+          ],
+          if (!fly && source == 'Web直属') ...[
+            SizedBox(height: 2.h),
+            Text('本会员自己下的注', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint)),
+          ],
         ],
       ),
     );
+  }
+
+  String _ticketPlayerLine(Map<String, dynamic> row, String play) {
+    final name = '${row['playerName'] ?? ''}'.trim();
+    final roomOrder = row['roomOrderId'];
+    final roomText = roomOrder == null ? '' : '$roomOrder'.trim();
+    final playName = play.split(' @ ').first.trim();
+    final parts = <String>[
+      if (name.isNotEmpty) '玩家 $name',
+      if (roomText.isNotEmpty && roomText != 'null') '注单 $roomText',
+      if (playName.isNotEmpty && playName != '—') playName,
+    ];
+    if (_moneyDiffers(row['playerAmount'], row['amount'])) {
+      parts.add('原注额 ${displayNumber(row['playerAmount'])}');
+    }
+    return parts.join(' / ');
+  }
+
+  bool _moneyDiffers(dynamic playerAmount, dynamic flyAmount) {
+    if (playerAmount == null) return false;
+    final a = playerAmount is num ? playerAmount.toDouble() : double.tryParse('$playerAmount');
+    final b = flyAmount is num ? flyAmount.toDouble() : double.tryParse('$flyAmount');
+    if (a == null || b == null) return false;
+    return (a - b).abs() >= 0.0001;
+  }
+
+  String _ticketSourceLabel(String? source) {
+    switch (source) {
+      case 'OWNER_FLIGHT':
+        return '房主飞单';
+      case 'WEB_DIRECT':
+        return 'Web直属';
+      default:
+        return '';
+    }
+  }
+
+  String _fmtTicketTime(dynamic raw) {
+    var s = '${raw ?? ''}'.trim();
+    if (s.isEmpty || s == 'null') return '';
+    s = s.replaceFirst('T', ' ');
+    final dot = s.indexOf('.');
+    if (dot > 0) s = s.substring(0, dot);
+    if (s.length >= 19 && s[4] == '-') return s.substring(5, 19);
+    return s;
+  }
+
+  TextStyle _ticketLineStyle({Color? color}) {
+    return TextStyle(fontSize: 13.sp, color: color ?? const Color(0xFF333333));
+  }
+
+  Color _ticketMoneyColor(dynamic value, {bool signed = false}) {
+    if (!signed) return const Color(0xFF333333);
+    final text = displayNumber(value);
+    final n = num.tryParse(text) ?? 0;
+    if (n > 0) return AgentChrome.pnlUp;
+    if (n < 0) return AppColors.danger;
+    return const Color(0xFF333333);
   }
 
   String _bizStatusLabel(String? s) {

@@ -68,7 +68,9 @@ final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
   ref.listen<AuthSession>(authSessionProvider, (prev, next) {
     // 仅登录态/角色变化时刷新路由，避免无关 session 更新导致 Shell 重建丢保活
-    if (prev?.isLoggedIn != next.isLoggedIn || prev?.role != next.role) {
+    if (prev?.isLoggedIn != next.isLoggedIn ||
+        prev?.role != next.role ||
+        prev?.user?.forceChangePassword != next.user?.forceChangePassword) {
       refresh.value++;
     }
   });

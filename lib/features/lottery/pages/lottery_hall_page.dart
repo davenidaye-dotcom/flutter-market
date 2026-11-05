@@ -13,6 +13,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../providers/lottery_live_provider.dart';
 import '../widgets/announcement_marquee.dart';
+import '../../../shared/format/game_series.dart';
 import '../widgets/live_period_widgets.dart';
 import 'chat_bet_page.dart';
 import '../../../shared/widgets/app_page_loading.dart';
@@ -467,6 +468,8 @@ class _GameCard extends ConsumerWidget {
                 roomId: roomId,
                 gameId: gameId,
                 pendingPlaceholder: false,
+                ballSize: GameSeries.isPc28(gameId) ? 26 : null,
+                gap: GameSeries.isPc28(gameId) ? 3 : null,
               ),
             ),
           ],

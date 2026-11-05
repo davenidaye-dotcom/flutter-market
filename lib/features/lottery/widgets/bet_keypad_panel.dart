@@ -14,6 +14,7 @@ class BetKeypadPanel extends StatefulWidget {
     this.walletEnabled = true,
     this.disabledActions = const {},
     this.currentText = '',
+    this.canada = false,
   });
 
   final ValueChanged<String> onInsert;
@@ -27,6 +28,8 @@ class BetKeypadPanel extends StatefulWidget {
   final Set<String> disabledActions;
   /// 当前输入，用于玩法键互斥与禁连点
   final String currentText;
+  /// 加拿大 PC28 专用键盘。赛车彩种保持 false。
+  final bool canada;
 
   /// 大/小/单/双/龙/虎/冠亚和 整框互斥（只能出现其中一个）。
   /// 冠亚和的选项段里，大小单双可以混选、也可以连点。
@@ -71,6 +74,50 @@ class BetKeypadPanel extends StatefulWidget {
 
   static double get panelHeight => actionRowHeight + keyRowHeight * 4 + 1;
 
+  static double heightFor({bool canada = false}) =>
+      actionRowHeight + keyRowHeight * (canada ? 4 : 4) + 1;
+
+  static const pc28Grid = [
+    ['大', '1', '2', '3', '⌫'],
+    ['小', '4', '5', '6', '红波'],
+    ['单', '7', '8', '9', '蓝波'],
+    ['双', '/', '0', '/', '绿波'],
+  ];
+
+  /// 长词在前，避免「大」吃掉「大单」。
+  static const pc28Mutex = [
+    '大单',
+    '大双',
+    '小单',
+    '小双',
+    '极大',
+    '极小',
+    '红波',
+    '蓝波',
+    '绿波',
+    '豹子',
+    '大',
+    '小',
+    '单',
+    '双',
+    '龙',
+    '虎',
+    '和',
+  ];
+
+  static String? activePc28Token(String text) {
+    for (final t in pc28Mutex) {
+      if (text.contains(t)) return t;
+    }
+    return null;
+  }
+
+  static bool isPc28MutexBlocked(String current, String token) {
+    if (!pc28Mutex.contains(token)) return false;
+    final active = activePc28Token(current);
+    return active != null && active != token;
+  }
+
   /// 输入中已出现的玩法词；无则 null
   static String? activePlayToken(String text) {
     for (final t in playMutexTokens) {
@@ -113,6 +160,13 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
       widget.onBackspace();
       return;
     }
+    if (widget.canada) {
+      if (BetKeypadPanel.isPc28MutexBlocked(widget.currentText, key)) {
+        return;
+      }
+      widget.onInsert(key);
+      return;
+    }
     if (BetKeypadPanel.isPlayMutexBlocked(widget.currentText, key)) {
       return;
     }
@@ -133,7 +187,10 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final activePlay = BetKeypadPanel.activePlayToken(widget.currentText);
+    final activePlay = widget.canada
+        ? BetKeypadPanel.activePc28Token(widget.currentText)
+        : BetKeypadPanel.activePlayToken(widget.currentText);
+    final grid = widget.canada ? BetKeypadPanel.pc28Grid : BetKeypadPanel._grid;
     return RepaintBoundary(
       child: ColoredBox(
         color: Colors.white,
@@ -150,7 +207,7 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
               ),
             ),
             const Divider(height: 1, thickness: 0.5, color: AppColors.divider),
-            for (final row in BetKeypadPanel._grid)
+            for (final row in grid)
               SizedBox(
                 height: BetKeypadPanel.keyRowHeight,
                 child: Row(
@@ -175,6 +232,11 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
   }
 
   bool _isPlayKeyDisabled(String key, String? activePlay) {
+    if (widget.canada) {
+      if (activePlay == null) return false;
+      if (!BetKeypadPanel.pc28Mutex.contains(key)) return false;
+      return key != activePlay;
+    }
     if (BetKeypadPanel.gyhSides.contains(key) &&
         BetKeypadPanel.inGyhSideField(widget.currentText)) {
       return false;
@@ -210,8 +272,14 @@ class _ActionRow extends StatelessWidget {
               builder: (_) {
                 final action = _actions[i];
                 final wallet = action == '上分' || action == '下分';
+                // 封盘只锁投注。上分 / 下分跟钱包开关走，不跟 enabled。
                 final actionEnabled = !disabledActions.contains(action) &&
                     (wallet ? walletEnabled : enabled);
+                final color = !actionEnabled
+                    ? AppColors.textHint
+                    : (wallet && !enabled)
+                        ? AppColors.textPrimary
+                        : const Color(0xFF666666);
                 return GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: actionEnabled ? () => onAction(action) : null,
@@ -220,9 +288,10 @@ class _ActionRow extends StatelessWidget {
                       action,
                       style: TextStyle(
                         fontSize: 14.sp,
-                        color: actionEnabled
-                            ? const Color(0xFF666666)
-                            : AppColors.textHint,
+                        fontWeight: wallet && actionEnabled && !enabled
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                        color: color,
                       ),
                     ),
                   ),
@@ -261,6 +330,10 @@ class _KeyCellState extends State<_KeyCell> {
       '龙' => const Color(0xFFE53935),
       '虎' => const Color(0xFF1E88E5),
       '冠亚和' => const Color(0xFF43A047),
+      '红波' => const Color(0xFFE53935),
+      '蓝波' => const Color(0xFF1E88E5),
+      '绿波' => const Color(0xFF43A047),
+      '豹子' => const Color(0xFF6D4C41),
       _ => null,
     };
   }

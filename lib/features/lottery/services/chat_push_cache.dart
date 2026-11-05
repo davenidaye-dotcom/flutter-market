@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 
 import '../../../data/models/chat_message_model.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../data/models/check_card_model.dart';
 import '../utils/chat_timeline.dart';
 import '../utils/check_card_format.dart';
@@ -941,7 +942,9 @@ class ChatPushCache {
         HistoryDrawRow(
           issue: issue.trim(),
           numbers: ranks,
-          summary: ranks.length >= 2 ? '${ranks[0] + ranks[1]}' : '',
+          summary: GameSeries.isPc28(gameId) && ranks.length >= 3
+              ? '${ranks[0] + ranks[1] + ranks[2]}'
+              : (ranks.length >= 2 ? '${ranks[0] + ranks[1]}' : ''),
         ),
       );
       if (rows.length >= maxRows) break;
@@ -1385,7 +1388,11 @@ ChatMessageModel? _messageFromJson(Map<String, dynamic> json) {
   );
   final ranksRaw = json['drawRanks'];
   final List<int>? drawRanks = ranksRaw is List
-      ? ranksRaw.map((e) => int.tryParse('$e') ?? 0).where((e) => e > 0).toList()
+      ? ranksRaw
+          .map((e) => int.tryParse('$e'))
+          .whereType<int>()
+          .where((e) => e >= 0)
+          .toList()
       : null;
   final accountId = json['accountId']?.toString().trim();
   return ChatMessageModel(

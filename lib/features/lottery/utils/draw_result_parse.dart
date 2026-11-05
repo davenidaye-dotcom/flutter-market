@@ -26,7 +26,7 @@ class DrawResultParse {
         .split(RegExp(r'[,，\s|]+'))
         .map((s) => int.tryParse(s.trim()))
         .whereType<int>()
-        .where((n) => n > 0)
+        .where((n) => n >= 0)
         .toList();
   }
 }

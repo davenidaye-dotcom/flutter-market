@@ -22,8 +22,6 @@ class AuthRepository {
     required AppRole expectedRole,
     required int commitEpoch,
   }) async {
-    // captcha reserved for Dingxiang; server currently optional
-    final _ = captchaToken;
     final path = expectedRole == AppRole.player
         ? '/auth/member/login'
         : '/auth/portal/login';
@@ -36,7 +34,8 @@ class AuthRepository {
       'username': username.trim(),
       'password': password,
       'clientType': 'APP',
-      if (deviceId != null) 'deviceId': deviceId,
+      'deviceId': ?deviceId,
+      if (captchaToken.isNotEmpty) 'captchaVerifyParam': captchaToken,
     });
     return _finishLogin(
       data,
@@ -130,6 +129,7 @@ class AuthRepository {
   Future<UserModel> register({
     required String username,
     required String password,
+    required String captchaToken,
     String? nickname,
   }) async {
     final epoch = SessionStore.instance.bumpEpoch();
@@ -138,6 +138,7 @@ class AuthRepository {
       'password': password,
       if (nickname != null && nickname.isNotEmpty) 'nickname': nickname,
       'clientType': 'APP',
+      if (captchaToken.isNotEmpty) 'captchaVerifyParam': captchaToken,
     });
     if (data is! Map) {
       throw const ApiException(message: '\u6ce8\u518c\u54cd\u5e94\u5f02\u5e38');

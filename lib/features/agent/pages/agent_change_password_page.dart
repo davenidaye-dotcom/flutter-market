@@ -54,6 +54,10 @@ class _AgentChangePasswordPageState extends ConsumerState<AgentChangePasswordPag
       AppToast.error('两次新密码不一致');
       return;
     }
+    if (_newCtrl.text == _oldCtrl.text) {
+      AppToast.error('新密码不能与旧密码相同');
+      return;
+    }
     setState(() => _loading = true);
     try {
       await ref.read(authRepositoryProvider).changePassword(

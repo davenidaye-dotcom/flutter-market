@@ -17,6 +17,7 @@ import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
+import 'aliyun_captcha_page.dart';
 import '../login_remember_store.dart';
 import '../providers/auth_session_provider.dart';
 
@@ -150,10 +151,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
     try {
+      final param = await AliyunCaptchaPage.open(context);
+      if (!mounted) return;
+      if (param == null || param.isEmpty) {
+        AppToast.info('已取消安全验证');
+        return;
+      }
+      final captchaToken = param;
       final user = await ref.read(authSessionProvider.notifier).login(
             username: username,
             password: password,
-            captchaToken: '',
+            captchaToken: captchaToken,
             expectedRole: _hostMode ? AppRole.host : AppRole.player,
           );
       if (!mounted) return;
@@ -175,7 +183,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           live.role != user.role) {
         return;
       }
-      // 仅房主首次登录强制改密
+      // 房主后台建号或重置密码后，先改密才能进经营端
       if (live.isHostSide && live.forceChangePassword) {
         context.go('${RoutePaths.changePassword}?force=1');
         return;

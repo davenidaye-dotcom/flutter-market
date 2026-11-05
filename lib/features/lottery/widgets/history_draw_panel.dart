@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:easy_refresh/easy_refresh.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/lottery_ball.dart';
+import '../utils/pc28_format.dart';
+import 'pc28_draw_formula.dart';
 
 class HistoryDrawRow {
   const HistoryDrawRow({
@@ -133,6 +136,7 @@ class HistoryDrawPanel extends StatelessWidget {
     this.onRefresh,
     this.onLoadMore,
     this.refreshController,
+    this.gameId,
   });
 
   static const int pageSize = 20;
@@ -140,12 +144,17 @@ class HistoryDrawPanel extends StatelessWidget {
   @Deprecated('Use pageSize')
   static const int maxRows = pageSize;
 
-  static double panelHeight(BuildContext context) {
-    final rows = HistoryDrawLayout.visibleRows;
+  static const pc28VisibleRows = 10;
+  static const pc28RowHeight = 34.0;
+
+  static double panelHeight(BuildContext context, {String? gameId}) {
+    final pc28 = GameSeries.isPc28(gameId);
+    final rows = pc28 ? pc28VisibleRows : HistoryDrawLayout.visibleRows;
+    final rowH = pc28 ? pc28RowHeight : HistoryDrawLayout.rowHeight();
     return HistoryDrawLayout.headerHeight() +
         HistoryDrawLayout.listPadTop() +
         HistoryDrawLayout.listPadBottom() +
-        rows * HistoryDrawLayout.rowHeight() +
+        rows * rowH +
         (rows - 1) * HistoryDrawLayout.rowGap();
   }
 
@@ -156,13 +165,14 @@ class HistoryDrawPanel extends StatelessWidget {
   final Future<void> Function()? onRefresh;
   final Future<bool> Function()? onLoadMore;
   final EasyRefreshController? refreshController;
+  final String? gameId;
 
   @override
   Widget build(BuildContext context) {
     return Material(
       color: Colors.white,
       child: Container(
-        height: panelHeight(context),
+        height: panelHeight(context, gameId: gameId),
         decoration: const BoxDecoration(
           color: Colors.white,
           boxShadow: [
@@ -176,7 +186,7 @@ class HistoryDrawPanel extends StatelessWidget {
         clipBehavior: Clip.hardEdge,
         child: Column(
           children: [
-            const _Header(),
+            GameSeries.isPc28(gameId) ? const _Pc28Header() : const _Header(),
             Expanded(child: _buildBody(rows)),
           ],
         ),
@@ -224,7 +234,9 @@ class HistoryDrawPanel extends StatelessWidget {
             itemCount: displayRows.length,
             separatorBuilder: (_, _) =>
                 SizedBox(height: HistoryDrawLayout.rowGap()),
-            itemBuilder: (_, i) => _DataRow(row: displayRows[i]),
+            itemBuilder: (_, i) => GameSeries.isPc28(gameId)
+                ? _Pc28DataRow(row: displayRows[i])
+                : _DataRow(row: displayRows[i]),
           );
 
     if (onRefresh == null && onLoadMore == null) {
@@ -408,6 +420,145 @@ class _DataRow extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
+      ),
+    );
+  }
+}
+
+class _Pc28Header extends StatelessWidget {
+  const _Pc28Header();
+
+  @override
+  Widget build(BuildContext context) {
+    final style = HistoryDrawLayout.headerStyle().copyWith(fontSize: 13.sp);
+    return Container(
+      height: HistoryDrawLayout.headerHeight(),
+      color: const Color(0xFFF5F5F5),
+      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      child: Row(
+        children: [
+          SizedBox(width: 44.w, child: Text('期数', style: style)),
+          Expanded(child: Text('开奖结果', style: style, textAlign: TextAlign.center)),
+          SizedBox(width: 36.w, child: Text('大小', style: style, textAlign: TextAlign.center)),
+          SizedBox(width: 24.w, child: Text('波', style: style, textAlign: TextAlign.center)),
+          SizedBox(width: 36.w, child: Text('极', style: style, textAlign: TextAlign.center)),
+          SizedBox(width: 36.w, child: Text('豹', style: style, textAlign: TextAlign.center)),
+        ],
+      ),
+    );
+  }
+}
+
+class _Pc28DataRow extends StatelessWidget {
+  const _Pc28DataRow({required this.row});
+
+  final HistoryDrawRow row;
+
+  static const _blue = Color(0xFF1E88E5);
+  static const _muted = Color(0xFF9E9E9E);
+
+  static Color _comboColor(String ch) {
+    if (ch == '大' || ch == '双') return AppColors.danger;
+    if (ch == '小' || ch == '单') return _blue;
+    return const Color(0xFF5A5A5A);
+  }
+
+  static Color _waveColor(String wave) {
+    return switch (wave) {
+      '红' => Pc28Format.colorOf(3),
+      '蓝' => Pc28Format.colorOf(2),
+      '绿' => Pc28Format.colorOf(1),
+      '黄' => Pc28Format.colorOf(0),
+      _ => const Color(0xFF5A5A5A),
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = Pc28Format.valid(row.numbers);
+    final sum = ok ? Pc28Format.sumOf(row.numbers) : 0;
+    final combo = ok ? Pc28Format.combo(sum) : '';
+    final wave = ok ? Pc28Format.wave(sum) : '';
+    final extreme = ok ? Pc28Format.extreme(sum) : '';
+    final bao = ok && Pc28Format.leopard(row.numbers);
+    final plain = TextStyle(fontSize: 13.sp, height: 1.1, color: const Color(0xFF5A5A5A));
+    return SizedBox(
+      height: HistoryDrawPanel.pc28RowHeight,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 44.w,
+              child: Text(
+                row.issue.length > 4 ? row.issue.substring(row.issue.length - 4) : row.issue,
+                style: HistoryDrawLayout.issueStyle().copyWith(fontSize: 12.sp),
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: Pc28DrawFormula(
+                  numbers: ok ? row.numbers : const [],
+                  placeholder: !ok,
+                  ballSize: 26,
+                  gap: 3,
+                ),
+              ),
+            ),
+            SizedBox(
+              width: 36.w,
+              child: ok
+                  ? Text.rich(
+                      TextSpan(
+                        children: [
+                          for (final ch in combo.split(''))
+                            TextSpan(text: ch, style: plain.copyWith(color: _comboColor(ch), fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                      textAlign: TextAlign.center,
+                    )
+                  : Text('—', style: plain, textAlign: TextAlign.center),
+            ),
+            SizedBox(
+              width: 24.w,
+              child: Center(
+                child: ok
+                    ? Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(color: _waveColor(wave), shape: BoxShape.circle),
+                      )
+                    : Text('—', style: plain),
+              ),
+            ),
+            SizedBox(width: 36.w, child: Center(child: _mark(extreme.isEmpty ? '无' : extreme, hot: extreme.isNotEmpty))),
+            SizedBox(width: 36.w, child: Center(child: _mark(bao ? '豹子' : '无', hot: bao, solid: bao))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mark(String text, {required bool hot, bool solid = false}) {
+    final label = Text(
+      text,
+      maxLines: 1,
+      style: TextStyle(
+        fontSize: 12.sp,
+        height: 1.1,
+        fontWeight: FontWeight.w600,
+        color: solid ? Colors.white : (hot ? AppColors.danger : _muted),
+      ),
+    );
+    if (!hot) return label;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: solid ? AppColors.danger : const Color(0xFFFFE4E8),
+        borderRadius: BorderRadius.circular(2.r),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 3.w),
+        child: label,
       ),
     );
   }

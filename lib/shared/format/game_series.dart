@@ -4,19 +4,35 @@ class GameSeries {
 
   static const pk10 = 'PK10';
   static const pk10Name = '赛车系列';
-  static const pk10Members = ['JS_SC', 'AZXY10', 'TW_BG_Q', 'TW_BG_H'];
+  static const pk10Members = ['JS_SC', 'AZXY10', 'TW_BG_Q', 'TW_BG_H', 'JS_FT'];
+  static const pc28 = 'CA_PC28';
+
+  /// 报表彩种筛选：第一项是全部。
+  static const filterAll = 'ALL';
+  static const filterCodes = [filterAll, ...pk10Members, pc28];
+
+  static String filterLabel(String code) {
+    final gt = code.trim().toUpperCase();
+    if (gt.isEmpty || gt == filterAll) return '全部';
+    return displayName(gt);
+  }
 
   static const Map<String, String> gameNames = {
     'JS_SC': '极速赛车',
     'AZXY10': '澳洲幸运10',
     'TW_BG_Q': '宾果赛车(前)',
     'TW_BG_H': '宾果赛车(后)',
+    'JS_FT': '极速飞艇',
+    'CA_PC28': '加拿大PC28',
   };
 
   static bool isPk10(String? gameType) {
     final gt = (gameType ?? '').trim().toUpperCase();
     return pk10Members.contains(gt);
   }
+
+  static bool isPc28(String? gameType) =>
+      (gameType ?? '').trim().toUpperCase() == pc28;
 
   static String seriesNameOf(String? gameType) {
     return isPk10(gameType) ? pk10Name : (gameType ?? '');

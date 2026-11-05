@@ -559,7 +559,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
   double _betInputBarHeight() => 10.h + 44.h + 10.h;
 
   double _maxBottomPanelHeight() {
-    final keypadH = BetKeypadPanel.panelHeight;
+    final keypadH = BetKeypadPanel.heightFor(canada: GameSeries.isPc28(_gameId));
     final menuH = BetActionMenuPanel.panelHeight(context);
     return keypadH > menuH ? keypadH : menuH;
   }
@@ -1408,12 +1408,17 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
 
   void _insertText(String text) {
     final value = _betCtrl.text;
-    if (BetKeypadPanel.isPlayMutexBlocked(value, text)) {
+    final canada = GameSeries.isPc28(_gameId);
+    if (canada) {
+      if (BetKeypadPanel.isPc28MutexBlocked(value, text)) return;
+    } else if (BetKeypadPanel.isPlayMutexBlocked(value, text)) {
       return;
     }
-    final gyhSideRepeat = BetKeypadPanel.gyhSides.contains(text) &&
+    final gyhSideRepeat = !canada &&
+        BetKeypadPanel.gyhSides.contains(text) &&
         BetKeypadPanel.inGyhSideField(value);
-    if (BetKeypadPanel.noRepeatTokens.contains(text) &&
+    if (!canada &&
+        BetKeypadPanel.noRepeatTokens.contains(text) &&
         value.endsWith(text) &&
         !gyhSideRepeat) {
       return;
@@ -1880,7 +1885,10 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
     final pending = LotteryPeriodHelper.awaitingDrawRow(game);
     final missed = LotteryPeriodHelper.missedDrawIssue(game);
     final prevIssue = game.previousIssue?.trim() ?? '';
-    final balls = game.previousResults.where((n) => n > 0).toList();
+    final pc28 = GameSeries.isPc28(game.id);
+    final balls = pc28
+        ? game.previousResults.where((n) => n >= 0).toList()
+        : game.previousResults.where((n) => n > 0).toList();
     // 未开奖期不进历史表。顶栏球号行显示上一期已开出的号码。
     final placeholderIssue = missed ??
         (pending && game.currentIssue.trim().isNotEmpty
@@ -1896,7 +1904,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
       liveHead = HistoryDrawRow(
         issue: prevIssue,
         numbers: balls,
-        summary: balls.length >= 2 ? '${balls[0] + balls[1]}' : '',
+        summary: pc28 && balls.length >= 3
+            ? '${balls[0] + balls[1] + balls[2]}'
+            : (balls.length >= 2 ? '${balls[0] + balls[1]}' : ''),
       );
     }
     if (liveHead == null) {
@@ -2288,6 +2298,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
                               return _ChatBetDock(
                                 canBet: canBet,
                                 toolsEnabled: canPlaceBet,
+                                canada: GameSeries.isPc28(_gameId),
                                 betDisabledHint: betDisabledHint,
                                 isTrialAccount: isTrialAccount,
                                 submitting: submitting,
@@ -2295,7 +2306,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
                                 controller: _betCtrl,
                                 repeatAvailable: repeatAvailable,
                                 onTapInput: () {
-                                  if (!canBet || !_acceptPanelToggle()) return;
+                                  // 封盘不能下注，点输入框仍拉起键盘，方便上分 / 下分。
+                                  if (!canPlaceBet || !_acceptPanelToggle()) return;
                                   if (_panel == _BottomPanel.keypad) {
                                     _setPanel(_BottomPanel.none);
                                   } else {
@@ -2415,6 +2427,7 @@ class _ChatBetDock extends StatelessWidget {
   const _ChatBetDock({
     required this.canBet,
     required this.toolsEnabled,
+    this.canada = false,
     this.betDisabledHint,
     required this.isTrialAccount,
     required this.submitting,
@@ -2434,6 +2447,7 @@ class _ChatBetDock extends StatelessWidget {
   final bool canBet;
   /// 封盘期间仍可上分、下分、打开加号菜单。房主不可下注时为 false。
   final bool toolsEnabled;
+  final bool canada;
   final String? betDisabledHint;
   final bool isTrialAccount;
   final bool submitting;
@@ -2453,10 +2467,9 @@ class _ChatBetDock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxPanelH = BetKeypadPanel.panelHeight >
-            BetActionMenuPanel.panelHeight(context)
-        ? BetKeypadPanel.panelHeight
-        : BetActionMenuPanel.panelHeight(context);
+    final keypadH = BetKeypadPanel.heightFor(canada: canada);
+    final menuH = BetActionMenuPanel.panelHeight(context);
+    final maxPanelH = keypadH > menuH ? keypadH : menuH;
     final showPanel = (canBet || toolsEnabled) &&
         (panel == _BottomPanel.keypad || panel == _BottomPanel.menu);
     final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
@@ -2509,6 +2522,7 @@ class _ChatBetDock extends StatelessWidget {
                           valueListenable: controller,
                           builder: (_, value, __) {
                             return BetKeypadPanel(
+                              canada: canada,
                               enabled: canBet,
                               walletEnabled: toolsEnabled,
                               disabledActions: keypadDisabled,
@@ -2947,42 +2961,75 @@ class _GameStatusBar extends StatelessWidget {
               ),
               SizedBox(height: 6.h),
               SizedBox(
-                height: HistoryDrawLayout.rowHeight(),
+                height: GameSeries.isPc28(gameId) ? HistoryDrawPanel.pc28RowHeight : HistoryDrawLayout.rowHeight(),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    Pk10AlignRow(
-                      issue: LiveLatestDrawIssueText(
-                        roomId: roomId,
-                        gameId: gameId,
-                        compact: true,
-                        emptyLabel: '--',
-                        pendingPlaceholder: false,
-                        style: HistoryDrawLayout.issueStyle(),
-                      ),
-                      middle: LiveLatestDrawBalls(
-                        roomId: roomId,
-                        gameId: gameId,
-                        pinEdges: true,
-                        pendingPlaceholder: false,
-                        ballSize: HistoryDrawLayout.ballSize(),
-                        digitFontSize: HistoryDrawLayout.ballDigitSize(),
-                        gap: HistoryDrawLayout.ballGap(),
-                      ),
-                      gy: LiveLatestDrawSumText(
-                        roomId: roomId,
-                        gameId: gameId,
-                        prefix: '',
-                        pendingPlaceholder: false,
-                        style: TextStyle(
-                          fontSize: 11.sp,
-                          height: 1.1,
-                          color: AppColors.danger,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      dt: _historyChevron(),
-                    ),
+                    GameSeries.isPc28(gameId)
+                        ? Row(
+                            children: [
+                              SizedBox(
+                                width: HistoryDrawLayout.issueW(),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: LiveLatestDrawIssueText(
+                                    roomId: roomId,
+                                    gameId: gameId,
+                                    compact: true,
+                                    emptyLabel: '--',
+                                    pendingPlaceholder: false,
+                                    style: HistoryDrawLayout.issueStyle(),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: HistoryDrawLayout.issueGap()),
+                              Expanded(
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: LiveLatestDrawBalls(
+                                    roomId: roomId,
+                                    gameId: gameId,
+                                    pendingPlaceholder: false,
+                                    ballSize: 26,
+                                    gap: 3,
+                                  ),
+                                ),
+                              ),
+                              _historyChevron(),
+                            ],
+                          )
+                        : Pk10AlignRow(
+                            issue: LiveLatestDrawIssueText(
+                              roomId: roomId,
+                              gameId: gameId,
+                              compact: true,
+                              emptyLabel: '--',
+                              pendingPlaceholder: false,
+                              style: HistoryDrawLayout.issueStyle(),
+                            ),
+                            middle: LiveLatestDrawBalls(
+                              roomId: roomId,
+                              gameId: gameId,
+                              pinEdges: true,
+                              pendingPlaceholder: false,
+                              ballSize: HistoryDrawLayout.ballSize(),
+                              digitFontSize: HistoryDrawLayout.ballDigitSize(),
+                              gap: HistoryDrawLayout.ballGap(),
+                            ),
+                            gy: LiveLatestDrawSumText(
+                              roomId: roomId,
+                              gameId: gameId,
+                              prefix: '',
+                              pendingPlaceholder: false,
+                              style: TextStyle(
+                                fontSize: 11.sp,
+                                height: 1.1,
+                                color: AppColors.danger,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            dt: _historyChevron(),
+                          ),
                     Positioned.fill(
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
@@ -3305,6 +3352,7 @@ class _HistoryOverlayPanelState extends ConsumerState<_HistoryOverlayPanel> {
           builder: (_, rows, __) {
             return HistoryDrawPanel(
               rows: rows,
+              gameId: widget.gameId,
               loading: loading && rows.isEmpty,
               error: false,
               onRetry: widget.onRetry,

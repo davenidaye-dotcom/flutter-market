@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/app_pull_refresh.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../../../shared/widgets/user_avatar.dart';
@@ -33,6 +34,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
   bool _loading = false;
   bool _loadingMore = false;
   bool _hasMore = true;
+  String _gameType = GameSeries.filterAll;
   final _scroll = ScrollController();
 
   @override
@@ -77,6 +79,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
       final data = await ref.read(ownerRepositoryProvider).getRoomPlayerReport(
             startDate: apiStartDate,
             endDate: apiEndDate,
+            category: _gameType,
             pageNum: page,
             pageSize: _pageSize,
           );
@@ -166,6 +169,11 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
             quickItems: quickItems,
             onQuickTap: onQuickTap,
             onCustomTap: pickCustomRange,
+            gameType: _gameType,
+            onGameType: (code) {
+              setState(() => _gameType = code);
+              _load(reset: true);
+            },
           ),
           SizedBox(height: 10.h),
           Expanded(
@@ -221,6 +229,7 @@ class _RoomReportPageState extends ConsumerState<RoomReportPage>
                                         initialStart: omitDates ? null : start,
                                         initialEnd: omitDates ? null : end,
                                         initialQuickIndex: quickIndex,
+                                        initialGameType: _gameType,
                                       ),
                                     );
                                   },

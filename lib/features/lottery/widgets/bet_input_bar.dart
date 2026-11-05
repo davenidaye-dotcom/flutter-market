@@ -27,7 +27,7 @@ class BetInputBar extends StatelessWidget {
   final bool menuOpen;
   final bool keypadOpen;
   final bool enabled;
-  /// 封盘时输入不可用，加号菜单仍可打开。
+  /// 封盘时不能输入投注，点输入框仍拉起键盘（上分 / 下分），加号菜单也可打开。
   final bool menuEnabled;
   final bool submitting;
   /// 不可输入时的占位文案；默认「房主不可下注」
@@ -56,6 +56,8 @@ class BetInputBar extends StatelessWidget {
             // 封盘不能发注。有残留文字时也留加号，方便打开上分下分菜单。
             final showSend = enabled && !empty;
             final allowMenu = menuEnabled && !submitting;
+            // 封盘不能打字，但要点输入框把键盘拉起来，才能点上分 / 下分。
+            final allowKeypad = (enabled || menuEnabled) && !submitting;
             return Row(
               // 单行：输入框高度=按钮高度，底对齐=视觉居中
               // 多行：按钮贴底，对齐最后一行文本
@@ -63,7 +65,7 @@ class BetInputBar extends StatelessWidget {
               children: [
                 Expanded(
                   child: GestureDetector(
-                    onTap: enabled ? onTapInput : null,
+                    onTap: allowKeypad ? onTapInput : null,
                     behavior: HitTestBehavior.opaque,
                     child: Container(
                       constraints: BoxConstraints(minHeight: _barH),
@@ -76,12 +78,12 @@ class BetInputBar extends StatelessWidget {
                         color: fieldBg,
                         borderRadius: BorderRadius.circular(8.r),
                         border: Border.all(
-                          color: keypadOpen && enabled
+                          color: keypadOpen && allowKeypad
                               ? AppColors.navBlue
                               : (enabled
                                   ? const Color(0xFFDDDDDD)
                                   : const Color(0xFFCCCCCC)),
-                          width: keypadOpen && enabled ? 1.5 : 1,
+                          width: keypadOpen && allowKeypad ? 1.5 : 1,
                         ),
                       ),
                       child: Text(

@@ -13,7 +13,7 @@ import 'fly_logs_page.dart';
 import 'fly_odds_page.dart';
 import 'fly_report_page.dart';
 
-/// 飞单管理：账号、快捷操作、按彩种开关和赔率。
+/// 飞单管理：账号、操作、按彩种开关和赔率。
 class FlyHubPage extends ConsumerStatefulWidget {
   const FlyHubPage({super.key, required this.roomId});
 
@@ -33,15 +33,6 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
   bool get _bound => _status['bound'] == true;
 
   bool get _flightOn => _status['flightEnabled'] == true;
-
-  bool get _allGamesOn =>
-      _bound &&
-      _flightOn &&
-      _games.isNotEmpty &&
-      _games.every((g) => g['enabled'] == true);
-
-  bool get _allGamesOff =>
-      _bound && !_flightOn && _games.every((g) => g['enabled'] != true);
 
   static const _ratioSteps = <int>[50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
 
@@ -88,32 +79,6 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
 
   void _needBind() {
     AppToast.info('请先绑定代理会员');
-  }
-
-  Future<void> _setMaster(bool enabled) async {
-    if (!_bound) {
-      _needBind();
-      return;
-    }
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await ref.read(ownerRepositoryProvider).updateFeipanFlightSwitch(
-            flightEnabled: enabled,
-          );
-      if (!mounted) return;
-      setState(() {
-        _status = {..._status, 'flightEnabled': enabled};
-        _games = [
-          for (final g in _games) {...g, 'enabled': enabled},
-        ];
-      });
-      AppToast.success(enabled ? '飞单已开启' : '飞单已关闭');
-    } catch (e) {
-      AppToast.error(e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
   }
 
   Future<void> _saveGameConfig(
@@ -343,10 +308,8 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
           : ListView(
               padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 24.h),
               children: [
-                _accountCard(name.isEmpty ? '未绑定' : name, balance),
-                SizedBox(height: 16.h),
-                _sectionTitle('快捷操作'),
-                SizedBox(height: 8.h),
+                _accountBand(name.isEmpty ? '未绑定' : name, balance),
+                SizedBox(height: 10.h),
                 _actionGrid(),
                 SizedBox(height: 16.h),
                 _sectionTitle('游戏飞单配置'),
@@ -379,95 +342,44 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
     );
   }
 
-  Widget _accountCard(String name, String balance) {
-    return HostWhiteCard(
-      padding: EdgeInsets.fromLTRB(14.w, 14.h, 14.w, 12.h),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              _iconBubble(Icons.account_circle_outlined, const Color(0xFF5B8DEF)),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: TextStyle(fontSize: 16.sp, fontWeight: FontWeight.w700),
-                    ),
-                    SizedBox(height: 2.h),
-                    Text(
-                      _bound ? '已绑定代理会员' : '尚未绑定代理会员',
-                      style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF3F6FB),
-                  borderRadius: BorderRadius.circular(14.r),
-                ),
-                child: Text(
-                  '飞单余额 $balance',
-                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Row(
-            children: [
-              Expanded(
-                child: _entryTile(
-                  icon: Icons.receipt_long_outlined,
-                  color: const Color(0xFF5B8DEF),
-                  title: '额度变更',
-                  page: FlyBalancePage(roomId: widget.roomId),
-                ),
-              ),
-              SizedBox(width: 10.w),
-              Expanded(
-                child: _entryTile(
-                  icon: Icons.history,
-                  color: const Color(0xFF7E8BA3),
-                  title: '操作日志',
-                  page: FlyLogsPage(roomId: widget.roomId),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+  Widget _accountBand(String name, String balance) {
+    final valueStyle = TextStyle(
+      fontSize: 15.sp,
+      fontWeight: FontWeight.w400,
+      color: AppColors.textPrimary,
+      height: 1.3,
     );
-  }
-
-  Widget _entryTile({
-    required IconData icon,
-    required Color color,
-    required String title,
-    required Widget page,
-  }) {
-    return Material(
-      color: const Color(0xFFF7F9FC),
-      borderRadius: BorderRadius.circular(12.r),
-      child: InkWell(
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F7FB),
         borderRadius: BorderRadius.circular(12.r),
-        onTap: () => pushHostPage(context, page),
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 20.sp),
-              SizedBox(width: 8.w),
-              Expanded(
-                child: Text(title, style: TextStyle(fontSize: 14.sp)),
-              ),
-            ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: valueStyle,
+            ),
           ),
-        ),
+          SizedBox(width: 8.w),
+          Text(
+            '飞单余额',
+            style: TextStyle(
+              fontSize: 12.sp,
+              color: AppColors.textSecondary,
+              height: 1.2,
+            ),
+          ),
+          SizedBox(width: 6.w),
+          Text(balance, style: valueStyle),
+        ],
       ),
     );
   }
@@ -516,21 +428,25 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
           children: [
             Expanded(
               child: _actionTile(
-                icon: Icons.play_circle_outline,
-                color: const Color(0xFF4C9AFF),
-                label: '开启全部飞单',
-                highlighted: _allGamesOn,
-                onTap: () => _setMaster(true),
+                icon: Icons.receipt_long_outlined,
+                color: const Color(0xFF5B8DEF),
+                label: '额度变更',
+                onTap: () => pushHostPage(
+                  context,
+                  FlyBalancePage(roomId: widget.roomId),
+                ),
               ),
             ),
             SizedBox(width: 10.w),
             Expanded(
               child: _actionTile(
-                icon: Icons.pause_circle_outline,
-                color: const Color(0xFFFF6B6B),
-                label: '关闭全部飞单',
-                highlighted: _allGamesOff,
-                onTap: () => _setMaster(false),
+                icon: Icons.history,
+                color: const Color(0xFF7E8BA3),
+                label: '操作日志',
+                onTap: () => pushHostPage(
+                  context,
+                  FlyLogsPage(roomId: widget.roomId),
+                ),
               ),
             ),
           ],
@@ -551,7 +467,6 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
     required Color color,
     required String label,
     required VoidCallback onTap,
-    bool highlighted = false,
   }) {
     return Material(
       color: Colors.white,
@@ -568,10 +483,7 @@ class _FlyHubPageState extends ConsumerState<FlyHubPage> {
               Expanded(
                 child: Text(
                   label,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: highlighted ? FontWeight.w700 : FontWeight.w500,
-                  ),
+                  style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w500),
                 ),
               ),
               Icon(Icons.chevron_right, size: 18.sp, color: AppColors.textHint),
