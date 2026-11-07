@@ -42,13 +42,15 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
   Timer? _tickTimer;
   int _pollSeconds = 0;
   int _loadGen = 0;
+  bool _holdHeader = true;
+  bool _releaseHeader = false;
   bool _picking = false;
   final _clock = ValueNotifier<(int, String)>((0, ''));
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(releaseHeader: true);
     _startTickTimer();
   }
 
@@ -96,7 +98,8 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
     return '投注中';
   }
 
-  Future<void> _load({bool silent = false}) async {
+  Future<void> _load({bool silent = false, bool releaseHeader = false}) async {
+    if (releaseHeader) _releaseHeader = true;
     final gen = ++_loadGen;
     final requested = _currentType;
     if (!silent) {
@@ -162,7 +165,18 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
       if (!mounted || gen != _loadGen) return;
       setState(() => _loading = false);
       if (!silent) AppToast.error(e.toString());
+    } finally {
+      if (mounted && gen == _loadGen && _releaseHeader) {
+        _releaseHeader = false;
+        ref.invalidate(agentHeaderProvider);
+        setState(() => _holdHeader = false);
+      }
     }
+  }
+
+  void _refresh() {
+    setState(() => _holdHeader = true);
+    _load(releaseHeader: true);
   }
 
   Future<void> _onGameChanged(int i) async {
@@ -195,7 +209,10 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
   Widget build(BuildContext context) {
     return AgentPageFrame(
       title: '收付统计',
-      onRefresh: () => _load(),
+      refreshGameList: false,
+      holdHeader: _holdHeader,
+      sequenceHeader: true,
+      onRefresh: _refresh,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -249,6 +266,7 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
             ),
           ),
           SizedBox(height: 8.h),
+          if (_loading) const LinearProgressIndicator(minHeight: 2),
           Expanded(
             child: AgentSurface(
               padding: EdgeInsets.zero,
@@ -263,7 +281,10 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
                         )
                       : LayoutBuilder(
                           builder: (context, constraints) {
-                            final width = (constraints.maxWidth - 1) / 2;
+                            final onePane = _oneRankPane;
+                            final width = onePane
+                                ? constraints.maxWidth
+                                : (constraints.maxWidth - 1) / 2;
                             return ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: _columns.length,
@@ -470,8 +491,15 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
     );
   }
 
+  bool get _oneRankPane {
+    if (_currentType == 'CA_PC28') return true;
+    final code = _columns.isEmpty ? '' : '${_columns.first['columnCode']}';
+    return code.startsWith('P28-');
+  }
+
   Widget _rankTable(Map<String, dynamic> column) {
     final title = column['columnName']?.toString() ?? '';
+    final plainDigit = (column['columnCode']?.toString() ?? '').startsWith('P28-POS');
     final cells = _asMapList(column['cells']);
     return Column(
       children: [
@@ -498,7 +526,8 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
               final cell = cells[i];
               final label = cell['playName']?.toString() ?? '';
               final numVal = int.tryParse(label);
-              final isNum = numVal != null && numVal >= 1 && numVal <= 10;
+              final isNum = !plainDigit && numVal != null && numVal >= 1 && numVal <= 10;
+              final isDigit = plainDigit && numVal != null && numVal >= 0 && numVal <= 9;
               return Container(
                 decoration: const BoxDecoration(
                   border: Border(bottom: BorderSide(color: AgentChrome.cardBorder)),
@@ -518,7 +547,14 @@ class _AgentPaymentStatsPageState extends ConsumerState<AgentPaymentStatsPage> {
                                 child: Text(label, style: TextStyle(fontSize: 11.sp, color: Colors.white)),
                               ),
                             )
-                          : Text(label, textAlign: TextAlign.center, style: TextStyle(fontSize: 12.sp)),
+                          : Text(
+                              label,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: isDigit ? 14.sp : 12.sp,
+                                fontWeight: isDigit ? FontWeight.w600 : FontWeight.w400,
+                              ),
+                            ),
                     ),
                     Expanded(flex: 2, child: _amtText(cell['shareAmount'])),
                     Expanded(flex: 2, child: _amtText(cell['betAmount'])),

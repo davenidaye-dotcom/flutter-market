@@ -13,6 +13,7 @@ String playDisplayLabel(String? playCode, {String? fallbackName}) {
 }
 
 String _groupName(String p, String? fallbackName) {
+  if (p.startsWith('P28-')) return _pc28Group(p);
   if (p.startsWith('POS-') ||
       (p.startsWith('LM-') && p.split('-').length == 3) ||
       p.startsWith('DT-')) {
@@ -40,6 +41,7 @@ String _groupName(String p, String? fallbackName) {
 }
 
 String _selection(String p) {
+  if (p.startsWith('P28-')) return _pc28Selection(p);
   if (p.startsWith('POS-')) {
     final parts = p.split('-');
     if (parts.length >= 3) return parts[2];
@@ -79,6 +81,61 @@ String _selection(String p) {
     }
   }
   return '';
+}
+
+String _pc28Group(String p) {
+  if (p.startsWith('P28-POS-') || p.startsWith('P28-BALL-')) {
+    final parts = p.split('-');
+    if (parts.length >= 3) {
+      return switch (parts[2]) {
+        '1' => '第一球',
+        '2' => '第二球',
+        '3' => '第三球',
+        _ => '定位',
+      };
+    }
+  }
+  if (p.startsWith('P28-WAVE') || p == 'P28-BAO') return '色波';
+  if (p.startsWith('P28-DT')) return '龙虎';
+  return '总和';
+}
+
+String _pc28Selection(String p) {
+  if (p.startsWith('P28-POS-')) {
+    final parts = p.split('-');
+    return parts.length >= 4 ? parts[3] : '';
+  }
+  if (p.startsWith('P28-BALL-')) {
+    final parts = p.split('-');
+    if (parts.length < 4) return '';
+    return switch (parts[3]) {
+      'BIG' => '大',
+      'SMALL' => '小',
+      'ODD' => '单',
+      'EVEN' => '双',
+      _ => '',
+    };
+  }
+  return switch (p) {
+    'P28-BIG' => '大',
+    'P28-SMALL' => '小',
+    'P28-ODD' => '单',
+    'P28-EVEN' => '双',
+    'P28-BIG-ODD' => '大单',
+    'P28-BIG-EVEN' => '大双',
+    'P28-SMALL-ODD' => '小单',
+    'P28-SMALL-EVEN' => '小双',
+    'P28-EXT-BIG' => '极大',
+    'P28-EXT-SMALL' => '极小',
+    'P28-WAVE-RED' => '红波',
+    'P28-WAVE-BLUE' => '蓝波',
+    'P28-WAVE-GREEN' => '绿波',
+    'P28-BAO' => '豹子',
+    'P28-DT-D' => '龙',
+    'P28-DT-T' => '虎',
+    'P28-DT-TIE' => '和',
+    _ => '',
+  };
 }
 
 String _rankTitle(int position) {

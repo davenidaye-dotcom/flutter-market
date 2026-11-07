@@ -106,11 +106,11 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
     return displayNumber(v);
   }
 
-  String _signedAmount(dynamic v) {
+  String _signedAmount(dynamic v, {required bool showPlus}) {
     final n = _asNum(v);
     if (n == null) return '—';
     final shown = displayNumber(n);
-    if (n > 0) return '+$shown';
+    if (n > 0 && showPlus) return '+$shown';
     return shown;
   }
 
@@ -487,7 +487,7 @@ class _AgentQuotaChangePageState extends ConsumerState<AgentQuotaChangePage> {
                   Expanded(
                     child: _triple(
                       '账变',
-                      _signedAmount(amount),
+                      _signedAmount(amount, showPlus: _changeTypeLabel(r) != '赚水'),
                       valueColor: _amountColor(amount),
                     ),
                   ),

@@ -43,7 +43,7 @@ class Pc28DrawFormula extends StatelessWidget {
               ),
               SizedBox(width: gap),
             ],
-            _WaveBall(number: values[i], size: ballSize),
+            Pc28WaveBall(number: values[i], size: ballSize),
           ],
         ],
       ),
@@ -51,8 +51,8 @@ class Pc28DrawFormula extends StatelessWidget {
   }
 }
 
-class _WaveBall extends StatelessWidget {
-  const _WaveBall({required this.number, required this.size});
+class Pc28WaveBall extends StatelessWidget {
+  const Pc28WaveBall({super.key, required this.number, required this.size});
 
   final int? number;
   final double size;

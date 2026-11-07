@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../../config/theme/app_colors.dart';
 import '../../../../data/repositories/providers.dart';
+import '../../../../shared/format/display_number.dart';
 import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../../shared/widgets/keyboard_list_reveal.dart';
@@ -253,8 +254,12 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage>
     }
   }
 
+  /// 赔率按原值抹零，不截成两位。限额仍走两位再去尾零。
   String _numText(dynamic v, {bool keepDecimal = false}) {
-    return hostNumStr(keepDecimal ? v : v);
+    if (keepDecimal) {
+      return displayNumber(v, maxDecimals: -1);
+    }
+    return hostNumStr(v);
   }
 
   List<_OddsRow> _mergeOdds(List<_ParsedOdd> items) {
@@ -340,7 +345,7 @@ class _HostOddsEditPageState extends ConsumerState<HostOddsEditPage>
     setState(() {
       for (final r in _rows) {
         final cur = double.tryParse(r.oddsCtrl.text.trim()) ?? 0;
-        var next = double.parse((cur + delta).toStringAsFixed(3));
+        var next = double.parse((cur + delta).toStringAsFixed(8));
         if (next < 0) next = 0;
         r.oddsCtrl.text = _numText(next, keepDecimal: true);
       }

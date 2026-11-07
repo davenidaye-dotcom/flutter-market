@@ -25,16 +25,22 @@ class ClientCertRefresh {
       final data = await AuthApiClient.instance.post('/auth/cert/refresh');
       if (data is Map) {
         ClientCertStore.instance.applyLoginMap(Map<String, dynamic>.from(data));
+        ClientCertStore.instance.pending = false;
         return ClientCertStore.instance.hasCert
             ? CertRefreshResult.installed
             : CertRefreshResult.failed;
       }
+      ClientCertStore.instance.pending = false;
       return CertRefreshResult.failed;
     } on ApiException catch (e) {
+      ClientCertStore.instance.pending = false;
       if (e.bizCode == 'MTLS_DISABLED') {
         ClientCertStore.instance.clear();
         return CertRefreshResult.disabled;
       }
+      return CertRefreshResult.failed;
+    } catch (_) {
+      ClientCertStore.instance.pending = false;
       return CertRefreshResult.failed;
     }
   }

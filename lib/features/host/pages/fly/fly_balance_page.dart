@@ -6,6 +6,7 @@ import '../../../../data/repositories/providers.dart';
 import '../../../../shared/format/display_number.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../../wallet/widgets/date_range_filter.dart';
+import '../../../wallet/widgets/member_page_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
@@ -44,13 +45,14 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
     with DateRangePageMixin {
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
-  bool _loadingMore = false;
-  bool _hasMore = true;
+  bool _busy = false;
   bool _unbound = false;
   int _page = 1;
   int _total = 0;
+  int _totalPages = 0;
   int _typeIndex = 0;
-  static const _pageSize = 50;
+  int _req = 0;
+  static const _pageSize = 20;
 
   static const _types = [
     '全部',
@@ -80,54 +82,75 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
   }
 
   @override
-  void onQuery() => _load();
+  void onQuery() => _reload();
 
-  Future<void> _load({bool reset = true}) async {
-    if (!reset) {
-      if (!_hasMore || _loadingMore || _loading) return;
-      setState(() => _loadingMore = true);
-    } else {
-      setState(() {
-        _loading = true;
-        _unbound = false;
-        _page = 1;
-        _hasMore = true;
-      });
-    }
-    final page = reset ? 1 : _page + 1;
+  void _reload() {
+    setState(() {
+      _page = 1;
+      _rows = [];
+      _total = 0;
+      _totalPages = 0;
+    });
+    _load();
+  }
+
+  Future<void> _load({int? page}) async {
+    final target = page ?? _page;
+    final req = ++_req;
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (blank) _loading = true;
+      _busy = true;
+      _unbound = false;
+    });
     try {
       final repo = ref.read(ownerRepositoryProvider);
-      final status = await repo.getFeipanStatus();
-      if (status['bound'] != true) {
-        if (!mounted) return;
-        setState(() {
-          _unbound = true;
-          _rows = [];
-          _loading = false;
-        });
-        return;
-      }
-      final data = await repo.getFeipanPointsChanges(
+      final statusFuture = repo.getFeipanStatus();
+      Object? reportError;
+      final dataFuture = repo.getFeipanPointsChanges(
         changeType: _typeKeys[_typeIndex],
         startDate: DateRangeFilter.format(start),
         endDate: DateRangeFilter.format(end),
-        pageNum: page,
+        pageNum: target,
         pageSize: _pageSize,
-      );
-      if (!mounted) return;
+      ).catchError((Object e) {
+        reportError = e;
+        return <String, dynamic>{};
+      });
+      final status = await statusFuture;
+      if (!mounted || req != _req) return;
+      if (status['bound'] != true) {
+        setState(() {
+          _unbound = true;
+          _rows = [];
+          _total = 0;
+          _totalPages = 0;
+          _loading = false;
+          _busy = false;
+        });
+        return;
+      }
+      final data = await dataFuture;
+      if (reportError != null) {
+        throw reportError!;
+      }
+      if (!mounted || req != _req) return;
       final list = hostRowsOf(data);
       final total = int.tryParse('${data['total'] ?? list.length}') ?? list.length;
       setState(() {
-        _rows = reset ? list : [..._rows, ...list];
-        _page = page;
+        _page = target;
+        _rows = list;
         _total = total;
-        _hasMore = _rows.length < total && list.isNotEmpty;
+        _totalPages = memberTotalPages(total, _pageSize);
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (!mounted || req != _req) return;
+      setState(() {
+        _loading = false;
+        _busy = false;
+      });
       AppToast.error(e.toString());
     }
   }
@@ -146,7 +169,7 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
             onTap: () {
               if (_typeIndex == i) return;
               setState(() => _typeIndex = i);
-              _load();
+              _reload();
             },
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 12.w),
@@ -190,7 +213,7 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
           ),
           SizedBox(height: 8.h),
           Expanded(
-            child: _loading
+            child: _loading && _rows.isEmpty
                 ? const AppPageLoading()
                 : _unbound
                     ? Center(
@@ -208,26 +231,9 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
                           )
                         : ListView.separated(
                             padding: EdgeInsets.all(16.w),
-                            itemCount: _rows.length + 1,
-                            separatorBuilder: (_, i) =>
-                                i >= _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 8.h),
+                            itemCount: _rows.length,
+                            separatorBuilder: (_, _) => SizedBox(height: 8.h),
                             itemBuilder: (_, i) {
-                              if (i == _rows.length) {
-                                if (_hasMore && !_loadingMore) {
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (mounted) _load(reset: false);
-                                  });
-                                }
-                                return Padding(
-                                  padding: EdgeInsets.only(top: 8.h),
-                                  child: Center(
-                                    child: Text(
-                                      _hasMore ? '加载中' : '没有更多了，共 $_total 条',
-                                      style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                                    ),
-                                  ),
-                                );
-                              }
                               final r = _rows[i];
                               final type = '${r['changeType'] ?? ''}';
                               final amount = r['amount'] ?? '';
@@ -274,6 +280,24 @@ class _FlyBalancePageState extends ConsumerState<FlyBalancePage>
                             },
                           ),
           ),
+          if (!_unbound)
+            MemberPageBar(
+              page: _page,
+              totalPages: _totalPages,
+              totalCount: _total,
+              busy: _busy,
+              onPrev: () {
+                if (_busy || _page <= 1) return;
+                _load(page: _page - 1);
+              },
+              onNext: () {
+                if (_busy || _totalPages == 0 || _page >= _totalPages) {
+                  if (!_busy) AppToast.info('已是最后一页');
+                  return;
+                }
+                _load(page: _page + 1);
+              },
+            ),
         ],
       ),
     );

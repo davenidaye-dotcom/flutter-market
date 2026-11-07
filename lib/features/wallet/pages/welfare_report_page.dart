@@ -11,6 +11,7 @@ import '../../../shared/widgets/page_app_bar.dart';
 import '../utils/draw_snapshot_utils.dart';
 import '../widgets/date_range_filter.dart';
 import '../widgets/member_ledger_card.dart';
+import '../widgets/member_page_bar.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../room/cs_share_helper.dart';
 import 'member_bet_report_shared.dart';
@@ -28,9 +29,9 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
   Map<String, dynamic> _data = {};
   List<Map<String, dynamic>> _detailRows = [];
   bool _loading = false;
-  bool _loadingMore = false;
-  bool _hasMore = true;
+  bool _busy = false;
   int _page = 1;
+  int _totalPages = 0;
   int _detailTotal = 0;
   String _type = 'COMMISSION';
   static const _pageSize = 20;
@@ -47,26 +48,26 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
   }
 
   @override
-  void onQuery() => _load();
+  void onQuery() {
+    setState(() {
+      _page = 1;
+      _detailRows = [];
+    });
+    _load();
+  }
 
-  Future<void> _load({bool reset = true}) async {
-    if (!reset) {
-      if (!_hasMore || _loadingMore || _loading) return;
-      setState(() => _loadingMore = true);
-    } else {
-      setState(() {
-        _loading = true;
-        _page = 1;
-        _hasMore = true;
-      });
-    }
-    final page = reset ? 1 : _page + 1;
+  Future<void> _load() async {
+    final blank = _detailRows.isEmpty;
+    setState(() {
+      if (blank) _loading = true;
+      _busy = true;
+    });
     try {
       final data = await ref.read(walletRepositoryProvider).getWelfare(
             type: _type,
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
-            pageNum: page,
+            pageNum: _page,
             pageSize: _pageSize,
           );
       if (!mounted) return;
@@ -75,20 +76,20 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
           ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
           : <Map<String, dynamic>>[];
       final total = int.tryParse('${data['detailTotal'] ?? list.length}') ?? list.length;
+      final pageSize = int.tryParse('${data['pageSize'] ?? _pageSize}') ?? _pageSize;
       setState(() {
         _data = data;
-        _detailRows = reset ? list : [..._detailRows, ...list];
-        _page = page;
+        _detailRows = list;
         _detailTotal = total;
-        _hasMore = _detailRows.length < total && list.isNotEmpty;
+        _totalPages = memberTotalPages(total, pageSize);
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
       AppToast.error(e.toString());
     }
@@ -147,7 +148,11 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
                                   selected: _type == c.$1,
                                   onTap: () {
                                     if (_type == c.$1) return;
-                                    setState(() => _type = c.$1);
+                                    setState(() {
+                                      _type = c.$1;
+                                      _page = 1;
+                                      _detailRows = [];
+                                    });
                                     _load();
                                   },
                                 ),
@@ -211,21 +216,28 @@ class _WelfareReportPageState extends ConsumerState<WelfareReportPage>
                                 },
                               ),
                             ],
-                          if (detail.isNotEmpty)
-                            Padding(
-                              padding: EdgeInsets.only(top: 12.h),
-                              child: Center(
-                                child: GestureDetector(
-                                  onTap: _hasMore ? () => _load(reset: false) : null,
-                                  child: Text(
-                                    _hasMore ? '加载更多' : '没有更多了，共 $_detailTotal 条',
-                                    style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                                  ),
-                                ),
-                              ),
-                            ),
                         ],
                       ),
+              ),
+              MemberPageBar(
+                page: _page,
+                totalPages: _totalPages,
+                totalCount: _detailTotal,
+                busy: _busy,
+                onPrev: () {
+                  if (_page > 1) {
+                    setState(() => _page--);
+                    _load();
+                  }
+                },
+                onNext: () {
+                  if (_totalPages == 0 || _page >= _totalPages) {
+                    AppToast.info('已是最后一页');
+                    return;
+                  }
+                  setState(() => _page++);
+                  _load();
+                },
               ),
             ],
           ),

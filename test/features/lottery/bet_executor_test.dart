@@ -105,6 +105,22 @@ void main() {
     expect(httpCalls, 0);
   });
 
+  test('ACK ROOM_CONTEXT_REQUIRED：改走 HTTP，同 reqId', () async {
+    final ex = build(http: () async => _ok('x'));
+    final f = ex.submit('r5b', {}, () async {
+      httpCalls++;
+      return _ok('http');
+    });
+    ex.onAck({
+      'reqId': 'r5b',
+      'ok': false,
+      'code': 'ROOM_CONTEXT_REQUIRED',
+      'message': '请先进入房间',
+    });
+    expect((await f).orderIds, ['http']);
+    expect(httpCalls, 1);
+  });
+
   test('ACK BET_BUSY：改走 HTTP 重试一次（同 reqId）', () async {
     final ex = build(http: () async => _ok('x'));
     final f = ex.submit('r5', {}, () async {

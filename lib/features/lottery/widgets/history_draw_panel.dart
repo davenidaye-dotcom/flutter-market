@@ -144,7 +144,7 @@ class HistoryDrawPanel extends StatelessWidget {
   @Deprecated('Use pageSize')
   static const int maxRows = pageSize;
 
-  static const pc28VisibleRows = 10;
+  static const pc28VisibleRows = 8;
   static const pc28RowHeight = 34.0;
 
   static double panelHeight(BuildContext context, {String? gameId}) {

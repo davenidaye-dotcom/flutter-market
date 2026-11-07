@@ -81,8 +81,23 @@ class BetKeypadPanel extends StatefulWidget {
     ['大', '1', '2', '3', '⌫'],
     ['小', '4', '5', '6', '红波'],
     ['单', '7', '8', '9', '蓝波'],
-    ['双', '/', '0', '/', '绿波'],
+    ['双', '总和', '0', '/', '绿波'],
   ];
+
+  static const pc28SumSides = {
+    '大',
+    '小',
+    '单',
+    '双',
+    '大单',
+    '大双',
+    '小单',
+    '小双',
+    '极大',
+    '极小',
+  };
+
+  static const pc28BallSides = {'大', '小', '单', '双'};
 
   /// 长词在前，避免「大」吃掉「大单」。
   static const pc28Mutex = [
@@ -112,7 +127,50 @@ class BetKeypadPanel extends StatefulWidget {
     return null;
   }
 
+  static String pc28LastToken(String text) {
+    if (text.isEmpty) return '';
+    final parts = text.split(RegExp(r'\s+'));
+    return parts.isEmpty ? '' : parts.last;
+  }
+
+  /// 总和贴在大/小/单/双前面或后面。已经写出斜杠，或这截里已经有总和，就不再插入。
+  static bool canAppendSum(String text) {
+    final last = pc28LastToken(text);
+    if (last.contains('总和') || last.contains('/')) return false;
+    if (last.isEmpty) return true;
+    return pc28SumSides.contains(last);
+  }
+
+  static bool _ballOpen(String last) => RegExp(r'^[123]+/$').hasMatch(last);
+
+  static bool _ballSide(String last) => RegExp(r'^[123]+/[大小单双]+$').hasMatch(last);
+
+  static bool _ballDigit(String last) => RegExp(r'^[123]+/[0-9]+$').hasMatch(last);
+
+  static bool _digitKey(String token) =>
+      token.length == 1 && token.codeUnitAt(0) >= 48 && token.codeUnitAt(0) <= 57;
+
   static bool isPc28MutexBlocked(String current, String token) {
+    if (token == '⌫') return false;
+    final last = pc28LastToken(current);
+    if (token == '总和') return !canAppendSum(current);
+    if (token == '/') return last == '总和';
+    if (last == '总和') return !pc28BallSides.contains(token);
+    if (_ballSide(last)) {
+      if (_digitKey(token)) return true;
+      if (pc28BallSides.contains(token)) return false;
+      if (pc28Mutex.contains(token)) return true;
+    }
+    if (_ballDigit(last)) {
+      if (pc28BallSides.contains(token) || token == '总和') return true;
+      if (pc28Mutex.contains(token)) return true;
+    }
+    if (_ballOpen(last)) {
+      if (token == '总和') return true;
+      if (pc28Mutex.contains(token) && !pc28BallSides.contains(token)) return true;
+      return false;
+    }
+    if (pc28BallSides.contains(token) && last.endsWith(token)) return true;
     if (!pc28Mutex.contains(token)) return false;
     final active = activePc28Token(current);
     return active != null && active != token;
@@ -233,9 +291,8 @@ class _BetKeypadPanelState extends State<BetKeypadPanel> {
 
   bool _isPlayKeyDisabled(String key, String? activePlay) {
     if (widget.canada) {
-      if (activePlay == null) return false;
-      if (!BetKeypadPanel.pc28Mutex.contains(key)) return false;
-      return key != activePlay;
+      if (key == '⌫') return false;
+      return BetKeypadPanel.isPc28MutexBlocked(widget.currentText, key);
     }
     if (BetKeypadPanel.gyhSides.contains(key) &&
         BetKeypadPanel.inGyhSideField(widget.currentText)) {
@@ -404,7 +461,7 @@ class _KeyCellState extends State<_KeyCell> {
                       : Text(
                           widget.label,
                           style: TextStyle(
-                            fontSize: 20.sp,
+                            fontSize: widget.label.length > 1 ? 15.sp : 20.sp,
                             color: textColor,
                             fontWeight: FontWeight.w500,
                           ),

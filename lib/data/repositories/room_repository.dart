@@ -76,12 +76,36 @@ class RoomRepository {
       showQuick: _showQuickOn(map['showQuick']),
     );
     SessionStore.instance.rememberRoom(roomCode: code, roomId: roomId);
+    return _enteredRoom(map, code);
+  }
+
+  /// WS 进房回执写入会话，不再发 HTTP。
+  Future<RoomModel> bindEntered(Map<String, dynamic> map) async {
+    final code = map['roomCode']?.toString() ?? '';
+    final roomId = map['roomId']?.toString();
+    final roomName = map['roomName']?.toString() ?? '';
+    final ownerNickname = map['ownerNickname']?.toString() ?? '';
+    await SessionStore.instance.setRoom(
+      roomId: roomId,
+      roomCode: code,
+      roomName: roomName,
+      ownerNickname: ownerNickname,
+      betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
+      showQuick: _showQuickOn(map['showQuick']),
+    );
+    SessionStore.instance.rememberRoom(roomCode: code, roomId: roomId);
+    return _enteredRoom(map, code);
+  }
+
+  RoomModel _enteredRoom(Map<String, dynamic> map, String code) {
     return RoomModel(
       id: code,
-      name: roomName,
-      ownerNickname: ownerNickname,
+      name: map['roomName']?.toString() ?? '',
+      ownerNickname: map['ownerNickname']?.toString() ??
+          map['owner_nickname']?.toString() ??
+          '',
       thumbnailUrl: map['coverUrl']?.toString(),
-      numericId: roomId,
+      numericId: map['roomId']?.toString(),
       betConfirm: map['betConfirm'] == true || map['betConfirm'] == 1,
       showQuick: _showQuickOn(map['showQuick']),
     );

@@ -3,66 +3,20 @@ import 'bet_repeat_helper.dart';
 
 import 'draw_history_rows.dart';
 
-/// 将封盘消息插入对应期号的开奖结果之前，按时间线旧→新排序。
-/// 同一期内：下注区(同注单 CHAT→RECEIPT 成对) → 封盘预警 → 封盘线 → 竞猜核对 → 开奖 → 中奖核对。
+/// 按时间线旧→新排序。
+/// 同一期内先按相位：下注区(同注单 CHAT→RECEIPT 成对) → 封盘预警 → 封盘线 → 竞猜核对 → 开奖 → 中奖核对。
+/// 序号只排同一相位里的先后。开奖卡已经在时不再本地造「还有 10 秒」，缺的预警等服务端那条。
 List<ChatMessageModel> buildChatTimeline(
   List<ChatMessageModel> messages, {
   String gameId = '',
   bool syntheticSeals = false,
 }) {
   if (messages.isEmpty) return const [];
-
-  final expanded = List<ChatMessageModel>.from(messages);
-  final draws = <int, ChatMessageModel>{};
-  final warnIssues = <int>{};
-  final sealedIssues = <int>{};
-
-  for (final m in messages) {
-    final issue = extractIssue(m);
-    if (issue == null || issue.isEmpty) continue;
-    final issueKey = issueCompareKey(issue);
-    if (issueKey <= 0) continue;
-    if (m.type == ChatMessageType.resultCard) {
-      draws[issueKey] = m;
-    } else if (m.type == ChatMessageType.system) {
-      if (m.content.contains('封盘线') || m.content.contains('停止战斗')) {
-        sealedIssues.add(issueKey);
-      } else if (m.content.contains('封盘')) {
-        warnIssues.add(issueKey);
-      }
-    }
-  }
-
-  if (syntheticSeals) {
-    for (final draw in draws.values) {
-      final issue = extractIssue(draw);
-      if (issue == null || issue.isEmpty) continue;
-      final issueKey = issueCompareKey(issue);
-      if (issueKey <= 0) continue;
-      if (warnIssues.contains(issueKey) && sealedIssues.contains(issueKey)) {
-        continue;
-      }
-
-      for (final seal in syntheticSealMessagesForDraw(
-        gameId: gameId,
-        draw: draw,
-      )) {
-        final isLine = seal.content.contains('封盘线') ||
-            seal.content.contains('停止战斗');
-        if (isLine && sealedIssues.contains(issueKey)) continue;
-        if (!isLine && warnIssues.contains(issueKey)) continue;
-        expanded.add(seal);
-        if (isLine) {
-          sealedIssues.add(issueKey);
-        } else {
-          warnIssues.add(issueKey);
-        }
-      }
-    }
-  }
+  assert(gameId.isEmpty || gameId.isNotEmpty);
+  assert(syntheticSeals || !syntheticSeals);
 
   final deduped = <String, ChatMessageModel>{};
-  for (final m in expanded) {
+  for (final m in messages) {
     final key = _timelineDedupeKey(m);
     final existing = deduped[key];
     if (existing == null || _preferTimelineMessage(m, existing)) {
@@ -73,16 +27,14 @@ List<ChatMessageModel> buildChatTimeline(
     ..sort((a, b) {
       final byIssue = _compareMessagesByIssue(a, b);
       if (byIssue != 0) return byIssue;
-      // 两边都有房间流序号时，只按序号排，不再按消息类型插队。
+      final byPhase = _phaseOrder(a).compareTo(_phaseOrder(b));
+      if (byPhase != 0) return byPhase;
       if (a.seq > 0 && b.seq > 0) {
         final bySeq = a.seq.compareTo(b.seq);
         if (bySeq != 0) return bySeq;
         final byPair = a.pair.compareTo(b.pair);
         if (byPair != 0) return byPair;
-        return _stableTieBreak(a, b);
       }
-      final byPhase = _phaseOrder(a).compareTo(_phaseOrder(b));
-      if (byPhase != 0) return byPhase;
       return _stableTieBreak(a, b);
     });
   return list;

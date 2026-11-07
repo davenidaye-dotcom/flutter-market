@@ -7,6 +7,7 @@ import '../../../../shared/format/display_number.dart';
 import '../../../../shared/format/game_series.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
 import '../../../wallet/widgets/date_range_filter.dart';
+import '../../../wallet/widgets/member_page_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 import 'fly_issue_detail_page.dart';
@@ -23,9 +24,15 @@ class FlyReportPage extends ConsumerStatefulWidget {
 class _FlyReportPageState extends ConsumerState<FlyReportPage>
     with DateRangePageMixin {
   Map<String, dynamic> _data = {};
-  bool _loading = false;
+  bool _loading = true;
+  bool _busy = false;
   bool _unbound = false;
   String _gameType = GameSeries.filterAll;
+  int _page = 1;
+  int _totalCount = 0;
+  int _totalPages = 0;
+  int _req = 0;
+  static const _pageSize = 20;
 
   @override
   void initState() {
@@ -34,38 +41,74 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
   }
 
   @override
-  void onQuery() => _load();
+  void onQuery() => _reload();
 
-  Future<void> _load() async {
+  void _reload() {
     setState(() {
-      _loading = true;
+      _page = 1;
+      _data = {};
+      _totalCount = 0;
+      _totalPages = 0;
+    });
+    _load();
+  }
+
+  Future<void> _load({int? page}) async {
+    final target = page ?? _page;
+    final req = ++_req;
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (blank) _loading = true;
+      _busy = true;
       _unbound = false;
     });
     try {
       final repo = ref.read(ownerRepositoryProvider);
-      final status = await repo.getFeipanStatus();
-      if (status['bound'] != true) {
-        if (!mounted) return;
-        setState(() {
-          _unbound = true;
-          _data = {};
-          _loading = false;
-        });
-        return;
-      }
-      final data = await repo.getFeipanReports(
+      final statusFuture = repo.getFeipanStatus();
+      Object? reportError;
+      final reportFuture = repo.getFeipanReports(
         startDate: DateRangeFilter.format(start),
         endDate: DateRangeFilter.format(end),
         category: _gameType,
-      );
-      if (!mounted) return;
+        pageNum: target,
+        pageSize: _pageSize,
+      ).catchError((Object e) {
+        reportError = e;
+        return <String, dynamic>{};
+      });
+      final status = await statusFuture;
+      if (!mounted || req != _req) return;
+      if (status['bound'] != true) {
+        setState(() {
+          _unbound = true;
+          _data = {};
+          _totalCount = 0;
+          _totalPages = 0;
+          _loading = false;
+          _busy = false;
+        });
+        return;
+      }
+      final data = await reportFuture;
+      if (reportError != null) {
+        throw reportError!;
+      }
+      if (!mounted || req != _req) return;
+      final total = data['total'] is num ? (data['total'] as num).toInt() : _rowsOf(data).length;
       setState(() {
+        _page = target;
         _data = data;
+        _totalCount = total;
+        _totalPages = memberTotalPages(total, _pageSize);
         _loading = false;
+        _busy = false;
       });
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (!mounted || req != _req) return;
+      setState(() {
+        _loading = false;
+        _busy = false;
+      });
       AppToast.error(e.toString());
     }
   }
@@ -89,8 +132,10 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
     return hostNumStr(wl + rebate, fraction: 2);
   }
 
-  List<Map<String, dynamic>> get _rows {
-    final raw = _data['rows'];
+  List<Map<String, dynamic>> get _rows => _rowsOf(_data);
+
+  List<Map<String, dynamic>> _rowsOf(Map<String, dynamic> data) {
+    final raw = data['rows'];
     if (raw is! List) return const [];
     return raw
         .whereType<Map>()
@@ -172,12 +217,12 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
             gameType: _gameType,
             onGameType: (code) {
               setState(() => _gameType = code);
-              _load();
+              _reload();
             },
           ),
           SizedBox(height: 8.h),
           Expanded(
-            child: _loading
+            child: _loading && _rows.isEmpty
                 ? const AppPageLoading()
                 : _unbound
                     ? Center(
@@ -313,6 +358,24 @@ class _FlyReportPageState extends ConsumerState<FlyReportPage>
                         ],
                       ),
           ),
+          if (!_unbound)
+            MemberPageBar(
+              page: _page,
+              totalPages: _totalPages,
+              totalCount: _totalCount,
+              busy: _busy,
+              onPrev: () {
+                if (_busy || _page <= 1) return;
+                _load(page: _page - 1);
+              },
+              onNext: () {
+                if (_busy || _totalPages == 0 || _page >= _totalPages) {
+                  if (!_busy) AppToast.info('已是最后一页');
+                  return;
+                }
+                _load(page: _page + 1);
+              },
+            ),
         ],
       ),
     );

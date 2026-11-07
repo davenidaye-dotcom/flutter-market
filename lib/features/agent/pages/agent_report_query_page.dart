@@ -6,6 +6,7 @@ import '../../../data/repositories/providers.dart';
 import '../../../shared/format/display_number.dart';
 import '../../../shared/format/play_title.dart';
 import '../../../shared/widgets/app_pull_refresh.dart';
+import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../wallet/widgets/date_range_filter.dart';
 import '../widgets/agent_ui.dart';
@@ -45,11 +46,14 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   String _ticketIssueNo = '';
   String _ticketGameType = '';
   Map<String, dynamic> _ticketIssueSummary = {};
-  bool _ticketLoadingMore = false;
-  bool _ticketHasMore = false;
-  int _ticketPageNum = 1;
-  static const _ticketPageSize = 20;
-  final _scroll = ScrollController();
+  int _page = 1;
+  int _totalPages = 0;
+  int _total = 0;
+  int _loadGen = 0;
+  /// 点过查询后才生效的期号。翻页不读输入框里还没提交的内容。
+  String? _activeIssue;
+  static const _pageSize = 20;
+  final _issueCtrl = TextEditingController();
 
   static const _sourceLabels = ['全部来源', 'Web直属', '房主飞单'];
   static const _sourceKeys = ['ALL', 'WEB_DIRECT', 'OWNER_FLIGHT'];
@@ -59,6 +63,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     {'type': 'TW_BG_Q', 'typeName': '宾果赛车(前)'},
     {'type': 'TW_BG_H', 'typeName': '宾果赛车(后)'},
     {'type': 'JS_FT', 'typeName': '极速飞艇'},
+    {'type': 'CA_PC28', 'typeName': '加拿大PC28'},
   ];
 
   String get _gameLabel => _gameIndex == 0
@@ -91,7 +96,6 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     _quick = 0;
     _start = _quickItems[0].start;
     _end = _quickItems[0].end;
-    _scroll.addListener(_onTicketScroll);
     Future.microtask(() async {
       await _loadGames();
       await _load();
@@ -119,18 +123,13 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   @override
   void dispose() {
     unregisterAppBackLayer(_drillBack);
-    _scroll.removeListener(_onTicketScroll);
-    _scroll.dispose();
+    _issueCtrl.dispose();
     super.dispose();
   }
 
-  void _onTicketScroll() {
-    if (_ticketMemberId == null || _ticketIssueKey == null) return;
-    if (!_ticketHasMore || _ticketLoadingMore || _loading) return;
-    if (!_scroll.hasClients) return;
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 80) {
-      _loadTicketDetails(reset: false);
-    }
+  String? _issueQuery() {
+    final text = _issueCtrl.text.trim();
+    return text.isEmpty ? null : text;
   }
 
   Future<void> _loadGames() async {
@@ -172,19 +171,54 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       _quick = i;
       _start = it.start;
       _end = it.end;
+      _page = 1;
     });
-    _load();
+    _load(applyQuery: true);
   }
 
-  Future<void> _load({bool fromPull = false}) async {
+  void _search() {
+    setState(() => _page = 1);
+    _load(applyQuery: true);
+  }
+
+  void _applyPage(Map<String, dynamic> data, int rowCount) {
+    final total = data['total'] is num ? (data['total'] as num).toInt() : rowCount;
+    final pageSize = data['pageSize'] is num ? (data['pageSize'] as num).toInt() : _pageSize;
+    _total = total;
+    _totalPages = pageSize <= 0 ? 0 : ((total + pageSize - 1) ~/ pageSize);
+  }
+
+  Future<void> _load({bool fromPull = false, bool applyQuery = false}) async {
+    if (applyQuery) _activeIssue = _issueQuery();
     if (_ticketMemberId != null) {
       if (_ticketIssueKey != null) {
-        await _loadTicketDetails(reset: true, fromPull: fromPull);
+        // 只有点查询或快捷日期才改当前期。翻页和下拉刷新保持已打开的期。
+        if (applyQuery) {
+          final typed = _activeIssue;
+          final issueChanged = typed != null && typed != _ticketIssueNo;
+          final prevGame = _ticketGameType;
+          if (typed != null) _ticketIssueNo = typed;
+          if (_selectedType != null) {
+            _ticketGameType = _selectedType!;
+          } else if (issueChanged) {
+            _ticketGameType = '';
+          }
+          _ticketIssueKey = '$_ticketIssueNo|$_ticketGameType';
+          // 期号或彩种变了就先清掉上一期的注单，失败时不能还挂着旧数据。
+          if (issueChanged || _ticketGameType != prevGame) {
+            _rows = [];
+            _ticketIssueSummary = {};
+            _total = 0;
+            _totalPages = 0;
+          }
+        }
+        await _loadTicketDetails(fromPull: fromPull);
       } else {
         await _loadTicketIssues(fromPull: fromPull);
       }
       return;
     }
+    final gen = ++_loadGen;
     if (!fromPull && mounted) {
       setState(() {
         _loading = true;
@@ -200,8 +234,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             type: _selectedType,
             source: _selectedSource,
             parentAccountId: _parentAccountId,
+            issueNo: _activeIssue,
+            pageNum: _page,
+            pageSize: _pageSize,
           );
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       final summary = data['summary'] is Map
           ? Map<String, dynamic>.from(data['summary'] as Map)
           : <String, dynamic>{};
@@ -213,10 +250,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _summary = summary;
         _rows = rows;
         _ticketIssueSummary = {};
+        _applyPage(data, rows.length);
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -227,6 +265,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
 
   /// 期列表：GET /agent/reports/tickets/issues（订单级聚合，不卡）
   Future<void> _loadTicketIssues({bool fromPull = false}) async {
+    final gen = ++_loadGen;
     if (!fromPull && mounted) {
       setState(() {
         _loading = true;
@@ -243,8 +282,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             type: _selectedType,
             source: _selectedSource,
             status: 'SETTLED',
+            issueNo: _activeIssue,
+            pageNum: _page,
+            pageSize: _pageSize,
           );
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       final summary = data['summary'] is Map
           ? Map<String, dynamic>.from(data['summary'] as Map)
           : <String, dynamic>{};
@@ -262,12 +304,11 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _ticketIssueSummary = summary;
         _summary = {};
         _rows = rows;
-        _ticketHasMore = false;
-        _ticketPageNum = 1;
+        _applyPage(data, rows.length);
         _loading = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _loading = false;
         _error = e.toString();
@@ -276,29 +317,18 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     }
   }
 
-  /// 单期明细：分页加载，对齐飞单 reports/items
-  Future<void> _loadTicketDetails({required bool reset, bool fromPull = false}) async {
+  /// 单期明细：一页一请求，不把后面的页拼上来。
+  Future<void> _loadTicketDetails({bool fromPull = false}) async {
     if (_ticketIssueNo.isEmpty) return;
-    if (reset) {
-      if (!fromPull && mounted) {
-        setState(() {
-          _loading = true;
-          _error = null;
-          _ticketPageNum = 1;
-          _ticketHasMore = true;
-        });
-      } else if (mounted) {
-        setState(() {
-          _error = null;
-          _ticketPageNum = 1;
-          _ticketHasMore = true;
-        });
-      }
-    } else {
-      if (!_ticketHasMore || _ticketLoadingMore || _loading) return;
-      setState(() => _ticketLoadingMore = true);
+    final gen = ++_loadGen;
+    if (!fromPull && mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    } else if (mounted) {
+      setState(() => _error = null);
     }
-    final page = reset ? 1 : _ticketPageNum + 1;
     try {
       final data = await ref.read(agentRepositoryProvider).getReportTickets(
             startDate: _fmt(_start),
@@ -306,13 +336,12 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
             memberAccountId: _ticketMemberId,
             issueNo: _ticketIssueNo,
             gameType: _ticketGameType.isEmpty ? null : _ticketGameType,
-            type: _selectedType,
             source: _selectedSource,
             status: 'SETTLED',
-            pageNum: page,
-            pageSize: _ticketPageSize,
+            pageNum: _page,
+            pageSize: _pageSize,
           );
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       final raw = data['rows'];
       final list = raw is List
           ? raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList()
@@ -321,26 +350,20 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
           ? (data['total'] as num).toInt()
           : (data['itemCount'] is num ? (data['itemCount'] as num).toInt() : list.length);
       setState(() {
-        if (reset) {
-          _ticketIssueSummary = {
-            'orderCount': data['itemCount'] ?? total,
-            'betAmount': data['betAmount'] ?? 0,
-            'result': data['playerResult'] ?? 0,
-          };
-          _rows = list;
-        } else {
-          _rows = [..._rows, ...list];
-        }
-        _ticketPageNum = page;
-        _ticketHasMore = _rows.length < total && list.isNotEmpty;
+        _ticketIssueSummary = {
+          'orderCount': data['itemCount'] ?? total,
+          'betAmount': data['betAmount'] ?? 0,
+          'result': data['playerResult'] ?? 0,
+        };
+        _rows = list;
+        _applyPage(data, list.length);
         _loading = false;
-        _ticketLoadingMore = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() {
         _loading = false;
-        _ticketLoadingMore = false;
+        _error = e.toString();
       });
       AppToast.error(e.toString());
     }
@@ -360,6 +383,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       _ticketGameType = '';
       _ticketIssueSummary = {};
       _rows = [];
+      _page = 1;
     });
     _load();
   }
@@ -378,8 +402,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         'betAmount': g['betAmount'],
         'result': g['result'],
       };
+      _page = 1;
     });
-    _loadTicketDetails(reset: true);
+    _loadTicketDetails();
   }
 
   void _openChildren(Map<String, dynamic> row) {
@@ -395,6 +420,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       _ticketIssueNo = '';
       _ticketGameType = '';
       _ticketIssueSummary = {};
+      _page = 1;
     });
     _load();
   }
@@ -416,6 +442,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _ticketGameType = '';
         _rows = [];
         _ticketIssueSummary = {};
+        _page = 1;
       });
       _loadTicketIssues();
       return;
@@ -428,12 +455,16 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _ticketIssueNo = '';
         _ticketGameType = '';
         _ticketIssueSummary = {};
+        _page = 1;
       });
       _load();
       return;
     }
     if (_drill.isEmpty) return;
-    setState(() => _drill.removeLast());
+    setState(() {
+      _drill.removeLast();
+      _page = 1;
+    });
     _load();
   }
 
@@ -459,6 +490,21 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
               child: _queryPanel(),
             ),
             Expanded(child: _scrollBody(inTickets)),
+            AgentPaginationBar(
+              page: _totalPages == 0 ? 0 : _page,
+              totalPages: _totalPages,
+              total: _total,
+              onPrev: () {
+                if (_page <= 1) return;
+                setState(() => _page--);
+                _load();
+              },
+              onNext: () {
+                if (_page >= _totalPages) return;
+                setState(() => _page++);
+                _load();
+              },
+            ),
           ],
         ),
       ),
@@ -538,7 +584,6 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                   ],
                 )
               : ListView(
-                  controller: _scroll,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(8.w, 6.h, 8.w, 16.h),
                   children: [
@@ -554,27 +599,12 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
                             ),
                           ),
                         )
-                      else if (_ticketIssueKey != null) ...[
+                      else if (_ticketIssueKey != null)
                         for (final row in _rows) ...[
                           SizedBox(height: 6.h),
                           _ticketCard(row),
-                        ],
-                        if (_ticketLoadingMore)
-                          Padding(
-                            padding: EdgeInsets.symmetric(vertical: 12.h),
-                            child: const Center(child: AppPageLoading()),
-                          )
-                        else if (!_ticketHasMore && _rows.isNotEmpty)
-                          Padding(
-                            padding: EdgeInsets.symmetric(vertical: 10.h),
-                            child: Center(
-                              child: Text(
-                                '已加载全部',
-                                style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                              ),
-                            ),
-                          ),
-                      ] else ...[
+                        ]
+                      else ...[
                         for (final g in _rows) ...[
                           SizedBox(height: 6.h),
                           _ticketIssueRow(g),
@@ -624,13 +654,15 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
           Expanded(child: _dateField(_end, () => _pickDate(isStart: false))),
         ]),
         SizedBox(height: 12.h),
+        _issueField(),
+        SizedBox(height: 12.h),
         Row(children: [
           Expanded(child: _dropField(_gameLabel, _pickGame)),
           SizedBox(width: 8.w),
           Expanded(child: _dropField(_sourceLabels[_sourceIndex], _pickSource)),
           SizedBox(width: 8.w),
           GestureDetector(
-            onTap: _load,
+            onTap: _search,
             child: Container(
               height: 40.h,
               width: 56.w,
@@ -1314,6 +1346,30 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
           ),
           Icon(Icons.keyboard_arrow_down, size: 18.sp, color: AppColors.textHint),
         ]),
+      ),
+    );
+  }
+
+  Widget _issueField() {
+    return Container(
+      height: 40.h,
+      padding: EdgeInsets.symmetric(horizontal: 10.w),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F9FC),
+        borderRadius: BorderRadius.circular(10.r),
+        border: Border.all(color: const Color(0xFFE3E8EF)),
+      ),
+      alignment: Alignment.center,
+      child: EmulatorSafeTextField(
+        controller: _issueCtrl,
+        style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
+        decoration: InputDecoration(
+          hintText: '期号',
+          hintStyle: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: EdgeInsets.zero,
+        ),
       ),
     );
   }

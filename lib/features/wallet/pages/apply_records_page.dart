@@ -15,6 +15,7 @@ import '../../room/cs_share_helper.dart';
 import '../utils/draw_snapshot_utils.dart';
 import '../widgets/date_range_filter.dart';
 import '../widgets/member_ledger_card.dart';
+import '../widgets/member_page_bar.dart';
 
 /// 上下分记录（申请记录）— 顶栏总资产与钱包中心一致，用 totalAssets
 class ApplyRecordsPage extends ConsumerStatefulWidget {
@@ -29,9 +30,9 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
   List<Map<String, dynamic>> _rows = [];
   double? _totalAssets;
   bool _loading = false;
-  bool _loadingMore = false;
-  bool _hasMore = true;
+  bool _busy = false;
   int _page = 1;
+  int _totalPages = 0;
   int _total = 0;
   static const _pageSize = 20;
 
@@ -43,31 +44,28 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
 
   @override
   void onQuery() {
+    setState(() {
+      _page = 1;
+      _rows = [];
+    });
     _load();
   }
 
-  Future<void> _load({bool reset = true}) async {
-    if (!reset) {
-      if (!_hasMore || _loadingMore || _loading) return;
-      setState(() => _loadingMore = true);
-    } else {
-      setState(() {
-        _loading = true;
-        _page = 1;
-        _hasMore = true;
-      });
-    }
-    final page = reset ? 1 : _page + 1;
+  Future<void> _load() async {
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (blank) _loading = true;
+      _busy = true;
+    });
     try {
       final roomId = SessionStore.instance.roomId ?? '';
       final appsFuture = ref.read(walletRepositoryProvider).getApplications(
             startDate: DateRangeFilter.format(start),
             endDate: DateRangeFilter.format(end),
-            pageNum: page,
+            pageNum: _page,
             pageSize: _pageSize,
           );
-      final summaryFuture =
-          ref.read(walletRepositoryProvider).getSummary(roomId);
+      final summaryFuture = ref.read(walletRepositoryProvider).getSummary(roomId);
       final data = await appsFuture;
       WalletSummaryModel? summary;
       try {
@@ -84,24 +82,22 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
           : <Map<String, dynamic>>[];
       if (!mounted) return;
       final total = int.tryParse('${data['total'] ?? list.length}') ?? list.length;
+      final pageSize = int.tryParse('${data['pageSize'] ?? _pageSize}') ?? _pageSize;
       setState(() {
-        _rows = reset ? list : [..._rows, ...list];
-        _page = page;
+        _rows = list;
         _total = total;
-        _hasMore = _rows.length < total && list.isNotEmpty;
-        if (reset) _totalAssets = summary?.totalAssets;
-        _loadingMore = false;
+        _totalPages = memberTotalPages(total, pageSize);
+        _totalAssets = summary?.totalAssets ?? _totalAssets;
+        _loading = false;
+        _busy = false;
       });
     } catch (e) {
       if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _busy = false;
+      });
       AppToast.error(e.toString());
-    } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _loadingMore = false;
-        });
-      }
     }
   }
 
@@ -166,26 +162,9 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                         ? const Center(child: AppEmptyHint())
                         : ListView.separated(
                             padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 12.h),
-                            itemCount: _rows.length + 1,
-                            separatorBuilder: (_, i) =>
-                                i >= _rows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 10.h),
+                            itemCount: _rows.length,
+                            separatorBuilder: (_, _) => SizedBox(height: 10.h),
                             itemBuilder: (_, i) {
-                              if (i == _rows.length) {
-                                if (_hasMore && !_loadingMore) {
-                                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                                    if (mounted) _load(reset: false);
-                                  });
-                                }
-                                return Padding(
-                                  padding: EdgeInsets.only(top: 8.h),
-                                  child: Center(
-                                    child: Text(
-                                      _hasMore ? '加载中' : '没有更多了，共 $_total 条',
-                                      style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                                    ),
-                                  ),
-                                );
-                              }
                               final r = _rows[i];
                               final type =
                                   '${r['applyType'] ?? r['type'] ?? ''}';
@@ -216,6 +195,26 @@ class _ApplyRecordsPageState extends ConsumerState<ApplyRecordsPage>
                               );
                             },
                           ),
+              ),
+              MemberPageBar(
+                page: _page,
+                totalPages: _totalPages,
+                totalCount: _total,
+                busy: _busy,
+                onPrev: () {
+                  if (_page > 1) {
+                    setState(() => _page--);
+                    _load();
+                  }
+                },
+                onNext: () {
+                  if (_totalPages == 0 || _page >= _totalPages) {
+                    AppToast.info('已是最后一页');
+                    return;
+                  }
+                  setState(() => _page++);
+                  _load();
+                },
               ),
             ],
           ),

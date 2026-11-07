@@ -35,7 +35,7 @@ class _LetouAppState extends ConsumerState<LetouApp> {
   void initState() {
     super.initState();
     // 首帧后撤 splash，不依赖 LoginPage 是否挂载
-    unawaited(BgmPrompt.setEnabled(false));
+    unawaited(BgmPrompt.loadLocal());
     MustChangePassword.handler = () {
       final user = ref.read(authSessionProvider).user;
       if (user == null || !user.isHostSide) return;

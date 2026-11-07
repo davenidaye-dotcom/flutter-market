@@ -9,6 +9,7 @@ import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../utils/draw_snapshot_utils.dart';
 import '../widgets/member_ledger_card.dart';
+import '../widgets/member_page_bar.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../room/cs_share_helper.dart';
 
@@ -26,6 +27,7 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
   int _totalPages = 0;
   int _totalCount = 0;
   bool _loading = false;
+  bool _busy = false;
   List<Map<String, dynamic>> _rows = [];
 
   @override
@@ -41,7 +43,11 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (blank) _loading = true;
+      _busy = true;
+    });
     try {
       final data = await ref.read(walletRepositoryProvider).getPointsChanges(
             issueNo: _issueCtrl.text.trim(),
@@ -64,7 +70,12 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
       if (!mounted) return;
       AppToast.error(e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _busy = false;
+        });
+      }
     }
   }
 
@@ -183,32 +194,25 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
                             },
                           ),
               ),
-              Container(
-                padding: EdgeInsets.fromLTRB(16.w, 10.h, 16.w, 12.h),
-                child: Row(
-                  children: [
-                    Text(
-                      '页码 $_page / $_totalPages  共 $_totalCount 条',
-                      style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
-                    ),
-                    const Spacer(),
-                    _pageBtn('上一页', () {
-                      if (_page > 1) {
-                        setState(() => _page--);
-                        _load();
-                      }
-                    }),
-                    SizedBox(width: 8.w),
-                    _pageBtn('下一页', () {
-                      if (_totalPages == 0 || _page >= _totalPages) {
-                        AppToast.info('已是最后一页');
-                        return;
-                      }
-                      setState(() => _page++);
-                      _load();
-                    }),
-                  ],
-                ),
+              MemberPageBar(
+                page: _page,
+                totalPages: _totalPages,
+                totalCount: _totalCount,
+                busy: _busy,
+                onPrev: () {
+                  if (_page > 1) {
+                    setState(() => _page--);
+                    _load();
+                  }
+                },
+                onNext: () {
+                  if (_totalPages == 0 || _page >= _totalPages) {
+                    AppToast.info('已是最后一页');
+                    return;
+                  }
+                  setState(() => _page++);
+                  _load();
+                },
               ),
             ],
           ),
@@ -217,17 +221,4 @@ class _PointsChangePageState extends ConsumerState<PointsChangePage> {
     );
   }
 
-  Widget _pageBtn(String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          color: AppColors.navBlue,
-          borderRadius: BorderRadius.circular(6.r),
-        ),
-        child: Text(label, style: TextStyle(fontSize: 13.sp, color: Colors.white)),
-      ),
-    );
-  }
 }

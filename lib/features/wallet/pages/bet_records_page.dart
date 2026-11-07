@@ -10,6 +10,7 @@ import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
+import '../widgets/member_page_bar.dart';
 import 'member_bet_issue_page.dart';
 import 'member_bet_report_shared.dart';
 
@@ -22,6 +23,8 @@ class BetRecordsPage extends ConsumerStatefulWidget {
 }
 
 class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
+  static const _pageSize = 20;
+
   late List<DateRangeQuickItem> _quickItems;
   int _quickIndex = 0;
   late DateTime _start;
@@ -29,7 +32,11 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
 
   Map<String, dynamic> _summary = {};
   List<Map<String, dynamic>> _rows = [];
+  int _page = 1;
+  int _totalPages = 0;
+  int _totalCount = 0;
   bool _loading = true;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -41,32 +48,45 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
   }
 
   Future<void> _load({bool fromPull = false}) async {
-    if (!fromPull) {
-      setState(() => _loading = true);
-    }
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (!fromPull && blank) _loading = true;
+      _busy = true;
+    });
     try {
       final data = await ref.read(walletRepositoryProvider).getBetGameReport(
             startDate: DateRangeFilter.format(_start),
             endDate: DateRangeFilter.format(_end),
+            pageNum: _page,
+            pageSize: _pageSize,
           );
       if (!mounted) return;
       final summary = data['summary'];
       final raw = data['rows'];
+      final list = raw is List
+          ? raw
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList()
+          : <Map<String, dynamic>>[];
+      final total = data['total'] is num ? (data['total'] as num).toInt() : list.length;
+      final pageSize = data['pageSize'] is num ? (data['pageSize'] as num).toInt() : _pageSize;
       setState(() {
         _summary = summary is Map
             ? Map<String, dynamic>.from(summary)
             : <String, dynamic>{};
-        _rows = raw is List
-            ? raw
-                .whereType<Map>()
-                .map((e) => Map<String, dynamic>.from(e))
-                .toList()
-            : [];
+        _rows = list;
+        _totalCount = total;
+        _totalPages = memberTotalPages(total, pageSize);
         _loading = false;
+        _busy = false;
       });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      setState(() {
+        _loading = false;
+        _busy = false;
+      });
       AppToast.error(e.toString());
       rethrow;
     }
@@ -79,6 +99,9 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
       _quickIndex = i;
       _start = it.start;
       _end = it.end;
+      _page = 1;
+      _rows = [];
+      _summary = {};
     });
     _load();
   }
@@ -98,6 +121,9 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
       _quickIndex = -1;
       _start = DateTime(range.start.year, range.start.month, range.start.day);
       _end = DateTime(range.end.year, range.end.month, range.end.day);
+      _page = 1;
+      _rows = [];
+      _summary = {};
     });
     _load();
   }
@@ -171,23 +197,31 @@ class _BetRecordsPageState extends ConsumerState<BetRecordsPage> {
                           _GameCard(row: r, onTap: () => _openGame(r)),
                           SizedBox(height: 10.h),
                         ],
-                        Padding(
-                          padding: EdgeInsets.only(top: 8.h),
-                          child: Center(
-                            child: Text(
-                              '已加载完毕，共${_rows.length}条',
-                              style: TextStyle(
-                                fontSize: 12.sp,
-                                color: AppColors.textHint,
-                              ),
-                            ),
-                          ),
-                        ),
                       ],
                     ],
                   ],
                 ),
               ),
+            ),
+            MemberPageBar(
+              page: _page,
+              totalPages: _totalPages,
+              totalCount: _totalCount,
+              busy: _busy,
+              onPrev: () {
+                if (_page > 1) {
+                  setState(() => _page--);
+                  _load();
+                }
+              },
+              onNext: () {
+                if (_totalPages == 0 || _page >= _totalPages) {
+                  AppToast.info('已是最后一页');
+                  return;
+                }
+                setState(() => _page++);
+                _load();
+              },
             ),
           ],
         ),

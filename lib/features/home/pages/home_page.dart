@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../core/network/session_store.dart';
+import '../../../core/network/member_ws_session.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../data/models/room_model.dart';
@@ -38,32 +41,120 @@ class _HomePageState extends ConsumerState<HomePage> {
   String _roomCode = '';
   bool _loading = false;
   List<RoomModel> _history = [];
-  bool _historyLoading = false;
+  bool _historyLoading = true;
+  String? _historyError;
+  bool _auditWaiting = false;
+  String? _auditRoomCode;
+  StreamSubscription<Map<String, dynamic>>? _memberWsSub;
 
   @override
   void initState() {
     super.initState();
     _roomCode = SessionStore.instance.roomCode ?? '';
+    final cached = HistoryRoomCache.peek(ref.read(authSessionProvider).user?.username ?? '');
+    if (cached.isNotEmpty) {
+      _history = cached;
+      _historyLoading = false;
+    }
+    _memberWsSub = MemberWsSession.instance.events.listen(_onMemberWs);
+    unawaited(MemberWsSession.instance.acquire());
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadHistory());
+  }
+
+  @override
+  void dispose() {
+    _memberWsSub?.cancel();
+    MemberWsSession.instance.release();
+    super.dispose();
+  }
+
+  void _onMemberWs(Map<String, dynamic> event) {
+    final type = '${event['event'] ?? ''}'.toUpperCase();
+    if (type != 'ROOM_GRANTED' && type != 'ROOM_DENIED') return;
+    final raw = event['data'];
+    final data = raw is Map ? Map<String, dynamic>.from(raw) : event;
+    if (!mounted) return;
+    final code = '${data['roomCode'] ?? ''}'.trim();
+    if (type == 'ROOM_DENIED') {
+      if (_waitingOtherRoom(code)) return;
+      _closeAuditDialog();
+      AppToast.info('进房申请未通过');
+      return;
+    }
+    if (code.isEmpty) return;
+    final room = RoomModel(
+      id: code,
+      name: '${data['roomName'] ?? ''}',
+      thumbnailUrl: '${data['coverUrl'] ?? ''}',
+      numericId: '${data['roomId'] ?? ''}',
+      playMode: '${data['playMode'] ?? 'REAL'}',
+    );
+    setState(() {
+      _history = [
+        room,
+        ..._history.where((r) => r.id != code),
+      ];
+      _historyLoading = false;
+      _historyError = null;
+    });
+    unawaited(_saveHistory());
+    if (!_waitingOtherRoom(code)) _closeAuditDialog();
+  }
+
+  bool _waitingOtherRoom(String code) {
+    if (!_auditWaiting || _auditRoomCode == null || code.isEmpty) return false;
+    return _auditRoomCode != code;
+  }
+
+  void _closeAuditDialog() {
+    if (!_auditWaiting || !mounted) return;
+    _auditWaiting = false;
+    _auditRoomCode = null;
+    final nav = Navigator.of(context);
+    if (nav.canPop()) nav.pop();
   }
 
   Future<void> _loadHistory() async {
     if (!mounted) return;
-    setState(() => _historyLoading = true);
+    final user = ref.read(authSessionProvider).user?.username ?? '';
+    if (_history.isEmpty) {
+      final cached = await HistoryRoomCache.load(user);
+      if (!mounted) return;
+      if (cached.isNotEmpty) {
+        setState(() {
+          _history = cached;
+          _historyLoading = false;
+          _historyError = null;
+        });
+      } else {
+        setState(() {
+          _historyLoading = true;
+          _historyError = null;
+        });
+      }
+    }
     try {
       final list = await ref.read(roomRepositoryProvider).getHistoryRooms();
       if (!mounted) return;
       setState(() {
-        _history = list;
+        final extra = _history.where((h) => list.every((r) => r.id != h.id));
+        _history = [...extra, ...list];
         _historyLoading = false;
+        _historyError = null;
       });
-    } catch (_) {
+      unawaited(_saveHistory());
+    } catch (e) {
       if (!mounted) return;
       setState(() {
-        _history = [];
         _historyLoading = false;
+        if (_history.isEmpty) _historyError = _errMsg(e);
       });
     }
+  }
+
+  Future<void> _saveHistory() {
+    final user = ref.read(authSessionProvider).user?.username ?? '';
+    return HistoryRoomCache.save(user, _history);
   }
 
   Future<void> _confirmHideHistory(RoomModel room) async {
@@ -102,6 +193,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             .where((r) => (r.numericId ?? '') != roomId)
             .toList();
       });
+      unawaited(_saveHistory());
     } on ApiException catch (e) {
       if (!mounted) return;
       AppToast.error(e.message);
@@ -173,25 +265,33 @@ class _HomePageState extends ConsumerState<HomePage> {
       if (!mounted) return;
       if (pending != null && pending.isNotEmpty) {
         final status = (pending['status'] ?? 'PENDING').toString();
-        await showEmulatorSafeDialog<void>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('进房审核中'),
-            content: Text(
-              '房间「${roomName.isEmpty ? roomCode : roomName}」需审核进入。\n'
-              '当前申请状态：$status\n请等待房主审核通过后再进入。',
+        _auditWaiting = true;
+        _auditRoomCode = roomCode;
+        try {
+          await showEmulatorSafeDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('进房审核中'),
+              content: Text(
+                '房间「${roomName.isEmpty ? roomCode : roomName}」需审核进入。\n'
+                '当前申请状态：$status\n请等待房主审核通过后再进入。',
+              ),
+              actions: [
+                TextButton(onPressed: safeDialogPop(ctx), child: const Text('知道了')),
+              ],
             ),
-            actions: [
-              TextButton(onPressed: safeDialogPop(ctx), child: const Text('知道了')),
-            ],
-          ),
-        );
+          );
+        } finally {
+          _auditWaiting = false;
+          _auditRoomCode = null;
+        }
         return;
       }
     } catch (_) {
       // 无待审或接口异常时继续尝试提交
     }
 
+    if (!mounted) return;
     final remarkCtrl = TextEditingController();
     final submit = await showEmulatorSafeDialog<bool>(
       context: context,
@@ -240,10 +340,24 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _doEnter(String roomCode, {String? enterPassword}) async {
-    final room = await ref.read(roomRepositoryProvider).enterRoom(
-          roomCode,
-          enterPassword: enterPassword,
-        );
+    final frame = await MemberWsSession.instance.tryEnter(
+      roomCode: roomCode,
+      enterPassword: enterPassword,
+    );
+    final RoomModel room;
+    if (frame == null) {
+      room = await ref.read(roomRepositoryProvider).enterRoom(
+            roomCode,
+            enterPassword: enterPassword,
+          );
+    } else if (!frame.ok) {
+      throw ApiException(
+        message: frame.message.isEmpty ? '进房失败' : frame.message,
+        bizCode: frame.code,
+      );
+    } else {
+      room = await ref.read(roomRepositoryProvider).bindEntered(frame.data);
+    }
     ref.read(authSessionProvider.notifier).bindRoomCode(room.roomCode);
     final live = ref.read(roomLotteryLiveProvider(room.roomCode).notifier);
     unawaited(live.ensureLoaded());
@@ -344,10 +458,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                     ),
                   ),
                   SizedBox(height: 12.h),
-                  if (_historyLoading)
+                  if (_historyLoading && _history.isEmpty)
                     Padding(
                       padding: EdgeInsets.symmetric(vertical: 24.h),
                       child: const AppPageLoading(),
+                    )
+                  else if (_historyError != null && _history.isEmpty)
+                    Text(
+                      _historyError!,
+                      style: TextStyle(fontSize: 13.sp, color: AppColors.textHint),
                     )
                   else
                     _HistoryGrid(
@@ -618,5 +737,59 @@ class _HistoryGrid extends StatelessWidget {
         );
       }).toList(),
     );
+  }
+}
+
+/// 上次拉到的历史房间。内存给同一进程的第一帧，磁盘给下次打开。
+class HistoryRoomCache {
+  HistoryRoomCache._();
+
+  static const _prefix = 'flyroom_room_history_v1:';
+  static final Map<String, List<RoomModel>> _mem = {};
+
+  static List<RoomModel> peek(String username) {
+    final key = username.trim();
+    if (key.isEmpty) return const [];
+    return List<RoomModel>.from(_mem[key] ?? const []);
+  }
+
+  static Future<List<RoomModel>> load(String username) async {
+    final hit = peek(username);
+    if (hit.isNotEmpty) return hit;
+    final key = username.trim();
+    if (key.isEmpty) return const [];
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString('$_prefix$key');
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      final list = decoded
+          .whereType<Map>()
+          .map((e) => RoomModel.fromJson(Map<String, dynamic>.from(e)))
+          .where((r) => r.id.isNotEmpty)
+          .toList();
+      _mem[key] = list;
+      return list;
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static Future<void> save(String username, List<RoomModel> rooms) async {
+    final key = username.trim();
+    if (key.isEmpty) return;
+    _mem[key] = List<RoomModel>.from(rooms);
+    final prefs = await SharedPreferences.getInstance();
+    final payload = rooms
+        .map((r) => {
+              'roomCode': r.id,
+              'roomName': r.name,
+              'coverUrl': r.thumbnailUrl,
+              'roomId': r.numericId,
+              'playMode': r.playMode,
+            })
+        .toList();
+    await prefs.setString('$_prefix$key', jsonEncode(payload));
   }
 }

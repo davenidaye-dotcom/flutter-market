@@ -22,14 +22,16 @@ class AgentPersonalInfoPage extends ConsumerStatefulWidget {
 class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
   int _gameIndex = 0;
   bool _loading = false;
-  String _displayId = '';
+  int _loadGen = 0;
+  bool _holdHeader = true;
+  bool _releaseHeader = false;
   List<Map<String, dynamic>> _games = [];
   List<Map<String, dynamic>> _items = [];
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(releaseHeader: true);
   }
 
   String? get _currentType {
@@ -41,28 +43,18 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
   List<String> get _gameNames =>
       _games.map((g) => g['typeName']?.toString() ?? g['type']?.toString() ?? '').toList();
 
-  Future<void> _load({bool showSuccess = false}) async {
+  Future<void> _load({bool showSuccess = false, bool releaseHeader = false}) async {
+    if (releaseHeader) _releaseHeader = true;
+    final gen = ++_loadGen;
     setState(() => _loading = true);
     try {
       final data = await ref.read(agentRepositoryProvider).getLotteryInfo(
             scene: 'PROFILE',
             type: _currentType,
           );
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       final games = agentLiveGames(_asMapList(data['games']));
       final items = _asMapList(data['items']);
-      // PROFILE 响应自带 header.displayId（代理接口文档 §2）
-      final lotteryHeader = data['header'] is Map
-          ? Map<String, dynamic>.from(data['header'] as Map)
-          : <String, dynamic>{};
-      String displayId = lotteryHeader['displayId']?.toString() ?? '';
-      if (displayId.isEmpty) {
-        final credit = await ref.read(agentRepositoryProvider).getCreditAccount();
-        final creditHeader = credit['header'] is Map
-            ? Map<String, dynamic>.from(credit['header'] as Map)
-            : <String, dynamic>{};
-        displayId = creditHeader['displayId']?.toString() ?? '';
-      }
       final type = data['type']?.toString();
       var idx = _gameIndex;
       if (games.isNotEmpty && type != null && type.isNotEmpty) {
@@ -72,16 +64,26 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
       setState(() {
         _games = games;
         _items = items;
-        _displayId = displayId.isNotEmpty ? displayId : _displayId;
         _gameIndex = idx.clamp(0, games.isEmpty ? 0 : games.length - 1);
         _loading = false;
       });
-      if (showSuccess) AppToast.success('\u5217\u8868\u5df2\u5237\u65b0');
+      if (showSuccess) AppToast.success('列表已刷新');
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || gen != _loadGen) return;
       setState(() => _loading = false);
       AppToast.error(e.toString());
+    } finally {
+      if (mounted && gen == _loadGen && _releaseHeader) {
+        _releaseHeader = false;
+        ref.invalidate(agentHeaderProvider);
+        setState(() => _holdHeader = false);
+      }
     }
+  }
+
+  void _refreshAll() {
+    setState(() => _holdHeader = true);
+    _load(showSuccess: true, releaseHeader: true);
   }
 
   Future<void> _onGameChanged(int i) async {
@@ -91,45 +93,15 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
 
   @override
   Widget build(BuildContext context) {
-    final header = ref.watch(agentHeaderProvider).valueOrNull ?? {};
-    final headerId = '${header['displayId'] ?? ''}'.trim();
-    final id = headerId.isNotEmpty
-        ? headerId
-        : (_displayId.isNotEmpty ? _displayId : '\u2014');
-
     return AgentPageFrame(
-      title: '\u4e2a\u4eba\u4fe1\u606f',
-      onRefresh: () {
-        ref.invalidate(agentHeaderProvider);
-        _load(showSuccess: true);
-      },
+      title: '',
+      refreshGameList: false,
+      holdHeader: _holdHeader,
+      sequenceHeader: true,
+      onRefresh: _refreshAll,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(12.w, 4.h, 12.w, 8.h),
-            child: Row(
-              children: [
-                OutlinedButton(
-                  onPressed: _loading
-                      ? null
-                      : () {
-                          ref.invalidate(agentHeaderProvider);
-                          _load(showSuccess: true);
-                        },
-                  style: OutlinedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                    side: const BorderSide(color: AgentChrome.cardBorder),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r)),
-                  ),
-                  child: Text('\u5237\u65b0\u5217\u8868', style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary)),
-                ),
-                SizedBox(width: 12.w),
-                Text('ID: $id', style: TextStyle(fontSize: 14.sp, fontWeight: FontWeight.w700)),
-              ],
-            ),
-          ),
           if (_gameNames.isNotEmpty)
             AgentGameTabs(
               games: _gameNames,
@@ -142,22 +114,7 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
               padding: EdgeInsets.zero,
               child: _loading && _items.isEmpty
                   ? const AppPageLoading()
-                  : Column(
-                      children: [
-                        _oddsHeader(),
-                        Expanded(
-                          child: Builder(
-                            builder: (_) {
-                              final rows = mergePlayOddsRows(_items);
-                              return ListView.builder(
-                                itemCount: rows.length,
-                                itemBuilder: (_, i) => _oddsRow(rows[i]),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
+                  : _oddsTable(),
             ),
           ),
           SizedBox(height: 8.h),
@@ -166,68 +123,86 @@ class _AgentPersonalInfoPageState extends ConsumerState<AgentPersonalInfoPage> {
     );
   }
 
-  Widget _oddsHeader() {
+  Widget _oddsTable() {
+    final rows = mergePlayOddsRows(_items);
+    final plain = <MergedPlayRow>[];
+    final gyh = <MergedPlayRow>[];
+    for (final row in rows) {
+      if (row.name.startsWith('冠亚和')) {
+        gyh.add(row);
+      } else {
+        plain.add(row);
+      }
+    }
+    return ListView(
+      children: [
+        if (_loading) const LinearProgressIndicator(minHeight: 2),
+        for (final row in plain) _oddsRow(row, row.name),
+        if (gyh.isNotEmpty) _groupLabel('冠亚和'),
+        for (final row in gyh) _oddsRow(row, _gyhName(row.name)),
+      ],
+    );
+  }
+
+  Widget _groupLabel(String text) {
     return Container(
-      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 8.w),
-      decoration: BoxDecoration(
-        color: AgentChrome.fieldBg,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
-        border: const Border(bottom: BorderSide(color: AgentChrome.cardBorder)),
-      ),
-      child: Row(
-        children: [
-          Expanded(flex: 22, child: _head('\u73a9\u6cd5', align: TextAlign.left)),
-          Expanded(flex: 12, child: _head('\u8d54\u7387')),
-          Expanded(flex: 13, child: _head('\u5355\u6ce8\u9650\u989d')),
-          Expanded(flex: 15, child: _head('\u5355\u671f\u603b\u9650\u989d')),
-        ],
+      width: double.infinity,
+      padding: EdgeInsets.fromLTRB(12.w, 10.h, 12.w, 4.h),
+      color: AgentChrome.fieldBg,
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
       ),
     );
   }
 
-  Widget _oddsRow(MergedPlayRow row) {
+  Widget _oddsRow(MergedPlayRow row, String name) {
     final shown = row.shown;
+    final showOnly = name == '特码包三' || row.codes.any((c) => c.toUpperCase() == 'P28-BAO3');
+    final maxBet = _capStr(shown['maxBet']);
+    final period = _capStr(shown['userPeriodLimit'] ?? shown['periodLimit']);
+    final limitLine = '${showOnly ? '只展示 · ' : ''}单注 $maxBet · 单期 $period';
     return Container(
-      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 8.w),
+      padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 12.w),
       decoration: const BoxDecoration(
         border: Border(bottom: BorderSide(color: AgentChrome.cardBorder)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            flex: 22,
-            child: Text(
-              row.name,
-              maxLines: 2,
-              style: TextStyle(fontSize: 12.sp, height: 1.3, color: AppColors.textPrimary),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 2,
+                  style: TextStyle(fontSize: 13.sp, height: 1.3, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                ),
+              ),
+              SizedBox(width: 8.w),
+              Text(
+                _numStr(shown['odds']),
+                style: TextStyle(fontSize: 13.sp, fontWeight: FontWeight.w600, color: AgentChrome.ink),
+              ),
+            ],
           ),
-          Expanded(flex: 12, child: _num(_numStr(shown['odds']))),
-          Expanded(flex: 13, child: _num(_capStr(shown['maxBet']))),
-          Expanded(flex: 15, child: _num(_capStr(shown['userPeriodLimit'] ?? shown['periodLimit']))),
+          SizedBox(height: 2.h),
+          Text(
+            limitLine,
+            style: TextStyle(fontSize: 11.sp, color: AppColors.textSecondary),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _head(String t, {TextAlign align = TextAlign.center}) => Text(
-        t,
-        textAlign: align,
-        maxLines: 1,
-        softWrap: false,
-        style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-      );
-
-  Widget _num(String t) => FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          t,
-          maxLines: 1,
-          softWrap: false,
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AgentChrome.ink),
-        ),
-      );
+String _gyhName(String name) {
+  const prefix = '冠亚和';
+  if (!name.startsWith(prefix)) return name;
+  var rest = name.substring(prefix.length);
+  if (rest.startsWith('-')) rest = rest.substring(1);
+  return rest.isEmpty ? name : rest;
 }
 
 List<Map<String, dynamic>> _asMapList(dynamic v) {

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/audio/bgm_prompt.dart';
 import '../../../core/network/flyroom_ws_client.dart';
+import '../../../core/network/member_ws_session.dart';
 import '../../../core/network/session_kick.dart';
 import '../../../core/network/session_store.dart';
 import '../../../core/testing/regression_test_flags.dart';
@@ -141,6 +142,9 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   Timer? _wsReconnectTimer;
   int _wsReconnectAttempt = 0;
   bool _wsIsHost = false;
+  bool _wsShared = false;
+  bool _sessionHeld = false;
+  VoidCallback? _sharedLost;
   int _wsConnectGen = 0;
   /// 推送代际。推送写入后，更早发出的公告/房间请求不能把入口写回去。
   int _showQuickRev = 0;
@@ -212,6 +216,15 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
   final Set<String> _chatBootstrapping = {};
   /// 防 SETTLE_RESULT 重复乐观加分（多实例/重推）
   final Set<String> _settleOptimisticApplied = {};
+  /// 这一期结算的顶栏快照。查询和仍是结算前的合计都不能盖住它。
+  _SettleHeaderWatch? _settleWatch;
+  Timer? _settleWatchTimer;
+  int _settleWatchGen = 0;
+  static const _settleProbeAt = <Duration>[
+    Duration(milliseconds: 500),
+    Duration(seconds: 2),
+    Duration(seconds: 6),
+  ];
   /// WIN_LIST 若早于开奖卡片到达，先挂起，等 DRAW 上屏后再推，避免核对插在开奖上方闪一下。
   final Map<String, _PendingWinList> _pendingWinListByKey = {};
   /// 开奖卡或封盘线已上屏、同期核对卡还没到时，每期只补拉一次聊天页。
@@ -242,6 +255,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
         issueNo: issueNo,
         items: items,
         requestId: requestId,
+        roomId: _pageNumeric(),
       ),
       () => repo.submitBet(
         roomId: roomId,
@@ -1430,27 +1444,44 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   // ── engine result → chat + state ──
 
-  /// 顶栏已经有本期号码、聊天里还没有开奖卡时补上。房主和玩家同一条路径。
+  /// 顶栏或近期开奖历史里有号码、聊天里还没有开奖卡时补上。房主和玩家同一条路径。
   /// 聊天还是空的先等历史接口，避免进房时用当前时间盖掉服务端时间。
+  /// 范围是当前期、上一期、再上一期。上一期用正余数认，避免 Dart 把 -1 当成太旧。
   void _ensureShownDraw(String gameId) {
     if (!mounted || gameId.isEmpty) return;
     final game = _engine.gameById(gameId);
     if (game == null) return;
-    final issue = (game.previousIssue ?? '').trim();
-    final keepZero = GameSeries.isPc28(gameId);
-    final ranks = keepZero
-        ? game.previousResults.where((n) => n >= 0).toList(growable: false)
-        : game.previousResults.where((n) => n > 0).toList(growable: false);
-    if (issue.isEmpty || ranks.isEmpty || !_isRecentIssue(gameId, issue)) return;
     final cache = ChatPushCache.instance;
     if (cache.bufferedForGame(roomId, gameId).isEmpty) return;
-    if (!_drawCardHasRanks(gameId, issue)) {
-      _pushDrawChat(gameId, issue, ranks);
-      return;
+    final keepZero = GameSeries.isPc28(gameId);
+    final targets = <String, List<int>>{};
+    final prev = (game.previousIssue ?? '').trim();
+    if (prev.isNotEmpty && _isRecentIssue(gameId, prev)) {
+      final ranks = _keptRanks(game.previousResults, keepZero);
+      if (ranks.isNotEmpty) targets[prev] = ranks;
     }
-    if (!cache.hasDedupeKey(roomId, winListChatMessageId(gameId, issue))) {
-      _scheduleMissingCheckCardPull(gameId, issue, win: true);
+    for (final row in _apiDrawRowsByGame[gameId] ?? const <HistoryDrawRow>[]) {
+      if (!_isRecentIssue(gameId, row.issue)) continue;
+      final ranks = _keptRanks(row.numbers, keepZero);
+      if (ranks.isEmpty) continue;
+      targets.putIfAbsent(row.issue, () => ranks);
     }
+    for (final entry in targets.entries) {
+      final issue = entry.key;
+      if (!_drawCardHasRanks(gameId, issue)) {
+        _pushDrawChat(gameId, issue, entry.value);
+        continue;
+      }
+      if (!cache.hasDedupeKey(roomId, winListChatMessageId(gameId, issue)) ||
+          !_hasRankCard(gameId, issue)) {
+        _scheduleMissingCheckCardPull(gameId, issue, win: true);
+      }
+    }
+  }
+
+  List<int> _keptRanks(List<int> raw, bool keepZero) {
+    return (keepZero ? raw.where((n) => n >= 0) : raw.where((n) => n > 0))
+        .toList(growable: false);
   }
 
   bool _drawCardHasRanks(String gameId, String issue) {
@@ -1568,18 +1599,35 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsConnected = false;
       final old = _ws;
       _ws = null;
-      if (old != null) {
+      if (old != null && !_wsShared) {
         await old.dispose();
       }
       if (!mounted || _wsDisposed || gen != _wsConnectGen) return;
 
-      final client = FlyroomWsClient(
-        role: isHost ? FlyroomWsRole.owner : FlyroomWsRole.member,
-        onDisconnected: () => _onWsTransportLost(gen),
-      );
-      await client.connect();
+      late final FlyroomWsClient client;
+      if (!isHost) {
+        _wsShared = true;
+        if (!_sessionHeld) {
+          _sessionHeld = true;
+          await MemberWsSession.instance.acquire();
+        }
+        if (!mounted || _wsDisposed || gen != _wsConnectGen) return;
+        if (_sharedLost != null) {
+          MemberWsSession.instance.removeDisconnectListener(_sharedLost!);
+        }
+        _sharedLost = () => _onWsTransportLost(gen);
+        MemberWsSession.instance.addDisconnectListener(_sharedLost!);
+        client = await MemberWsSession.instance.ensureConnected();
+      } else {
+        _wsShared = false;
+        client = FlyroomWsClient(
+          role: FlyroomWsRole.owner,
+          onDisconnected: () => _onWsTransportLost(gen),
+        );
+        await client.connect();
+      }
       if (!mounted || _wsDisposed || gen != _wsConnectGen) {
-        await client.dispose();
+        if (!_wsShared) await client.dispose();
         return;
       }
 
@@ -1589,9 +1637,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       _wsReconnectTimer?.cancel();
       _wsReconnectTimer = null;
       _wsSubscribedTopics.clear();
-      _wsFeatures = const {};
-
       _wsSub = client.events.listen(_onWsEvent);
+      if (_wsShared) {
+        _wsFeatures = MemberWsSession.instance.features;
+      }
       _syncWsSubscriptions();
       unawaited(_pullShowQuick());
       if (isReconnect) {
@@ -1625,7 +1674,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     _wsSubscribedTopics.clear();
     final dead = _ws;
     _ws = null;
-    if (dead != null) {
+    if (dead != null && !_wsShared) {
       unawaited(dead.dispose());
     }
   }
@@ -1902,7 +1951,16 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
     // 客服私聊：user 频道，没有彩种。先于 gameType 判断，避免被当成游戏事件丢掉。
     if (type == 'CS_MESSAGE') {
-      _emitCs(_csPushFrom(payload));
+      final push = _csPushFrom(payload);
+      _emitCs(push);
+      final host = _wsIsHost || _ref.read(authSessionProvider).isHostSide;
+      final incoming = host ? push.direction == 'IN' : push.direction == 'OUT';
+      if (incoming) {
+        final id = push.messageId.trim().isNotEmpty
+            ? push.messageId.trim()
+            : '${push.accountId}|${push.createdAt}|${push.content}';
+        BgmPrompt.playMessage('cs|$id');
+      }
       return;
     }
 
@@ -2037,6 +2095,17 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       final sender = (payload['senderName'] ?? '会员').toString();
       final orderId = payload['orderId']?.toString() ?? '';
       final accountId = '${payload['accountId'] ?? ''}'.trim();
+      final myId = (_ref.read(authSessionProvider).user?.id ?? '').trim();
+      if (accountId.isNotEmpty && accountId != myId) {
+        final eventId = '${payload['id'] ?? ''}'.trim();
+        final seq = _seqOf(payload);
+        final soundId = eventId.isNotEmpty
+            ? 'chat|$eventId'
+            : (seq > 0
+                ? 'chat|$roomId|$gameType|$seq'
+                : 'chat|$roomId|$gameType|$accountId|$issue|$content');
+        BgmPrompt.playMessage(soundId);
+      }
       final key = orderId.isNotEmpty
           ? 'bet-chat-$gameType-$orderId'
           : 'chat-$gameType-${DateTime.now().millisecondsSinceEpoch}';
@@ -2145,41 +2214,192 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     var touched = false;
     final optKey = '$gameType|$issue|$myIdStr';
     final alreadyOptimistic = _settleOptimisticApplied.contains(optKey);
-    // 房主四个数是全房合计，等 ROOM_WALLET_SUMMARY。这里只给玩家预改自己的积分和输赢。
     final hostHeader = _wsIsHost || _ref.read(authSessionProvider).isHostSide;
-    if (!hostHeader && !alreadyOptimistic && myId != null && accounts is List) {
+    num myWin = 0;
+    num myLoss = 0;
+    var inList = false;
+    if (accounts is List && myId != null) {
       for (final raw in accounts) {
         if (raw is! Map) continue;
         final aid = raw['accountId'];
         final id = aid is num ? aid.toInt() : int.tryParse('$aid');
         if (id != myId) continue;
-        final winLoss = _toNum(raw['winLoss']);
-        final winAmount = _toNum(raw['winAmount']);
-        if (winAmount != 0) {
-          state = state.copyWith(points: state.points + winAmount);
-        }
-        if (winLoss != 0) {
-          state = state.copyWith(winLoss: state.winLoss + winLoss);
-        }
-        touched = true;
-        _settleOptimisticApplied.add(optKey);
-        if (_settleOptimisticApplied.length > 64) {
-          _settleOptimisticApplied.remove(_settleOptimisticApplied.first);
-        }
+        inList = true;
+        myWin = _toNum(raw['winAmount']);
+        myLoss = _toNum(raw['winLoss']);
         break;
       }
     }
-    // 终态资金帧若在这次查询往返期间到达，丢掉查询结果，顶栏留在推送上。
-    final seenRev = _pointsRev;
-    unawaited(() async {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      if (!mounted) return;
-      await refreshWallet(seenRev: seenRev);
-    }());
+    final snapPoints = state.points;
+    final snapTurnover = state.turnover;
+    final snapWinLoss = state.winLoss;
+    // 房主四个数是全房合计，等 ROOM_WALLET_SUMMARY。这里只给玩家预改自己的积分和输赢。
+    if (!hostHeader && !alreadyOptimistic && inList) {
+      if (myWin != 0) {
+        state = state.copyWith(points: state.points + myWin);
+      }
+      if (myLoss != 0) {
+        state = state.copyWith(winLoss: state.winLoss + myLoss);
+      }
+      touched = true;
+      _settleOptimisticApplied.add(optKey);
+      if (_settleOptimisticApplied.length > 64) {
+        _settleOptimisticApplied.remove(_settleOptimisticApplied.first);
+      }
+    }
+    final sameRound = _settleWatch != null &&
+        !_settleWatch!.aligned &&
+        _settleWatch!.gameType == gameType &&
+        _settleWatch!.issue == issue;
+    final follow = hostHeader
+        ? _roomSettleMovesHeader(accounts, truncated)
+        : ((inList && (myWin != 0 || myLoss != 0)) ||
+            (truncated && !inList && _selfHasIssueBet(gameType, issue)));
+    if (follow && !sameRound) {
+      _openSettleWatch(
+        gameType: gameType,
+        issue: issue,
+        host: hostHeader,
+        points: snapPoints,
+        turnover: snapTurnover,
+        winLoss: snapWinLoss,
+      );
+    }
     if (touched || truncated || alreadyOptimistic) {
       _bumpUiTick();
     }
   }
+
+  bool _roomSettleMovesHeader(Object? accounts, bool truncated) {
+    if (truncated) return true;
+    if (accounts is! List) return false;
+    for (final raw in accounts) {
+      if (raw is! Map) continue;
+      if (_toNum(raw['winAmount']) != 0 || _toNum(raw['winLoss']) != 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _selfHasIssueBet(String gameType, String issue) {
+    final target = issueCompareKey(issue);
+    if (target <= 0) return false;
+    final myId = _ref.read(authSessionProvider).user?.id ?? '';
+    for (final message in ChatPushCache.instance.bufferedForGame(roomId, gameType)) {
+      if (message.type != ChatMessageType.betReceipt) continue;
+      final mine = message.isSelf ||
+          (myId.isNotEmpty && (message.accountId ?? '') == myId);
+      if (!mine) continue;
+      final got = extractIssue(message);
+      if (got != null && issueCompareKey(got) == target) return true;
+    }
+    return false;
+  }
+
+  void _openSettleWatch({
+    required String gameType,
+    required String issue,
+    required bool host,
+    required num points,
+    required num turnover,
+    required num winLoss,
+  }) {
+    _settleWatchTimer?.cancel();
+    final watch = _SettleHeaderWatch(
+      gen: ++_settleWatchGen,
+      gameType: gameType,
+      issue: issue,
+      points: points,
+      turnover: turnover,
+      winLoss: winLoss,
+      started: DateTime.now(),
+      host: host,
+    );
+    _settleWatch = watch;
+    _armSettleProbe(watch, 0);
+  }
+
+  void _armSettleProbe(_SettleHeaderWatch watch, int index) {
+    if (!mounted || watch.aligned || index >= _settleProbeAt.length) return;
+    if (!identical(watch, _settleWatch)) return;
+    final gen = watch.gen;
+    final wait = watch.started.add(_settleProbeAt[index]).difference(DateTime.now());
+    _settleWatchTimer?.cancel();
+    _settleWatchTimer = Timer(wait.isNegative ? Duration.zero : wait, () {
+      unawaited(_runSettleProbe(gen, index));
+    });
+  }
+
+  Future<void> _runSettleProbe(int gen, int index) async {
+    final watch = _settleWatch;
+    if (!mounted || watch == null || watch.gen != gen || watch.aligned) return;
+    try {
+      if (watch.host) {
+        final dash = await _ref.read(ownerRepositoryProvider).getDashboard();
+        if (!mounted || _settleWatch?.gen != gen || _settleWatch!.aligned) return;
+        final turn = _toNum(dash['turnover']);
+        final wl = _toNum(dash['playerWinLoss']);
+        if (_sameMoney(turn, watch.turnover) && _sameMoney(wl, watch.winLoss)) {
+          _armSettleProbe(watch, index + 1);
+          return;
+        }
+        state = state.copyWith(
+          points: _toNum(dash['balance']),
+          turnover: turn,
+          winLoss: wl,
+          rebate: _toNum(dash['rebate']),
+        );
+      } else {
+        final wallet = await _ref.read(walletRepositoryProvider).getSummary(roomId);
+        if (!mounted || _settleWatch?.gen != gen || _settleWatch!.aligned) return;
+        if (_sameMoney(wallet.todayTurnover, watch.turnover) &&
+            _sameMoney(wallet.todayWinLoss, watch.winLoss)) {
+          _armSettleProbe(watch, index + 1);
+          return;
+        }
+        state = state.copyWith(
+          points: watch.pointsPushed ? null : wallet.availablePoints,
+          turnover: wallet.todayTurnover,
+          winLoss: wallet.todayWinLoss,
+          rebate: wallet.paidRebate,
+          isTrialAccount: wallet.isTrial,
+        );
+      }
+      _finishSettleWatch();
+    } catch (_) {
+      if (!mounted || _settleWatch?.gen != gen || (_settleWatch?.aligned ?? true)) {
+        return;
+      }
+      _armSettleProbe(watch, index + 1);
+    }
+  }
+
+  /// 个人帧或全房合计。流水或输赢离开结算前快照才结束这一期核对。
+  void _noteSettleFunds({
+    required bool forHost,
+    bool available = false,
+    num? turnover,
+    num? winLoss,
+  }) {
+    final watch = _settleWatch;
+    if (watch == null || watch.aligned || watch.host != forHost) return;
+    if (available && !forHost) watch.pointsPushed = true;
+    final turnMoved = turnover != null && !_sameMoney(turnover, watch.turnover);
+    final wlMoved = winLoss != null && !_sameMoney(winLoss, watch.winLoss);
+    if (!turnMoved && !wlMoved) return;
+    _finishSettleWatch();
+  }
+
+  void _finishSettleWatch() {
+    final watch = _settleWatch;
+    if (watch == null || watch.aligned) return;
+    watch.aligned = true;
+    _settleWatchTimer?.cancel();
+    _settleWatchTimer = null;
+  }
+
+  bool _sameMoney(num a, num b) => (a - b).abs() < 0.000001;
 
   /// 每个彩种（或全部）至多每 5s 处理一次 RESYNC，窗口内多发的合并成一次尾随补拉，
   /// 只取最新一页并按 id 合并。
@@ -2484,19 +2704,38 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     return s != 'false' && s != '0';
   }
 
+  /// 退出登录后停掉房间轮询。这个 provider 有 keepAlive，离开页面也不会自己销毁。
+  void stopRemotePolls() {
+    _showQuickPoll?.cancel();
+    _showQuickPoll = null;
+    _cancelDrawWatchdog();
+    _wsReconnectTimer?.cancel();
+    _wsReconnectTimer = null;
+    _hostRoomRetry?.cancel();
+    _hostRoomRetry = null;
+    _gamesRefreshDebounce?.cancel();
+    _gamesRefreshDebounce = null;
+  }
+
+  bool get _sessionLive =>
+      SessionStore.instance.hasToken && _ref.read(authSessionProvider).isLoggedIn;
+
   /// 人在房间里就每秒问一次。推送到达会先把代际拨走，这次查询不会把新状态盖回去。
   void _ensureShowQuickPoll() {
-    if (_showQuickPoll != null || _wsDisposed || !mounted) return;
+    if (_showQuickPoll != null || _wsDisposed || !mounted || !_sessionLive) return;
     unawaited(_pullShowQuick());
     _showQuickPoll = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted || _wsDisposed) return;
+      if (!mounted || _wsDisposed || !_sessionLive) {
+        stopRemotePolls();
+        return;
+      }
       unawaited(_pullShowQuick());
     });
   }
 
   /// 连上房间频道后对齐一次开关。断线期间错过的推送，重连马上补上。
   Future<void> _pullShowQuick() async {
-    if (!mounted || _wsDisposed) return;
+    if (!mounted || _wsDisposed || !_sessionLive) return;
     final isHost = _wsIsHost || _ref.read(authSessionProvider).isHostSide;
     final httpSeq = ++_showQuickHttpSeq;
     final seen = _showQuickRev;
@@ -2539,13 +2778,21 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       unawaited(refreshWallet());
       return;
     }
+    final nextTurnover = hasTurnover ? _toNum(payload['turnover']) : null;
+    final nextWinLoss = hasWinLoss ? _toNum(payload['winLoss']) : null;
     state = state.copyWith(
       points: hasAvailable ? _toNum(payload['available']) : null,
-      turnover: hasTurnover ? _toNum(payload['turnover']) : null,
-      winLoss: hasWinLoss ? _toNum(payload['winLoss']) : null,
+      turnover: nextTurnover,
+      winLoss: nextWinLoss,
       rebate: hasRebate
           ? _toNum(payload['paidRebate'] ?? payload['rebate'])
           : null,
+    );
+    _noteSettleFunds(
+      forHost: false,
+      available: hasAvailable,
+      turnover: nextTurnover,
+      winLoss: nextWinLoss,
     );
   }
 
@@ -2574,11 +2821,18 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       return;
     }
     _bumpHostDashDirty();
+    final nextTurnover = hasTurnover ? _toNum(turnRaw) : null;
+    final nextWinLoss = hasWinLoss ? _toNum(wlRaw) : null;
     state = state.copyWith(
       points: hasBalance ? _toNum(balRaw) : null,
-      turnover: hasTurnover ? _toNum(turnRaw) : null,
-      winLoss: hasWinLoss ? _toNum(wlRaw) : null,
+      turnover: nextTurnover,
+      winLoss: nextWinLoss,
       rebate: hasRebate ? _toNum(rbRaw) : null,
+    );
+    _noteSettleFunds(
+      forHost: true,
+      turnover: nextTurnover,
+      winLoss: nextWinLoss,
     );
   }
 
@@ -2730,9 +2984,11 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
     final key = issueCompareKey(issue.trim());
     final current = issueCompareKey(currentIssue);
-    // 期号比的是后四位，跨 9999 → 0000 时按环算
-    final diff = (key - current) % 10000;
-    return diff == 0 || diff == 1 || diff == 9999;
+    // 后四位按环比较。Dart 的负数取余仍是负数，上一期必须先加 10000 才是 9999。
+    var diff = (key - current) % 10000;
+    if (diff < 0) diff += 10000;
+    // 当前、刚滚到的下一期、上一期、再上一期
+    return diff == 0 || diff == 1 || diff == 9999 || diff == 9998;
   }
 
   /// 开奖那一次拉取同时看两张卡：封盘时竞猜卡漏了，这里也一起补。
@@ -2998,19 +3254,62 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       timer.cancel();
     }
     _checkCardPullTimers.clear();
+    _settleWatchTimer?.cancel();
+    _settleWatchTimer = null;
+    _settleWatch = null;
     _engine.reset();
     _chatBootstrapping.clear();
     _wsSub?.cancel();
     _wsSub = null;
     _wsConnected = false;
     final dead = _ws;
+    if (_wsShared && dead != null) {
+      for (final topic in _wsSubscribedTopics) {
+        dead.unsubscribe(topic);
+      }
+    }
+    _wsSubscribedTopics.clear();
     _ws = null;
-    unawaited(dead?.dispose() ?? Future.value());
+    if (_sharedLost != null) {
+      MemberWsSession.instance.removeDisconnectListener(_sharedLost!);
+      _sharedLost = null;
+    }
+    if (_sessionHeld) {
+      _sessionHeld = false;
+      MemberWsSession.instance.release();
+    }
+    if (dead != null && !_wsShared) {
+      unawaited(dead.dispose());
+    }
     unawaited(_chatPushController.close());
     unawaited(_chatResyncController.close());
     unawaited(_csPushController.close());
     super.dispose();
   }
+}
+
+class _SettleHeaderWatch {
+  _SettleHeaderWatch({
+    required this.gen,
+    required this.gameType,
+    required this.issue,
+    required this.points,
+    required this.turnover,
+    required this.winLoss,
+    required this.started,
+    required this.host,
+  });
+
+  final int gen;
+  final String gameType;
+  final String issue;
+  final num points;
+  final num turnover;
+  final num winLoss;
+  final DateTime started;
+  final bool host;
+  bool pointsPushed = false;
+  bool aligned = false;
 }
 
 class _ChatHistoryState {
@@ -3113,5 +3412,9 @@ class CsChatPush {
 final roomLotteryLiveProvider = StateNotifierProvider.autoDispose
     .family<RoomLotteryLiveNotifier, RoomLotteryLiveState, String>((ref, roomId) {
   ref.keepAlive();
-  return RoomLotteryLiveNotifier(ref, roomId);
+  final notifier = RoomLotteryLiveNotifier(ref, roomId);
+  ref.listen<AuthSession>(authSessionProvider, (_, next) {
+    if (!next.isLoggedIn) notifier.stopRemotePolls();
+  });
+  return notifier;
 });

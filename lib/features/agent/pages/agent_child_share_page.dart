@@ -39,6 +39,7 @@ class _AgentChildSharePageState extends ConsumerState<AgentChildSharePage> {
     'TW_BG_Q': '宾果赛车(前)',
     'TW_BG_H': '宾果赛车(后)',
     'JS_FT': '极速飞艇',
+    'CA_PC28': '加拿大PC28',
   };
 
   @override

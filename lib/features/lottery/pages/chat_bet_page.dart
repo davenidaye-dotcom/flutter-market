@@ -11,6 +11,7 @@ import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
 import '../../../core/network/session_store.dart';
+import '../../../core/utils/request_id.dart';
 import '../../../core/utils/submit_guard.dart';
 import '../../../data/models/chat_message_model.dart';
 import '../../../data/models/lottery_game_model.dart';
@@ -143,7 +144,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
 
   int _msgLoadGen = 0;
   Future<void>? _msgLoadInflight;
-  bool _submitLocked = false;
   int _longDragonLoadGen = 0;
   int _historyReadyGen = 0;
   String? _longDragonLoadedGameId;
@@ -613,10 +613,9 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
     _applyTimelineFromCache();
   }
 
-  void _completeOptimisticBet(String command, List<String> orderIds) {
-    final localId = _pendingLocalBetId;
-    _pendingLocalBetId = null;
-    if (localId == null) {
+  void _completeOptimisticBet(String localId, String command, List<String> orderIds) {
+    if (_pendingLocalBetId == localId) _pendingLocalBetId = null;
+    if (localId.isEmpty) {
       _appendLocalMessage(command, orderIds: orderIds);
       return;
     }
@@ -1462,7 +1461,22 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
         final game = ref
             .read(roomLotteryLiveProvider(widget.roomId).notifier)
             .displayGameFor(_gameId);
-        if (game == null || !LotteryPeriodHelper.canBetNow(game)) return;
+        if (game == null || !LotteryPeriodHelper.canBetNow(game)) {
+          // 封盘 / 开奖中键盘仍可点。梭哈只写入草稿；重复和取消不发出、不撤单。
+          if (action == '梭哈') {
+            _insertText('梭哈');
+            return;
+          }
+          if (action == '重复') {
+            final phase = game == null ? null : LotteryPeriodHelper.phaseOf(game);
+            AppToast.info(
+              phase == LotteryDisplayPhase.drawing ? '开奖中，暂不能投注' : '封盘中，暂不能投注',
+            );
+            return;
+          }
+          AppToast.info('已封盘，不能取消');
+          return;
+        }
         if (action == '取消') {
           _betCtrl.value = const TextEditingValue(
             text: '取消',
@@ -1649,7 +1663,6 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
       AppToast.info('请使用指令格式，例如 1/大/100');
       return;
     }
-    if (_submitLocked || _betGuard.isBusy || _betBusy.value) return;
 
     final live = ref.read(roomLotteryLiveProvider(widget.roomId));
     final needConfirm = live.betConfirm || SessionStore.instance.betConfirm;
@@ -1696,38 +1709,41 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
       }
     }
 
-    _submitLocked = true;
-    _betBusy.value = true;
     final localId = _publishOptimisticBet(submitCommand);
+    _betCtrl.clear();
+    unawaited(
+      BetDraftStore.clear(
+        roomId: widget.roomId,
+        gameId: _gameId,
+        accountId: _accountId,
+      ),
+    );
+    unawaited(_dispatchBet(localId, submitCommand, submitItems));
+  }
+
+  /// 发送后立刻放开输入。频率只由服务端每秒 5 笔卡住，这里不等回执。
+  Future<void> _dispatchBet(
+    String localId,
+    String submitCommand,
+    List<Map<String, dynamic>>? submitItems,
+  ) async {
     try {
-      final done = await _betGuard.run((requestId) async {
-        // WS 优先、HTTP 兜底；requestId 在网络类失败重试时复用，服务端按它去重
-        return ref
-            .read(roomLotteryLiveProvider(widget.roomId).notifier)
-            .submitBetRouted(
-              gameId: _gameId,
-              command: submitCommand,
-              items: submitItems,
-              requestId: requestId,
-            );
-      });
-      if (done == null || !mounted) {
+      final done = await ref
+          .read(roomLotteryLiveProvider(widget.roomId).notifier)
+          .submitBetRouted(
+            gameId: _gameId,
+            command: submitCommand,
+            items: submitItems,
+            requestId: newRequestId(),
+          );
+      if (!mounted) {
         _dropOptimisticBet(localId);
         return;
       }
       unawaited(
         ref.read(roomLotteryLiveProvider(widget.roomId).notifier).refreshWallet(),
       );
-      if (!mounted) return;
-      _betCtrl.clear();
-      unawaited(
-        BetDraftStore.clear(
-          roomId: widget.roomId,
-          gameId: _gameId,
-          accountId: _accountId,
-        ),
-      );
-      _completeOptimisticBet(submitCommand, done.orderIds);
+      _completeOptimisticBet(localId, submitCommand, done.orderIds);
       ref
           .read(roomLotteryLiveProvider(widget.roomId).notifier)
           .applyBetAckReceipt(_gameId, done);
@@ -1737,10 +1753,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
       AppToast.success('下注成功');
     } catch (e) {
       _dropOptimisticBet(localId);
-      AppToast.error(_betFailToast(e));
-    } finally {
-      _submitLocked = false;
-      if (mounted) _betBusy.value = false;
+      if (mounted) AppToast.error(_betFailToast(e));
     }
   }
 
@@ -1974,7 +1987,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
       }),
     );
     final canBet = canPlaceBet && betPhase == LotteryDisplayPhase.betting.name;
-    // 封盘只停投注。玩家的上分、下分和加号菜单留着，键盘置灰不收起。
+    // 封盘、开奖中只锁输入条。下方注单键盘保持可点，用来写下一注草稿和上下分。
     if (!canPlaceBet &&
         (_panel == _BottomPanel.keypad || _panel == _BottomPanel.menu)) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2266,8 +2279,8 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
                             embedded: true,
                             onBetStart: _publishOptimisticBet,
                             onBetFailed: _dropOptimisticBet,
-                            onBetSuccess: (command, orderIds, content) {
-                              _completeOptimisticBet(command, orderIds);
+                            onBetSuccess: (localId, command, orderIds, content) {
+                              _completeOptimisticBet(localId, command, orderIds);
                               _rememberSuccessfulBet(command);
                               final slip = content.trim().isNotEmpty ? content.trim() : command;
                               _appendBetSlip(slip, orderIds: orderIds);
@@ -2523,7 +2536,7 @@ class _ChatBetDock extends StatelessWidget {
                           builder: (_, value, __) {
                             return BetKeypadPanel(
                               canada: canada,
-                              enabled: canBet,
+                              enabled: toolsEnabled,
                               walletEnabled: toolsEnabled,
                               disabledActions: keypadDisabled,
                               currentText: value.text,

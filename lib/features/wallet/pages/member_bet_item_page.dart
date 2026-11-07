@@ -10,6 +10,7 @@ import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../../room/cs_share_helper.dart';
+import '../widgets/member_page_bar.dart';
 import 'member_bet_report_shared.dart';
 
 /// 竞猜记录 L3：某期玩法明细
@@ -30,62 +31,32 @@ class MemberBetItemPage extends ConsumerStatefulWidget {
 }
 
 class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
-  static const _pageSize = 50;
+  static const _pageSize = 20;
 
   List<Map<String, dynamic>> _rows = [];
-  int _pageNum = 1;
+  int _page = 1;
+  int _totalPages = 0;
   int _total = 0;
   bool _loading = true;
-  bool _loadingMore = false;
-  bool _hasMore = true;
-  final _scroll = ScrollController();
+  bool _busy = false;
 
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(_onScroll);
-    Future.microtask(() => _load(reset: true));
+    Future.microtask(_load);
   }
 
-  @override
-  void dispose() {
-    _scroll.removeListener(_onScroll);
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!_hasMore || _loadingMore || _loading) return;
-    if (!_scroll.hasClients) return;
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 80) {
-      _load(reset: false);
-    }
-  }
-
-  Future<void> _load({required bool reset, bool fromPull = false}) async {
-    if (reset) {
-      if (!fromPull) {
-        setState(() {
-          _pageNum = 1;
-          _hasMore = true;
-          _loading = true;
-        });
-      } else {
-        setState(() {
-          _pageNum = 1;
-          _hasMore = true;
-        });
-      }
-    } else {
-      if (!_hasMore || _loadingMore) return;
-      setState(() => _loadingMore = true);
-    }
-    final page = reset ? 1 : _pageNum + 1;
+  Future<void> _load({bool fromPull = false}) async {
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (!fromPull && blank) _loading = true;
+      _busy = true;
+    });
     try {
       final data = await ref.read(walletRepositoryProvider).getBetItemReport(
             gameType: widget.gameType,
             issueNo: widget.issueNo,
-            pageNum: page,
+            pageNum: _page,
             pageSize: _pageSize,
           );
       if (!mounted) return;
@@ -96,22 +67,20 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
               .map((e) => Map<String, dynamic>.from(e))
               .toList()
           : <Map<String, dynamic>>[];
-      final total = data['total'] is num
-          ? (data['total'] as num).toInt()
-          : list.length;
+      final total = data['total'] is num ? (data['total'] as num).toInt() : list.length;
+      final pageSize = data['pageSize'] is num ? (data['pageSize'] as num).toInt() : _pageSize;
       setState(() {
-        _rows = reset ? list : [..._rows, ...list];
-        _pageNum = page;
+        _rows = list;
         _total = total;
-        _hasMore = _rows.length < total && list.isNotEmpty;
+        _totalPages = memberTotalPages(total, pageSize);
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
       AppToast.error(e.toString());
       if (fromPull) rethrow;
@@ -138,14 +107,11 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
             ),
             Expanded(
               child: AppPullRefresh(
-                onRefresh: () => _load(reset: true, fromPull: true),
+                onRefresh: () => _load(fromPull: true),
                 child: ListView.separated(
-                  controller: _scroll,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 24.h),
-                  itemCount: _loading
-                      ? 1
-                      : (_rows.isEmpty ? 1 : _rows.length + 1),
+                  itemCount: _loading ? 1 : (_rows.isEmpty ? 1 : _rows.length),
                   separatorBuilder: (_, _) =>
                       const Divider(height: 1, color: Color(0xFFEEEEEE)),
                   itemBuilder: (_, i) {
@@ -159,22 +125,6 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
                       return Padding(
                         padding: EdgeInsets.only(top: 80.h),
                         child: const Center(child: AppEmptyHint()),
-                      );
-                    }
-                    if (i == _rows.length) {
-                      return Padding(
-                        padding: EdgeInsets.only(top: 16.h),
-                        child: Center(
-                          child: Text(
-                            _loadingMore
-                                ? '加载中…'
-                                : '已加载完毕，共${_total > 0 ? _total : _rows.length}条',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: AppColors.textHint,
-                            ),
-                          ),
-                        ),
                       );
                     }
                     return _ItemRow(
@@ -198,6 +148,26 @@ class _MemberBetItemPageState extends ConsumerState<MemberBetItemPage> {
                   },
                 ),
               ),
+            ),
+            MemberPageBar(
+              page: _page,
+              totalPages: _totalPages,
+              totalCount: _total,
+              busy: _busy,
+              onPrev: () {
+                if (_page > 1) {
+                  setState(() => _page--);
+                  _load();
+                }
+              },
+              onNext: () {
+                if (_totalPages == 0 || _page >= _totalPages) {
+                  AppToast.info('已是最后一页');
+                  return;
+                }
+                setState(() => _page++);
+                _load();
+              },
             ),
           ],
         ),

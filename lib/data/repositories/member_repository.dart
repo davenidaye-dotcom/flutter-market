@@ -23,16 +23,17 @@ class MemberRepository {
     await _client.put('/member/profile/avatar', data: {'avatarUrl': avatarCode});
   }
 
-  Future<bool> getBgmEnabled() async {
-    final data = await _client.get('/member/profile');
-    if (data is! Map) return false;
-    return data['bgmEnabled'] == true;
-  }
-
-  Future<void> updateBgm(bool enabled, {bool ignoreUnauthorized = false}) async {
+  Future<void> updateBgm({
+    required bool message,
+    required Map<String, Map<String, bool>> games,
+    bool ignoreUnauthorized = false,
+  }) async {
     await _client.put(
       '/member/profile/bgm',
-      data: {'enabled': enabled},
+      data: {
+        'message': message,
+        'games': games,
+      },
       ignoreUnauthorized: ignoreUnauthorized,
     );
   }

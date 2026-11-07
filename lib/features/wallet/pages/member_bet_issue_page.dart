@@ -9,6 +9,7 @@ import '../../../shared/widgets/app_pull_refresh.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/date_range_filter.dart';
+import '../widgets/member_page_bar.dart';
 import 'member_bet_item_page.dart';
 import 'member_bet_report_shared.dart';
 
@@ -34,7 +35,7 @@ class MemberBetIssuePage extends ConsumerStatefulWidget {
 }
 
 class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
-  static const _pageSize = 50;
+  static const _pageSize = 20;
 
   late List<DateRangeQuickItem> _quickItems;
   late int _quickIndex;
@@ -42,12 +43,11 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
   late DateTime _end;
 
   List<Map<String, dynamic>> _rows = [];
-  int _pageNum = 1;
+  int _page = 1;
+  int _totalPages = 0;
   int _total = 0;
   bool _loading = true;
-  bool _loadingMore = false;
-  bool _hasMore = true;
-  final _scroll = ScrollController();
+  bool _busy = false;
 
   @override
   void initState() {
@@ -56,23 +56,7 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
     _quickIndex = widget.quickIndex;
     _start = widget.start;
     _end = widget.end;
-    _scroll.addListener(_onScroll);
-    Future.microtask(() => _load(reset: true));
-  }
-
-  @override
-  void dispose() {
-    _scroll.removeListener(_onScroll);
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!_hasMore || _loadingMore || _loading) return;
-    if (!_scroll.hasClients) return;
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 80) {
-      _load(reset: false);
-    }
+    Future.microtask(_load);
   }
 
   void _onQuickTap(int i) {
@@ -82,8 +66,10 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
       _quickIndex = i;
       _start = it.start;
       _end = it.end;
+      _page = 1;
+      _rows = [];
     });
-    _load(reset: true);
+    _load();
   }
 
   Future<void> _pickRange() async {
@@ -101,35 +87,24 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
       _quickIndex = -1;
       _start = DateTime(range.start.year, range.start.month, range.start.day);
       _end = DateTime(range.end.year, range.end.month, range.end.day);
+      _page = 1;
+      _rows = [];
     });
-    _load(reset: true);
+    _load();
   }
 
-  Future<void> _load({required bool reset, bool fromPull = false}) async {
-    if (reset) {
-      if (!fromPull) {
-        setState(() {
-          _pageNum = 1;
-          _hasMore = true;
-          _loading = true;
-        });
-      } else {
-        setState(() {
-          _pageNum = 1;
-          _hasMore = true;
-        });
-      }
-    } else {
-      if (!_hasMore || _loadingMore) return;
-      setState(() => _loadingMore = true);
-    }
-    final page = reset ? 1 : _pageNum + 1;
+  Future<void> _load({bool fromPull = false}) async {
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (!fromPull && blank) _loading = true;
+      _busy = true;
+    });
     try {
       final data = await ref.read(walletRepositoryProvider).getBetIssueReport(
             gameType: widget.gameType,
             startDate: DateRangeFilter.format(_start),
             endDate: DateRangeFilter.format(_end),
-            pageNum: page,
+            pageNum: _page,
             pageSize: _pageSize,
           );
       if (!mounted) return;
@@ -140,22 +115,20 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
               .map((e) => Map<String, dynamic>.from(e))
               .toList()
           : <Map<String, dynamic>>[];
-      final total = data['total'] is num
-          ? (data['total'] as num).toInt()
-          : list.length;
+      final total = data['total'] is num ? (data['total'] as num).toInt() : list.length;
+      final pageSize = data['pageSize'] is num ? (data['pageSize'] as num).toInt() : _pageSize;
       setState(() {
-        _rows = reset ? list : [..._rows, ...list];
-        _pageNum = page;
+        _rows = list;
         _total = total;
-        _hasMore = _rows.length < total && list.isNotEmpty;
+        _totalPages = memberTotalPages(total, pageSize);
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
       AppToast.error(e.toString());
       if (fromPull) rethrow;
@@ -202,9 +175,8 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
             SizedBox(height: 12.h),
             Expanded(
               child: AppPullRefresh(
-                onRefresh: () => _load(reset: true, fromPull: true),
+                onRefresh: () => _load(fromPull: true),
                 child: ListView(
-                  controller: _scroll,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: EdgeInsets.fromLTRB(12.w, 0, 12.w, 24.h),
                   children: [
@@ -248,24 +220,29 @@ class _MemberBetIssuePageState extends ConsumerState<MemberBetIssuePage> {
                           ],
                         ),
                       ),
-                    if (!_loading && _rows.isNotEmpty)
-                      Padding(
-                        padding: EdgeInsets.only(top: 16.h),
-                        child: Center(
-                          child: Text(
-                            _loadingMore
-                                ? '加载中…'
-                                : '已加载完毕，共${_total > 0 ? _total : _rows.length}条',
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: AppColors.textHint,
-                            ),
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
+            ),
+            MemberPageBar(
+              page: _page,
+              totalPages: _totalPages,
+              totalCount: _total,
+              busy: _busy,
+              onPrev: () {
+                if (_page > 1) {
+                  setState(() => _page--);
+                  _load();
+                }
+              },
+              onNext: () {
+                if (_totalPages == 0 || _page >= _totalPages) {
+                  AppToast.info('已是最后一页');
+                  return;
+                }
+                setState(() => _page++);
+                _load();
+              },
             ),
           ],
         ),

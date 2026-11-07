@@ -90,6 +90,7 @@ class _AgentChildOddsPageState extends ConsumerState<AgentChildOddsPage> {
     (type: 'TW_BG_Q', name: '宾果赛车(前)'),
     (type: 'TW_BG_H', name: '宾果赛车(后)'),
     (type: 'JS_FT', name: '极速飞艇'),
+    (type: 'CA_PC28', name: '加拿大PC28'),
   ];
 
   static const _pageBg = Color(0xFFE8EEF5);

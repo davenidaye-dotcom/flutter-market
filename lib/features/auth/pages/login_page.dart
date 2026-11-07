@@ -71,6 +71,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     super.initState();
     final prefill = LoginPrefill.take();
     if (prefill != null) _hostMode = prefill.hostMode;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AliyunCaptchaPage.prewarm(context);
+    });
     Future.microtask(() async {
       await AppRelease.localVersion();
       await _applyRemember();
@@ -133,6 +136,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
 
   @override
   void dispose() {
+    AliyunCaptchaPage.release();
     _usernameCtrl.dispose();
     _passwordCtrl.dispose();
     _usernameFocus.dispose();

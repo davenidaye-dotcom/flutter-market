@@ -43,7 +43,7 @@ void main() {
       expect(timeline.single.type, ChatMessageType.resultCard);
     });
 
-    test('syntheticSeals=true 为缺封盘的开奖补全封盘', () {
+    test('开奖卡已经在时，不再造没有时间的预警', () {
       const gameId = 'JS_SC';
       final messages = [
         drawCard(gameId, '4729', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
@@ -55,9 +55,8 @@ void main() {
         syntheticSeals: true,
       );
 
-      expect(timeline.any((m) => m.content.contains('封盘')), isTrue);
-      expect(timeline.any((m) => m.content.contains('停止战斗')), isTrue);
-      expect(timeline.any((m) => m.type == ChatMessageType.resultCard), isTrue);
+      expect(timeline.length, 1);
+      expect(timeline.single.type, ChatMessageType.resultCard);
     });
 
     test('已有服务端封盘时 syntheticSeals 不再重复补', () {
@@ -196,6 +195,29 @@ void main() {
         timeline.map((m) => m.type).toList(),
         [
           ChatMessageType.system,
+          ChatMessageType.system,
+          ChatMessageType.betListCheck,
+          ChatMessageType.resultCard,
+          ChatMessageType.winCheck,
+        ],
+      );
+    });
+
+    test('序号更晚的核对卡仍排在开奖前面', () {
+      const gameId = 'JS_SC';
+      const issue = '34163650';
+      final timeline = buildChatTimeline(
+        [
+          drawCard(gameId, issue, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]).copyWith(seq: 10),
+          betRank(gameId, issue).copyWith(seq: 40),
+          winList(gameId, issue).copyWith(seq: 5),
+          sealedLine(gameId, issue).copyWith(seq: 30),
+        ],
+        gameId: gameId,
+      );
+      expect(
+        timeline.map((m) => m.type).toList(),
+        [
           ChatMessageType.system,
           ChatMessageType.betListCheck,
           ChatMessageType.resultCard,

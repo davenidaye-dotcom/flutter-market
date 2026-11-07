@@ -482,6 +482,7 @@ class LotteryRepository {
     String? issueNo,
     List<Map<String, dynamic>>? items,
     String? requestId,
+    String? roomId,
   }) {
     final body = <String, dynamic>{
       'gameType': gameId,
@@ -490,6 +491,12 @@ class LotteryRepository {
       if (requestId != null && requestId.isNotEmpty) 'requestId': requestId,
       if (requestId != null && requestId.isNotEmpty) 'request_id': requestId,
     };
+    final hinted = (roomId != null && roomId.trim().isNotEmpty)
+        ? roomId.trim()
+        : (SessionStore.instance.roomId?.trim() ?? '');
+    if (int.tryParse(hinted) != null) {
+      body['roomId'] = hinted;
+    }
     if (items != null && items.isNotEmpty) {
       body['items'] = items;
     }
@@ -508,13 +515,14 @@ class LotteryRepository {
     List<Map<String, dynamic>>? items,
     String? requestId,
   }) async {
-    final _ = roomId;
+    final numeric = SessionStore.instance.numericForRoute(roomId);
     final body = buildBetBody(
       gameId: gameId,
       command: command,
       issueNo: issueNo,
       items: items,
       requestId: requestId,
+      roomId: numeric,
     );
     final resp = await _client.post(
       '/member/bets',

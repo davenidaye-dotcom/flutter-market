@@ -21,6 +21,7 @@ const _knownCodes = [
   'BET_PENDING',
   'SEALED',
   'DRAWING',
+  'ROOM_CONTEXT_REQUIRED',
 ];
 
 /// 玩家可读的下注错误；服务端文案为空或只是码本身时才用本地文案。
@@ -94,7 +95,8 @@ class BetExecutor {
     }
     final code = data['code']?.toString();
     // BET_BUSY：改走 HTTP 重试一次（同 reqId）；HTTP 已在路上则等它。
-    if (code == 'BET_BUSY') {
+    // 房间上下文只写在 Redis。WS 线程租户对不上时这里失败，HTTP 带 X-Room-Id 仍能补上。
+    if (code == 'BET_BUSY' || code == 'ROOM_CONTEXT_REQUIRED') {
       attempt.startHttp?.call();
       return;
     }

@@ -132,7 +132,7 @@ void main() {
       );
     });
 
-    test('时间线 syntheticSeals 为缺封盘的历史开奖补全', () {
+    test('开奖已在时不再补没有时间的封盘线', () {
       cache.syncDrawsFromApi(
         roomId: roomId,
         gameId: gameId,
@@ -147,7 +147,7 @@ void main() {
         syntheticSeals: true,
       );
 
-      expect(timeline.any((m) => m.content.contains('停止战斗')), isTrue);
+      expect(timeline.any((m) => m.content.contains('停止战斗')), isFalse);
       expect(timeline.any((m) => m.type == ChatMessageType.resultCard), isTrue);
     });
   });

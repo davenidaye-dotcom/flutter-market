@@ -88,10 +88,14 @@ class WalletRepository {
   Future<Map<String, dynamic>> getBetGameReport({
     String? startDate,
     String? endDate,
+    int pageNum = 1,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/member/reports/bets', query: {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
     });
     return _asMap(data);
   }
@@ -102,7 +106,7 @@ class WalletRepository {
     String? startDate,
     String? endDate,
     int pageNum = 1,
-    int pageSize = 50,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/member/reports/bets/issues', query: {
       'gameType': gameType,
@@ -119,7 +123,7 @@ class WalletRepository {
     required String gameType,
     required String issueNo,
     int pageNum = 1,
-    int pageSize = 50,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/member/reports/bets/items', query: {
       'gameType': gameType,

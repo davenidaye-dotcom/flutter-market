@@ -6,6 +6,7 @@ import '../../../../data/repositories/providers.dart';
 import '../../../../shared/format/play_title.dart';
 import '../../../../shared/widgets/app_pull_refresh.dart';
 import '../../../../shared/widgets/page_app_bar.dart';
+import '../../../wallet/widgets/member_page_bar.dart';
 import '../../data/host_mock.dart';
 import '../../widgets/host_ui.dart';
 
@@ -35,55 +36,35 @@ class _FlyIssueDetailPageState extends ConsumerState<FlyIssueDetailPage> {
   Map<String, dynamic> _summary = {};
   List<Map<String, dynamic>> _rows = [];
   bool _loading = true;
-  bool _loadingMore = false;
-  bool _hasMore = true;
-  int _pageNum = 1;
+  bool _busy = false;
+  int _page = 1;
   int _total = 0;
+  int _totalPages = 0;
+  int _req = 0;
   static const _pageSize = 20;
-  final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(_onScroll);
-    Future.microtask(() => _load(reset: true));
+    Future.microtask(_load);
   }
 
-  @override
-  void dispose() {
-    _scroll.removeListener(_onScroll);
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!_hasMore || _loadingMore || _loading) return;
-    if (!_scroll.hasClients) return;
-    if (_scroll.position.pixels >= _scroll.position.maxScrollExtent - 80) {
-      _load(reset: false);
-    }
-  }
-
-  Future<void> _load({required bool reset}) async {
-    if (reset) {
-      setState(() {
-        _pageNum = 1;
-        _hasMore = true;
-        _loading = true;
-      });
-    } else {
-      if (!_hasMore || _loadingMore) return;
-      setState(() => _loadingMore = true);
-    }
-    final page = reset ? 1 : _pageNum + 1;
+  Future<void> _load({int? page}) async {
+    final target = page ?? _page;
+    final req = ++_req;
+    final blank = _rows.isEmpty;
+    setState(() {
+      if (blank) _loading = true;
+      _busy = true;
+    });
     try {
       final data = await ref.read(ownerRepositoryProvider).getFeipanReportItems(
             issueNo: widget.issueNo,
             gameType: widget.gameType,
-            pageNum: page,
+            pageNum: target,
             pageSize: _pageSize,
           );
-      if (!mounted) return;
+      if (!mounted || req != _req) return;
       final summary = data['summary'];
       final rows = data['rows'];
       final list = rows is List
@@ -93,21 +74,21 @@ class _FlyIssueDetailPageState extends ConsumerState<FlyIssueDetailPage> {
           _asInt(summary is Map ? summary['itemCount'] : null) ??
           list.length;
       setState(() {
-        if (reset && summary is Map) {
+        if (summary is Map) {
           _summary = Map<String, dynamic>.from(summary);
         }
-        _rows = reset ? list : [..._rows, ...list];
-        _pageNum = page;
+        _page = target;
+        _rows = list;
         _total = total;
-        _hasMore = _rows.length < total && list.isNotEmpty;
+        _totalPages = memberTotalPages(total, _pageSize);
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted || req != _req) return;
       setState(() {
         _loading = false;
-        _loadingMore = false;
+        _busy = false;
       });
       AppToast.error(e.toString());
     }
@@ -159,15 +140,17 @@ class _FlyIssueDetailPageState extends ConsumerState<FlyIssueDetailPage> {
 
     return HostSubPageScaffold(
       title: '期${widget.issueNo} · $game',
-      body: _loading && _rows.isEmpty
+      body: Column(
+        children: [
+          Expanded(
+            child: _loading && _rows.isEmpty
           ? const AppPageLoading()
           : AppPullRefresh(
-              onRefresh: () => _load(reset: true),
+              onRefresh: () => _load(page: 1),
               child: ListView.builder(
-                controller: _scroll,
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 16.h),
-                itemCount: 1 + (_rows.isEmpty ? 1 : _rows.length + 1),
+                itemCount: 1 + (_rows.isEmpty ? 1 : _rows.length),
                 itemBuilder: (_, i) {
                   if (i == 0) {
                     return Padding(
@@ -201,19 +184,6 @@ class _FlyIssueDetailPageState extends ConsumerState<FlyIssueDetailPage> {
                       ),
                     );
                   }
-                  if (i == _rows.length + 1) {
-                    return Padding(
-                      padding: EdgeInsets.only(top: 12.h),
-                      child: Center(
-                        child: Text(
-                          _loadingMore
-                              ? '加载中…'
-                              : '没有更多了，共 ${_total > 0 ? _total : _rows.length} 条',
-                          style: TextStyle(fontSize: 12.sp, color: AppColors.textHint),
-                        ),
-                      ),
-                    );
-                  }
                   final r = _rows[i - 1];
                   return Padding(
                     padding: EdgeInsets.only(bottom: 10.h),
@@ -225,6 +195,26 @@ class _FlyIssueDetailPageState extends ConsumerState<FlyIssueDetailPage> {
                 },
               ),
             ),
+          ),
+          MemberPageBar(
+            page: _page,
+            totalPages: _totalPages,
+            totalCount: _total,
+            busy: _busy,
+            onPrev: () {
+              if (_busy || _page <= 1) return;
+              _load(page: _page - 1);
+            },
+            onNext: () {
+              if (_busy || _totalPages == 0 || _page >= _totalPages) {
+                if (!_busy) AppToast.info('已是最后一页');
+                return;
+              }
+              _load(page: _page + 1);
+            },
+          ),
+        ],
+      ),
     );
   }
 

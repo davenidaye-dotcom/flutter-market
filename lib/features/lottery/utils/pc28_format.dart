@@ -43,6 +43,7 @@ abstract final class Pc28Format {
       'P28-BAO' => 'P28-BAO',
       'P28-DT-D' || 'P28-DT-T' => 'P28-DT',
       'P28-DT-TIE' => 'P28-TIE',
+      _ when code.startsWith('P28-BALL-') => 'P28-BALL',
       _ when code.startsWith('P28-POS-') => 'P28-POS',
       _ => null,
     };
@@ -63,7 +64,7 @@ abstract final class Pc28Format {
     return '和';
   }
 
-  /// 盘口选法 → 机器码。`大`、`1/0`。
+  /// 盘口选法 → 机器码。`大`、`1/0`、`1/大`。
   static String? playCode(String uiKey) {
     final key = uiKey.trim();
     const sides = {
@@ -89,6 +90,14 @@ abstract final class Pc28Format {
     if (direct != null) return direct;
     final parts = key.split('/');
     if (parts.length == 2 && '123'.contains(parts[0]) && parts[1].length == 1) {
+      final side = switch (parts[1]) {
+        '大' => 'BIG',
+        '小' => 'SMALL',
+        '单' => 'ODD',
+        '双' => 'EVEN',
+        _ => null,
+      };
+      if (side != null) return 'P28-BALL-${parts[0]}-$side';
       final digit = int.tryParse(parts[1]);
       if (digit != null && digit >= 0 && digit <= 9) {
         return 'P28-POS-${parts[0]}-$digit';

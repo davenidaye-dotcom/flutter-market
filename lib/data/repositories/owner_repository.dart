@@ -331,16 +331,17 @@ class OwnerRepository {
   }
 
   // --- manage ---
-  Future<bool> getBgmEnabled() async {
-    final data = await _client.get('/owner/profile/bgm');
-    if (data is! Map) return false;
-    return data['enabled'] == true;
-  }
-
-  Future<void> updateBgm(bool enabled, {bool ignoreUnauthorized = false}) async {
+  Future<void> updateBgm({
+    required bool message,
+    required Map<String, Map<String, bool>> games,
+    bool ignoreUnauthorized = false,
+  }) async {
     await _client.put(
       '/owner/profile/bgm',
-      data: {'enabled': enabled},
+      data: {
+        'message': message,
+        'games': games,
+      },
       ignoreUnauthorized: ignoreUnauthorized,
     );
   }
@@ -657,12 +658,16 @@ class OwnerRepository {
     String? endDate,
     String category = 'ALL',
     int? bindingId,
+    int pageNum = 1,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/owner/feipan/reports', query: {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       'category': category,
       if (bindingId != null) 'bindingId': bindingId,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
     });
     return _asMap(data);
   }

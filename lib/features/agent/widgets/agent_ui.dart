@@ -108,7 +108,7 @@ String agentAccountTypeLabel(Map<String, dynamic> row) {
 bool _looksLikeEnum(String s) => s.contains('_') && s == s.toUpperCase();
 
 /// 已上线彩种。报表、收付统计、个人信息只显示这些。
-const agentLiveGameTypes = {'JS_SC', 'AZXY10', 'TW_BG_Q', 'TW_BG_H', 'JS_FT'};
+const agentLiveGameTypes = {'JS_SC', 'AZXY10', 'TW_BG_Q', 'TW_BG_H', 'JS_FT', 'CA_PC28'};
 
 List<Map<String, dynamic>> agentLiveGames(List<Map<String, dynamic>> games) {
   return [
@@ -338,106 +338,178 @@ class _PublishedVersionState extends State<_PublishedVersion> {
 }
 
 /// Agent top bar — hamburger / refresh / ID / balances from API
-class AgentTopBar extends ConsumerWidget {
-  const AgentTopBar({super.key, this.onRefresh});
+class AgentTopBar extends StatelessWidget {
+  const AgentTopBar({
+    super.key,
+    this.onRefresh,
+    this.refreshGameList = true,
+    this.holdHeader = false,
+    this.sequenceHeader = false,
+  });
 
   final VoidCallback? onRefresh;
 
-  String _fmt(dynamic v) {
-    if (v == null) return '--';
-    final s = '$v'.trim();
-    if (s.isEmpty) return '--';
-    if (v is! num && num.tryParse(s) == null) return s;
-    return displayNumber(v);
+  /// 个人信息自己会先拉赔率，刷新时不再额外打一路游戏列表。
+  final bool refreshGameList;
+
+  /// 为 true 时顶栏先不订阅额度，等赔率回来再挂上。
+  final bool holdHeader;
+
+  /// 页面自己在赔率之后再刷新额度，顶栏按钮不要立刻打额度。
+  final bool sequenceHeader;
+
+  @override
+  Widget build(BuildContext context) {
+    if (holdHeader) {
+      return _HeldAgentTopBar(onRefresh: onRefresh, refreshGameList: refreshGameList);
+    }
+    return _LiveAgentTopBar(
+      onRefresh: onRefresh,
+      refreshGameList: refreshGameList,
+      sequenceHeader: sequenceHeader,
+    );
   }
+}
+
+class _HeldAgentTopBar extends ConsumerWidget {
+  const _HeldAgentTopBar({this.onRefresh, this.refreshGameList = true});
+
+  final VoidCallback? onRefresh;
+  final bool refreshGameList;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(authSessionProvider.select((s) => s.user));
-    final id = user?.id ?? '--';
+    final id = ref.watch(authSessionProvider.select((s) => s.user?.id)) ?? '--';
+    return _agentTopBarView(
+      shownId: id,
+      loading: true,
+      sub: '--',
+      balance: '--',
+      onRefresh: () {
+        onRefresh?.call();
+        if (refreshGameList) ref.invalidate(agentGamesProvider);
+      },
+    );
+  }
+}
+
+class _LiveAgentTopBar extends ConsumerWidget {
+  const _LiveAgentTopBar({
+    this.onRefresh,
+    this.refreshGameList = true,
+    this.sequenceHeader = false,
+  });
+
+  final VoidCallback? onRefresh;
+  final bool refreshGameList;
+  final bool sequenceHeader;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final id = ref.watch(authSessionProvider.select((s) => s.user?.id)) ?? '--';
     final headerAsync = ref.watch(agentHeaderProvider);
     final header = headerAsync.valueOrNull ?? {};
-    final balance = _fmt(header['balance']);
-    final sub = _fmt(header['subordinateBalance']);
     final headerDisplayId = header['displayId']?.toString().trim() ?? '';
-    final shownId = headerDisplayId.isNotEmpty ? headerDisplayId : id;
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0))),
-      ),
-      padding: EdgeInsets.fromLTRB(4.w, 4.h, 12.w, 8.h),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Builder(
-                builder: (ctx) => IconButton(
-                  icon: Icon(Icons.menu, size: 22.sp, color: AppColors.textPrimary),
-                  onPressed: () => Scaffold.of(ctx).openDrawer(),
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.refresh, size: 22.sp, color: AppColors.navBlue),
-                onPressed: () {
-                  ref.invalidate(agentHeaderProvider);
-                  ref.invalidate(agentGamesProvider);
-                  onRefresh?.call();
-                },
-              ),
-              Expanded(
-                child: Text(
-                  'ID: $shownId',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 14.sp, color: Colors.red, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ],
-          ),
-          Padding(
-            padding: EdgeInsets.only(left: 12.w, right: 4.w),
-            child: headerAsync.isLoading
-                ? Align(
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: 16.w,
-                      height: 16.w,
-                      child: const CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                  )
-                : Row(
-                    children: [
-                      Expanded(child: _balanceCell('下级余额', sub)),
-                      SizedBox(width: 12.w),
-                      Expanded(child: _balanceCell('余额', balance)),
-                    ],
-                  ),
-          ),
-        ],
-      ),
+    return _agentTopBarView(
+      shownId: headerDisplayId.isNotEmpty ? headerDisplayId : id,
+      loading: headerAsync.isLoading,
+      sub: _fmtHeader(header['subordinateBalance']),
+      balance: _fmtHeader(header['balance']),
+      onRefresh: () {
+        onRefresh?.call();
+        if (!sequenceHeader) ref.invalidate(agentHeaderProvider);
+        if (refreshGameList) ref.invalidate(agentGamesProvider);
+      },
     );
   }
+}
 
-  static Widget _balanceCell(String label, String value) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+String _fmtHeader(dynamic v) {
+  if (v == null) return '--';
+  final s = '$v'.trim();
+  if (s.isEmpty) return '--';
+  if (v is! num && num.tryParse(s) == null) return s;
+  return displayNumber(v);
+}
+
+Widget _agentTopBarView({
+  required String shownId,
+  required bool loading,
+  required String sub,
+  required String balance,
+  required VoidCallback onRefresh,
+}) {
+  return Container(
+    decoration: const BoxDecoration(
+      color: Colors.white,
+      border: Border(bottom: BorderSide(color: Color(0xFFE0E0E0))),
+    ),
+    padding: EdgeInsets.fromLTRB(4.w, 4.h, 12.w, 8.h),
+    child: Column(
       children: [
-        Text(label, style: TextStyle(fontSize: 11.sp, color: Colors.red, height: 1.2)),
-        FittedBox(
-          fit: BoxFit.scaleDown,
-          alignment: Alignment.centerLeft,
-          child: Text(
-            value,
-            maxLines: 1,
-            softWrap: false,
-            style: TextStyle(fontSize: 13.sp, color: Colors.red, fontWeight: FontWeight.w700, height: 1.2),
-          ),
+        Row(
+          children: [
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: Icon(Icons.menu, size: 22.sp, color: AppColors.textPrimary),
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
+            IconButton(
+              icon: Icon(Icons.refresh, size: 22.sp, color: AppColors.navBlue),
+              onPressed: onRefresh,
+            ),
+            Expanded(
+              child: Text(
+                'ID: $shownId',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14.sp, color: Colors.red, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        Padding(
+          padding: EdgeInsets.only(left: 12.w, right: 4.w),
+          child: loading
+              ? Align(
+                  alignment: Alignment.centerLeft,
+                  child: SizedBox(
+                    width: 16.w,
+                    height: 16.w,
+                    child: const CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : Row(
+                  children: [
+                    Expanded(child: _headerBalanceCell('下级余额', sub)),
+                    SizedBox(width: 12.w),
+                    Expanded(child: _headerBalanceCell('余额', balance)),
+                  ],
+                ),
         ),
       ],
-    );
-  }
+    ),
+  );
+}
+
+Widget _headerBalanceCell(String label, String value) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: TextStyle(fontSize: 11.sp, color: Colors.red, height: 1.2)),
+      FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Text(
+          value,
+          maxLines: 1,
+          softWrap: false,
+          style: TextStyle(fontSize: 13.sp, color: Colors.red, fontWeight: FontWeight.w700, height: 1.2),
+        ),
+      ),
+    ],
+  );
 }
 
 /// 代理页通用外框
@@ -448,6 +520,9 @@ class AgentPageFrame extends ConsumerWidget {
     required this.child,
     this.onRefresh,
     this.titleOnBar = false,
+    this.refreshGameList = true,
+    this.holdHeader = false,
+    this.sequenceHeader = false,
   });
 
   final String title;
@@ -457,13 +532,27 @@ class AgentPageFrame extends ConsumerWidget {
   /// 报表查询等：标题在浅灰条上
   final bool titleOnBar;
 
+  /// 传给顶栏。个人信息刷新时不要连带拉游戏列表。
+  final bool refreshGameList;
+
+  /// 赔率还没回来时顶栏先不打额度。
+  final bool holdHeader;
+
+  /// 刷新时由页面在赔率之后再拉额度。
+  final bool sequenceHeader;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return SafeArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AgentTopBar(onRefresh: onRefresh),
+          AgentTopBar(
+            onRefresh: onRefresh,
+            refreshGameList: refreshGameList,
+            holdHeader: holdHeader,
+            sequenceHeader: sequenceHeader,
+          ),
           Expanded(
             child: ColoredBox(
               color: AgentChrome.pageBg,
@@ -516,7 +605,7 @@ class AgentBackTitle extends StatelessWidget {
   }
 }
 
-/// 游戏 Tab：下划线，不再套整条方框。
+/// 游戏 Tab：横滑，字号不缩小。
 class AgentGameTabs extends StatelessWidget {
   const AgentGameTabs({
     super.key,
@@ -531,37 +620,33 @@ class AgentGameTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 8.w),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
       child: Row(
         children: [
           for (var i = 0; i < games.length; i++)
-            Expanded(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onChanged(i),
-                child: Container(
-                  alignment: Alignment.center,
-                  padding: EdgeInsets.symmetric(vertical: 10.h, horizontal: 2.w),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                        color: current == i ? AgentChrome.accent : Colors.transparent,
-                        width: 2,
-                      ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => onChanged(i),
+              child: Container(
+                margin: EdgeInsets.only(right: i == games.length - 1 ? 0 : 14.w),
+                padding: EdgeInsets.only(top: 8.h, bottom: 8.h),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: current == i ? AgentChrome.accent : Colors.transparent,
+                      width: 2,
                     ),
                   ),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      games[i],
-                      maxLines: 1,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        color: current == i ? AgentChrome.accent : AppColors.textSecondary,
-                        fontWeight: current == i ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
+                ),
+                child: Text(
+                  games[i],
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 13.sp,
+                    color: current == i ? AgentChrome.accent : AppColors.textSecondary,
+                    fontWeight: current == i ? FontWeight.w600 : FontWeight.w400,
                   ),
                 ),
               ),

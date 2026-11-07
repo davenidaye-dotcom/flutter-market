@@ -9,6 +9,8 @@ class ClientCertStore {
   String? keyPem;
   DateTime? expiresAt;
   int renewBeforeSeconds = 900;
+  /// 登录已回会话，证书还在 /auth/cert/refresh 上。业务请求先等这一次。
+  bool pending = false;
 
   bool get hasCert =>
       certPem != null &&
@@ -27,7 +29,17 @@ class ClientCertStore {
   }
 
   /// 登录或换证响应。没有 PEM 时清掉内存证，回到纯 Token。
+  /// clientCertPending 只表示马上去领证，不能把这次登录当成「没有证书要求」。
   void applyLoginMap(Map<String, dynamic> map) {
+    if (map['clientCertPending'] == true) {
+      certPem = null;
+      keyPem = null;
+      expiresAt = null;
+      pending = true;
+      _notify();
+      return;
+    }
+    pending = false;
     final cert = map['clientCertPem']?.toString();
     final key = map['clientKeyPem']?.toString();
     if (cert == null || cert.isEmpty || key == null || key.isEmpty) {

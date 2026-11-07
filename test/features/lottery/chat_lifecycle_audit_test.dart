@@ -59,7 +59,7 @@ void main() {
       expect(drawIssues, contains(5281));
     });
 
-    test('API 回补后 timeline 含 synthetic 封盘且按期排序', () {
+    test('API 回补后开奖按期排序，不再补没有时间的封盘线', () {
       cache.syncDrawsFromApi(
         roomId: roomId,
         gameId: gameB,
@@ -93,7 +93,7 @@ void main() {
       expect(draws, [5279, 5280, 5281]);
       expect(
         timeline.any((m) => m.content.contains('停止战斗')),
-        isTrue,
+        isFalse,
       );
     });
   });
@@ -120,7 +120,7 @@ void main() {
   });
 
   group('buffer 裁剪', () {
-    test('25 期开奖全部留在 buffer', () {
+    test('超过窗口的开奖只留最近 15 期', () {
       for (var i = 5250; i <= 5274; i++) {
         cache.pushOnce(
           roomId: roomId,
@@ -135,8 +135,8 @@ void main() {
           .map(extractIssue)
           .whereType<String>()
           .toList();
-      expect(issues.length, 25);
-      expect(issues.first, '5250');
+      expect(issues.length, ChatPushCache.chatHistoryIssueLimit);
+      expect(issues.first, '5260');
       expect(issues.last, '5274');
     });
   });

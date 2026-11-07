@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
@@ -16,6 +15,7 @@ import '../../../shared/widgets/red_count_badge.dart';
 import '../../auth/providers/auth_session_provider.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
 import '../../profile/app_release.dart';
+import '../../profile/pages/profile_page.dart';
 import '../data/host_mock.dart';
 import '../providers/host_dash_dirty_provider.dart';
 import '../providers/host_pending_audit_provider.dart';
@@ -39,7 +39,6 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
     with AutomaticKeepAliveClientMixin {
   Map<String, dynamic> _dash = {};
   bool _loading = true;
-  bool _bgMusic = false;
   Timer? _dashDirtyTimer;
 
   @override
@@ -49,7 +48,6 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
   void initState() {
     super.initState();
     Future.microtask(_loadDash);
-    Future.microtask(_loadBgm);
   }
 
   @override
@@ -65,26 +63,6 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
       if (!mounted) return;
       unawaited(_loadDash());
     });
-  }
-
-  Future<void> _loadBgm() async {
-    await BgmPrompt.loadLocal();
-    if (!mounted) return;
-    setState(() => _bgMusic = BgmPrompt.enabled);
-  }
-
-  Future<void> _setBgm(bool value) async {
-    final prev = _bgMusic;
-    setState(() => _bgMusic = value);
-    await BgmPrompt.setEnabled(value);
-    try {
-      await ref.read(ownerRepositoryProvider).updateBgm(value);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _bgMusic = prev);
-      await BgmPrompt.setEnabled(prev);
-      AppToast.error(e.toString());
-    }
   }
 
   Future<void> _loadDash() async {
@@ -261,18 +239,11 @@ class _HostManageCenterPageState extends ConsumerState<HostManageCenterPage>
                       clipBehavior: Clip.antiAlias,
                       child: Column(
                         children: [
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 6.h),
-                            child: Row(
-                              children: [
-                                Expanded(child: Text('背景音乐', style: TextStyle(fontSize: 15.sp))),
-                                Switch(
-                                  value: _bgMusic,
-                                  onChanged: (v) => unawaited(_setBgm(v)),
-                                  activeThumbColor: Colors.white,
-                                  activeTrackColor: AppColors.primaryLight,
-                                ),
-                              ],
+                          _menu(
+                            '背景音乐',
+                            () => pushHostPage(
+                              context,
+                              BgmHubPage(roomId: roomId, host: true),
                             ),
                           ),
                           _div(),

@@ -78,7 +78,7 @@ class FlyroomWsClient {
   /// 握手被拒且手上没有可用的证：总后台可能刚打开双向证书，换一次证再连。
   Future<WebSocketChannel> _open() async {
     final store = ClientCertStore.instance;
-    if (store.shouldRenew) {
+    if (store.pending || store.shouldRenew) {
       await ClientCertRefresh.refresh();
     }
     try {
@@ -215,6 +215,10 @@ class FlyroomWsClient {
     'OWNER_DASH_DIRTY': 3,
     'CS_MESSAGE': 3,
     'APPLY_NOTICE': 3,
+    'ROOM_GRANTED': 0,
+    'ROOM_DENIED': 0,
+    'ENTER_ROOM_OK': 0,
+    'ENTER_ROOM_FAIL': 0,
     'REDPACK_NOTICE': 3,
     'SITE_NOTICE': 3,
     'SETTLE_RESULT': 3,

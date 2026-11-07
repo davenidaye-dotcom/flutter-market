@@ -127,6 +127,9 @@ class AgentRepository {
     String status = 'SETTLED',
     String? source,
     int? bindingId,
+    String? issueNo,
+    int pageNum = 1,
+    int pageSize = 20,
   }) async {
     final data = await _client.get('/agent/reports/tickets/issues', query: {
       'startDate': startDate,
@@ -136,6 +139,9 @@ class AgentRepository {
       'status': status,
       if (source != null && source.isNotEmpty) 'source': source,
       if (bindingId != null) 'bindingId': bindingId,
+      if (issueNo != null && issueNo.isNotEmpty) 'issueNo': issueNo,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
     });
     return _asMap(data);
   }

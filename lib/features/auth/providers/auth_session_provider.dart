@@ -8,6 +8,8 @@ import '../../../data/models/user_model.dart';
 import '../../../data/repositories/providers.dart';
 import '../../room/cs_unread.dart';
 import '../device_login_store.dart';
+import '../../../core/network/client_cert_store.dart';
+import '../../../core/network/member_ws_session.dart';
 import '../../../core/network/session_store.dart';
 
 class AuthSession {
@@ -108,6 +110,8 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
   }
 
   Future<void> logout() async {
+    MemberWsSession.instance.suspend();
+    _dropCert();
     final username = state.user?.username;
     final cleared = await _ref.read(authRepositoryProvider).logout();
     if (!cleared) return;
@@ -118,11 +122,21 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
 
   /// 还停在登录页时切到房主/代理：丢掉已经写上的玩家会话，但不删设备快登令牌。
   void abandonLocal() {
+    MemberWsSession.instance.suspend();
+    _dropCert();
     state = const AuthSession();
+  }
+
+  void _dropCert() {
+    final store = ClientCertStore.instance;
+    store.pending = false;
+    store.clear();
   }
 
   /// 服务端已注销时只清本地会话，不再请求退出接口。
   void dropLocal() {
+    MemberWsSession.instance.suspend();
+    _dropCert();
     // 被踢/会话失效：不能让登录页立刻拿旧设备令牌又登回去
     final username = state.user?.username;
     if (username != null) unawaited(DeviceLoginStore.clear(username));
