@@ -3,19 +3,24 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config/router/route_paths.dart';
+import '../../config/theme/app_colors.dart';
 import '../../features/auth/device_login_store.dart';
 import '../../features/auth/providers/auth_session_provider.dart';
+import '../../features/lottery/providers/lottery_live_provider.dart';
+import 'emulator_safe_dialog.dart';
 import 'page_app_bar.dart';
 
 /// 统一返回：页内按钮与系统返回共用，一次只退一层。
 /// 抽屉 → 键盘 → 浮层（弹窗 / 盖层 / 聊天）→ 分支弹层和子页 → 页内下钻
-/// → 底栏或侧栏上一页 → 路由栈上一页 → 退出登录。
+/// → 代理侧栏上一页 → 玩家/房主主目录确认离开 → 路由栈上一页 → 退出登录。
 /// 登录页再返回退出软件。栈已经走完时，2 秒内再按一次也退出软件。
 DateTime? _lastRootBack;
 bool _exiting = false;
+bool _leaveDialogOpen = false;
 
 void appHandleBack(BuildContext context) {
   // 抽屉不是路由。系统返回的 context 在 Scaffold 外面，要往下找。
@@ -43,20 +48,155 @@ void appHandleBack(BuildContext context) {
     return;
   }
 
-  // 代理侧栏路径 / 房主·会员底栏，各退一页。
+  // 代理侧栏仍按自己的路径栈退，不弹房间这套确认。
   final pathBack = AgentShellPathBack.maybeOf(context);
   if (pathBack != null && pathBack.tryBack()) return;
-  final tabBack = ShellTabBack.maybeOf(context);
-  if (tabBack != null && tabBack.tryBack()) return;
+
+  // 玩家 / 房主壳的五个主目录：子页面已经在上面退完。
+  // 这里不再顺着底栏历史切栏目，单击和系统返回都先确认。
+  if (ShellTabBack.maybeOf(context) != null) {
+    unawaited(_confirmLeaveShell(context));
+    return;
+  }
 
   if (_tryPopRoute(context)) return;
 
   _onStackEmpty(context);
 }
 
+/// 主目录根上的离开确认。玩家回进房页，房主（含协管）退出到登录页。
+Future<void> _confirmLeaveShell(BuildContext context) async {
+  if (_leaveDialogOpen || _exiting) return;
+  _leaveDialogOpen = true;
+  bool? ok;
+  try {
+    ok = await showEmulatorSafeDialog<bool>(
+      context: context,
+      barrierColor: const Color(0x73000000),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        elevation: 0,
+        insetPadding: EdgeInsets.symmetric(horizontal: 24.w),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16.r),
+        ),
+        child: SizedBox(
+          width: 280.w,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(22.w, 22.h, 22.w, 22.h),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '是否确定退出登录？',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 18.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _LeaveChoice(
+                        label: '取消',
+                        background: AppColors.sidebarInactive,
+                        foreground: AppColors.textPrimary,
+                        onTap: safeDialogPop(ctx, false),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: _LeaveChoice(
+                        label: '确定',
+                        background: AppColors.primary,
+                        foreground: Colors.white,
+                        onTap: safeDialogPop(ctx, true),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  } finally {
+    _leaveDialogOpen = false;
+  }
+  if (ok != true || !context.mounted) return;
+
+  final container = ProviderScope.containerOf(context, listen: false);
+  final session = container.read(authSessionProvider);
+  final roomKey = _shellRoomKey(context) ?? session.user?.roomId;
+  dismissAllShellCovers();
+  if (roomKey != null && roomKey.isNotEmpty) {
+    container.invalidate(roomLotteryLiveProvider(roomKey));
+  }
+  if (session.isHostSide) {
+    await container.read(authSessionProvider.notifier).logout();
+    if (!context.mounted) return;
+    if (container.read(authSessionProvider).isLoggedIn) return;
+    appGoLoginClearingStack(context);
+    return;
+  }
+  context.go(RoutePaths.home);
+}
+
+String? _shellRoomKey(BuildContext context) {
+  final segs = GoRouterState.of(context).uri.pathSegments;
+  if (segs.length >= 2 && (segs[0] == 'room' || segs[0] == 'host')) {
+    final id = segs[1].trim();
+    if (id.isNotEmpty) return id;
+  }
+  return null;
+}
+
+class _LeaveChoice extends StatelessWidget {
+  const _LeaveChoice({
+    required this.label,
+    required this.background,
+    required this.foreground,
+    required this.onTap,
+  });
+
+  final String label;
+  final Color background;
+  final Color foreground;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 40.h,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(20.r),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 14.sp,
+            color: foreground,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 void _onStackEmpty(BuildContext context) {
   final now = DateTime.now();
-  final again = _lastRootBack != null &&
+  final again =
+      _lastRootBack != null &&
       now.difference(_lastRootBack!) < const Duration(seconds: 2);
   _lastRootBack = now;
 
@@ -77,9 +217,10 @@ void _onStackEmpty(BuildContext context) {
 }
 
 bool _isLoggedIn(BuildContext context) {
-  return ProviderScope.containerOf(context, listen: false)
-      .read(authSessionProvider)
-      .isLoggedIn;
+  return ProviderScope.containerOf(
+    context,
+    listen: false,
+  ).read(authSessionProvider).isLoggedIn;
 }
 
 Future<void> _leaveToLogin(BuildContext context) async {
@@ -191,11 +332,7 @@ class _AppBackScopeState extends State<AppBackScope> {
 
 /// 房主/会员 StatefulShell 底栏浏览历史：返回上一个 Tab。
 class ShellTabBack extends InheritedWidget {
-  const ShellTabBack({
-    super.key,
-    required this.tryBack,
-    required super.child,
-  });
+  const ShellTabBack({super.key, required this.tryBack, required super.child});
 
   final bool Function() tryBack;
 
@@ -205,7 +342,8 @@ class ShellTabBack extends InheritedWidget {
   }
 
   @override
-  bool updateShouldNotify(ShellTabBack oldWidget) => tryBack != oldWidget.tryBack;
+  bool updateShouldNotify(ShellTabBack oldWidget) =>
+      tryBack != oldWidget.tryBack;
 }
 
 /// 代理侧栏「入栈」：ShellRoute 下用 go 换页 + 自建路径栈（等同上一页历史）。
@@ -221,8 +359,9 @@ void agentShellPush(BuildContext context, String path) {
   context.push(path);
 }
 
-String _normPath(String path) =>
-    path.endsWith('/') && path.length > 1 ? path.substring(0, path.length - 1) : path;
+String _normPath(String path) => path.endsWith('/') && path.length > 1
+    ? path.substring(0, path.length - 1)
+    : path;
 
 /// 代理壳路径浏览历史。
 class AgentShellPathBack extends InheritedWidget {
