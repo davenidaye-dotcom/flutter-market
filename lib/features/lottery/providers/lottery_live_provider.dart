@@ -1953,8 +1953,10 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     if (type == 'CS_MESSAGE') {
       final push = _csPushFrom(payload);
       _emitCs(push);
-      final host = _wsIsHost || _ref.read(authSessionProvider).isHostSide;
-      final incoming = host ? push.direction == 'IN' : push.direction == 'OUT';
+      // 只看当前登录的身份，不看这条连接上次是不是房主。连错了会变成一边响、另一边永远不响。
+      final host = _ref.read(authSessionProvider).isHostSide;
+      final dir = push.direction.trim().toUpperCase();
+      final incoming = host ? dir == 'IN' : dir == 'OUT';
       if (incoming) {
         final id = push.messageId.trim().isNotEmpty
             ? push.messageId.trim()
@@ -2072,6 +2074,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
     }
 
     if (type == 'SEAL_WARN' || type == 'SEALED') {
+      // 只看这个彩种的封盘开关。消息开关、别的彩种都不响。
       if (type == 'SEALED') {
         BgmPrompt.playSeal(roomId, gameType, payload['issueNo']?.toString() ?? '');
       }
@@ -2095,17 +2098,6 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       final sender = (payload['senderName'] ?? '会员').toString();
       final orderId = payload['orderId']?.toString() ?? '';
       final accountId = '${payload['accountId'] ?? ''}'.trim();
-      final myId = (_ref.read(authSessionProvider).user?.id ?? '').trim();
-      if (accountId.isNotEmpty && accountId != myId) {
-        final eventId = '${payload['id'] ?? ''}'.trim();
-        final seq = _seqOf(payload);
-        final soundId = eventId.isNotEmpty
-            ? 'chat|$eventId'
-            : (seq > 0
-                ? 'chat|$roomId|$gameType|$seq'
-                : 'chat|$roomId|$gameType|$accountId|$issue|$content');
-        BgmPrompt.playMessage(soundId);
-      }
       final key = orderId.isNotEmpty
           ? 'bet-chat-$gameType-$orderId'
           : 'chat-$gameType-${DateTime.now().millisecondsSinceEpoch}';
@@ -2162,6 +2154,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       );
       final issue = payload['issueNo']?.toString() ?? '';
       if (ranks.isEmpty) return;
+      // 只看这个彩种的开奖开关。消息开关、别的彩种都不响。
       BgmPrompt.playDraw(roomId, gameType, issue);
       final result = _engine.onDrawResult(
         gameType,

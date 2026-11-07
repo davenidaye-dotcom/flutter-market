@@ -123,6 +123,7 @@ class _LotteryHallPageState extends ConsumerState<LotteryHallPage>
                 type: visible ? MaterialType.canvas : MaterialType.transparency,
                 color: visible ? const Color(0xFFF5F5F5) : Colors.transparent,
                 child: AppToastScope(
+                  active: visible,
                   child: ChatOverlayVisibility(
                     visible: visible,
                     child: HeroControllerScope.none(

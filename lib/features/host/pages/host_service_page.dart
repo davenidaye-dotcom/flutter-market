@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
@@ -76,6 +77,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   List<_CsSession> _sessions = [];
   bool _loading = true;
   StreamSubscription<CsChatPush>? _csSub;
+  bool _coverQuiet = false;
   Timer? _listPoll;
   late final AppBackLayer _sessionBack = AppBackLayer(
     _closeOpenSession,
@@ -85,6 +87,11 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
   @override
   void initState() {
     super.initState();
+    // 底栏里的客服页切走后还留着，不能在这里按住。只有从会员详情盖出来的这一页会关掉。
+    if ((widget.openAccountId ?? '').trim().isNotEmpty) {
+      _coverQuiet = true;
+      BgmPrompt.holdMessage();
+    }
     _csSub = ref
         .read(roomLotteryLiveProvider(widget.roomId).notifier)
         .csPushes
@@ -119,6 +126,7 @@ class _HostServicePageState extends ConsumerState<HostServicePage> {
 
   @override
   void dispose() {
+    if (_coverQuiet) BgmPrompt.releaseMessage();
     unregisterAppBackLayer(_sessionBack);
     _listPoll?.cancel();
     _csSub?.cancel();

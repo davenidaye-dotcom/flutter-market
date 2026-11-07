@@ -2388,7 +2388,7 @@ class _ChatBetPageState extends ConsumerState<ChatBetPage>
                           }
                           pushLocalPage(
                             context,
-                            CustomerServicePage(roomId: widget.roomId),
+                            CustomerServicePage(roomId: widget.roomId, cover: true),
                           );
                         },
                         onMarket: () {

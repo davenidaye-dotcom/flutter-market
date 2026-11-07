@@ -17,7 +17,13 @@ abstract final class AppToast {
 
   static void _unbind(_AppToastLayer layer) => _layers.remove(layer);
 
-  static _AppToastLayer? get _top => _layers.isEmpty ? null : _layers.last;
+  /// 后注册的盖层优先，但藏起来的聊天层不接提示。
+  static _AppToastLayer? get _top {
+    for (var i = _layers.length - 1; i >= 0; i--) {
+      if (_layers[i].active) return _layers[i];
+    }
+    return null;
+  }
 
   static void info(String msg) {
     final layer = _top;
@@ -49,13 +55,18 @@ abstract final class AppToast {
 
 abstract class _AppToastLayer {
   void show(String msg);
+
+  /// 当前盖层看得见。藏在 Offstage 里的保活聊天为 false。
+  bool get active;
 }
 
-/// 包在 Overlay 盖层里：AppToast 显示在本层最上方，关闭盖层时一起消失
+/// 包在 Overlay 盖层里：AppToast 显示在本层最上方，关闭盖层时一起消失。
+/// [active] 为 false 时不接提示，让给后面仍看得见的层；都藏起来则走 EasyLoading。
 class AppToastScope extends StatefulWidget {
-  const AppToastScope({super.key, required this.child});
+  const AppToastScope({super.key, required this.child, this.active = true});
 
   final Widget child;
+  final bool active;
 
   @override
   State<AppToastScope> createState() => _AppToastScopeState();
@@ -64,6 +75,9 @@ class AppToastScope extends StatefulWidget {
 class _AppToastScopeState extends State<AppToastScope> implements _AppToastLayer {
   String? _msg;
   Timer? _timer;
+
+  @override
+  bool get active => widget.active;
 
   @override
   void initState() {

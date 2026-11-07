@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/audio/bgm_prompt.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../lottery/providers/lottery_live_provider.dart';
@@ -19,9 +20,11 @@ import '../cs_rich.dart';
 
 /// Online CS chat for member room.
 class CustomerServicePage extends ConsumerStatefulWidget {
-  const CustomerServicePage({super.key, required this.roomId});
+  const CustomerServicePage({super.key, required this.roomId, this.cover = false});
 
   final String roomId;
+  /// 从游戏里盖出来的这一页。底栏那一页不在这里按住，离开底栏时页面还在，按住会松不开。
+  final bool cover;
 
   @override
   ConsumerState<CustomerServicePage> createState() => _CustomerServicePageState();
@@ -34,6 +37,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
   final _loadingNotifier = ValueNotifier(true);
   final _sendingNotifier = ValueNotifier(false);
   StreamSubscription<CsChatPush>? _csSub;
+  bool _coverQuiet = false;
   bool _sharePrompting = false;
   bool _attachOpen = false;
   late final AppBackLayer _attachBack = AppBackLayer(
@@ -49,6 +53,10 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
   @override
   void initState() {
     super.initState();
+    if (widget.cover) {
+      _coverQuiet = true;
+      BgmPrompt.holdMessage();
+    }
     _csSub = ref
         .read(roomLotteryLiveProvider(widget.roomId).notifier)
         .csPushes
@@ -66,6 +74,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
 
   @override
   void dispose() {
+    if (_coverQuiet) BgmPrompt.releaseMessage();
     unregisterAppBackLayer(_attachBack);
     _csSub?.cancel();
     _ctrl.dispose();
@@ -83,10 +92,7 @@ class _CustomerServicePageState extends ConsumerState<CustomerServicePage> {
       return;
     }
     _ingest(csPushRow(push));
-    // 人就在客服页：房主这条回复算已读，底栏数字清掉
-    if (push.direction == 'OUT') {
-      unawaited(_load(silent: true));
-    }
+    // 响一声不等于已读。底栏未读留到玩家点开「在线客服」再清。
   }
 
   void _ingest(Map<String, dynamic> row) {

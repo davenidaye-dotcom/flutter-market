@@ -57,6 +57,7 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
   @override
   void dispose() {
     _csTimer?.cancel();
+    BgmPrompt.setShellOnCs(false);
     super.dispose();
   }
 
@@ -80,6 +81,7 @@ class _RoomShellPageState extends ConsumerState<RoomShellPage> {
 
   /// 底栏、goBranch、路由切分支都记上一页，返回时按进入顺序退。
   void _noteBranch(int branch) {
+    BgmPrompt.setShellOnCs(branch == 1);
     if (_prevBranch >= 0 && branch != _prevBranch) {
       if (_backTo == branch) {
         _backTo = null;

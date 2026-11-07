@@ -81,6 +81,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
     _badgeTimer?.cancel();
     _csTimer?.cancel();
     _applyTimer?.cancel();
+    BgmPrompt.setShellOnCs(false);
     super.dispose();
   }
 
@@ -109,6 +110,7 @@ class _HostShellPageState extends ConsumerState<HostShellPage> {
 
   /// 底栏、goBranch、路由切分支都记上一页，返回时按进入顺序退。
   void _noteBranch(int branch) {
+    BgmPrompt.setShellOnCs(branch == 1);
     if (_prevBranch >= 0 && branch != _prevBranch) {
       if (_backTo == branch) {
         _backTo = null;
