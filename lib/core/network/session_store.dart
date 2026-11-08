@@ -171,6 +171,25 @@ class SessionStore {
     rememberRoom(roomCode: this.roomCode, roomId: this.roomId);
   }
 
+  /// 清掉当前房间，保留 token 和已记住的房间号对照。
+  Future<void> clearCurrentRoom() {
+    return _serial(_clearCurrentRoom);
+  }
+
+  Future<void> _clearCurrentRoom() async {
+    final captured = epoch;
+    roomId = null;
+    roomCode = null;
+    roomName = null;
+    ownerNickname = null;
+    final prefs = await SharedPreferences.getInstance();
+    if (epoch != captured) return;
+    await prefs.remove(_kRoomId);
+    await prefs.remove(_kRoomCode);
+    await prefs.remove(_kRoomName);
+    await prefs.remove(_kOwnerNickname);
+  }
+
   /// 记下房间号和数字 id 的对应。房间号或 id 为空时忽略。
   void rememberRoom({String? roomCode, String? roomId}) {
     final code = roomCode?.trim() ?? '';

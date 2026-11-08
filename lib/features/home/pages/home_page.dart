@@ -362,8 +362,10 @@ class _HomePageState extends ConsumerState<HomePage> {
     final live = ref.read(roomLotteryLiveProvider(room.roomCode).notifier);
     unawaited(live.ensureLoaded());
     if (!mounted) return;
-    await context.push(RoutePaths.roomLottery(room.roomCode));
-    // 从房间返回后刷新历史（进房时后端才写入 history）
+    // 房间页用 go 回到首页时，push 的 Future 不会完成。转圈只盖住进房请求。
+    final returned = context.push(RoutePaths.roomLottery(room.roomCode));
+    if (mounted) setState(() => _loading = false);
+    await returned;
     if (mounted) unawaited(_loadHistory());
   }
 

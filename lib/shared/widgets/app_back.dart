@@ -8,6 +8,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../config/router/route_paths.dart';
 import '../../config/theme/app_colors.dart';
+import '../../core/network/session_store.dart';
+import '../../data/repositories/providers.dart';
 import '../../features/auth/device_login_store.dart';
 import '../../features/auth/providers/auth_session_provider.dart';
 import '../../features/lottery/providers/lottery_live_provider.dart';
@@ -64,10 +66,12 @@ void appHandleBack(BuildContext context) {
   _onStackEmpty(context);
 }
 
-/// 主目录根上的离开确认。玩家回进房页，房主（含协管）退出到登录页。
+/// 主目录根上的离开确认。玩家离房后回进房页，房主（含协管）退出到登录页。
 Future<void> _confirmLeaveShell(BuildContext context) async {
   if (_leaveDialogOpen || _exiting) return;
   _leaveDialogOpen = true;
+  final container = ProviderScope.containerOf(context, listen: false);
+  final hostSide = container.read(authSessionProvider).isHostSide;
   bool? ok;
   try {
     ok = await showEmulatorSafeDialog<bool>(
@@ -89,7 +93,7 @@ Future<void> _confirmLeaveShell(BuildContext context) async {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  '是否确定退出登录？',
+                  hostSide ? '是否确定退出登录？' : '是否离开房间？',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 16.sp,
@@ -126,25 +130,45 @@ Future<void> _confirmLeaveShell(BuildContext context) async {
       ),
     );
   } finally {
-    _leaveDialogOpen = false;
+    if (ok != true) _leaveDialogOpen = false;
   }
-  if (ok != true || !context.mounted) return;
+  if (ok != true || !context.mounted) {
+    _leaveDialogOpen = false;
+    return;
+  }
 
-  final container = ProviderScope.containerOf(context, listen: false);
   final session = container.read(authSessionProvider);
   final roomKey = _shellRoomKey(context) ?? session.user?.roomId;
   dismissAllShellCovers();
-  if (roomKey != null && roomKey.isNotEmpty) {
-    container.invalidate(roomLotteryLiveProvider(roomKey));
-  }
-  if (session.isHostSide) {
-    await container.read(authSessionProvider.notifier).logout();
+  try {
+    if (hostSide) {
+      if (roomKey != null && roomKey.isNotEmpty) {
+        container.invalidate(roomLotteryLiveProvider(roomKey));
+      }
+      await container.read(authSessionProvider.notifier).logout();
+      if (!context.mounted) return;
+      if (container.read(authSessionProvider).isLoggedIn) return;
+      appGoLoginClearingStack(context);
+      return;
+    }
+    try {
+      await container.read(roomRepositoryProvider).leaveRoom();
+    } catch (_) {}
+    await SessionStore.instance.clearCurrentRoom();
+    container.read(authSessionProvider.notifier).clearBoundRoom();
     if (!context.mounted) return;
-    if (container.read(authSessionProvider).isLoggedIn) return;
-    appGoLoginClearingStack(context);
-    return;
+    final router = GoRouter.of(context);
+    if (router.canPop()) {
+      router.pop();
+    } else {
+      context.go(RoutePaths.home);
+    }
+    if (roomKey != null && roomKey.isNotEmpty) {
+      container.invalidate(roomLotteryLiveProvider(roomKey));
+    }
+  } finally {
+    _leaveDialogOpen = false;
   }
-  context.go(RoutePaths.home);
 }
 
 String? _shellRoomKey(BuildContext context) {
