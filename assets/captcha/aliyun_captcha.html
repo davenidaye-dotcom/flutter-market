@@ -47,8 +47,8 @@
       report({ ok: false, height: h });
     }
     function slideLayout() {
-      // 官方宽度最低 320，再用 rem 缩到约 240，拖程短一些。
-      return { width: 320, rem: 0.75 };
+      // __CAPTCHA_REM__：iOS 滑块 0.75，安卓拼图 1。拼图尺寸不要用 CSS 再压。
+      return { width: 320, rem: __CAPTCHA_REM__ };
     }
     function initCaptcha() {
       if (typeof window.initAliyunCaptcha !== "function") {
@@ -58,7 +58,7 @@
       var layout = slideLayout();
       try {
         window.initAliyunCaptcha({
-          SceneId: "1x1kohduf",
+          SceneId: "__SCENE_ID__",
           mode: "embed",
           element: "#captcha-element",
           button: "#button",

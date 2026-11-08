@@ -17,7 +17,7 @@ class AliyunCaptchaPage extends StatefulWidget {
   static final GlobalKey _webKey = GlobalKey();
   static var _visible = false;
   static var _ready = false;
-  static var _webHeight = 56.0;
+  static var _webHeight = _captchaRestHeight();
   static String? _error;
   static var _loadGen = 0;
 
@@ -48,7 +48,7 @@ class AliyunCaptchaPage extends StatefulWidget {
     _visible = false;
     _ready = false;
     _error = null;
-    _webHeight = 56;
+    _webHeight = _captchaRestHeight();
     if (entry != null) {
       try {
         entry.remove();
@@ -79,8 +79,7 @@ class AliyunCaptchaPage extends StatefulWidget {
       barrierLabel: '安全验证',
       barrierColor: const Color(0x73000000),
       pageBuilder: (dialogContext, _, _) {
-        final screen = MediaQuery.sizeOf(dialogContext).width;
-        final width = screen < 300 ? screen - 32 : 280.0;
+        final width = _captchaDialogWidth(MediaQuery.sizeOf(dialogContext).width);
         return Center(
           child: Material(
             color: Colors.white,
@@ -117,7 +116,7 @@ class AliyunCaptchaPage extends StatefulWidget {
 
   static Future<void> _load(WebViewController controller) async {
     final gen = ++_loadGen;
-    final html = await rootBundle.loadString('assets/captcha/aliyun_captcha.html');
+    final html = _fillCaptchaHtml(await rootBundle.loadString('assets/captcha/aliyun_captcha.html'));
     if (gen != _loadGen || !identical(_controller, controller)) return;
     await controller.loadHtmlString(html, baseUrl: 'https://o.alicdn.com/');
   }
@@ -163,7 +162,7 @@ class AliyunCaptchaPage extends StatefulWidget {
     _visible = false;
     _ready = false;
     _error = null;
-    _webHeight = 56;
+    _webHeight = _captchaRestHeight();
     final wait = _wait;
     _wait = null;
     _entry?.markNeedsBuild();
@@ -180,14 +179,13 @@ class AliyunCaptchaPage extends StatefulWidget {
       return Positioned(
         left: -1200,
         top: 0,
-        width: 280,
-        height: 80,
+        width: _androidPuzzle ? 360.0 : 280.0,
+        height: _androidPuzzle ? 420.0 : 80.0,
         child: IgnorePointer(child: web),
       );
     }
-    final screen = MediaQuery.sizeOf(context).width;
-    final width = screen < 300 ? screen - 32 : 280.0;
-    final maxH = MediaQuery.sizeOf(context).height * 0.62;
+    final width = _captchaDialogWidth(MediaQuery.sizeOf(context).width);
+    final maxH = MediaQuery.sizeOf(context).height * (_androidPuzzle ? 0.78 : 0.62);
     final webHeight = _webHeight.clamp(48.0, maxH);
     return Stack(
       children: [
@@ -232,14 +230,15 @@ class AliyunCaptchaPage extends StatefulWidget {
                         ],
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: Text(
-                        '拖到最右边完成验证',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                    if (!_androidPuzzle)
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                        child: Text(
+                          '拖到最右边完成验证',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                        ),
                       ),
-                    ),
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -281,7 +280,7 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
   String? _error;
   var _ready = false;
   var _finished = false;
-  var _webHeight = 56.0;
+  var _webHeight = _captchaRestHeight();
 
   @override
   void initState() {
@@ -306,7 +305,7 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
   }
 
   Future<void> _load() async {
-    final html = await rootBundle.loadString('assets/captcha/aliyun_captcha.html');
+    final html = _fillCaptchaHtml(await rootBundle.loadString('assets/captcha/aliyun_captcha.html'));
     if (!mounted || _finished) return;
     await _controller.loadHtmlString(html, baseUrl: 'https://o.alicdn.com/');
   }
@@ -327,7 +326,7 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
       Navigator.of(context).pop(param);
       return;
     }
-    final maxH = MediaQuery.sizeOf(context).height * 0.62;
+    final maxH = MediaQuery.sizeOf(context).height * (_androidPuzzle ? 0.78 : 0.62);
     var changed = false;
     final height = decoded['height'];
     if (height is num) {
@@ -375,14 +374,15 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
               ],
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              '拖到最右边完成验证',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          if (!_androidPuzzle)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Text(
+                '拖到最右边完成验证',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
             ),
-          ),
           if (_error != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -409,6 +409,41 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
       ),
     );
   }
+}
+
+bool get _androidPuzzle => defaultTargetPlatform == TargetPlatform.android;
+
+/// 安卓拼图用新场景，iOS 滑块继续用原来的场景。
+String _fillCaptchaHtml(String raw) {
+  final puzzle = _androidPuzzle;
+  final rem = puzzle ? _puzzleRem().toStringAsFixed(3) : '0.75';
+  final scene = puzzle ? 'n5qc0nf5c' : '1x1kohduf';
+  return raw.replaceAll('__SCENE_ID__', scene).replaceAll('__CAPTCHA_REM__', rem);
+}
+
+double _captchaDialogWidth(double screen) {
+  if (!_androidPuzzle) {
+    return screen < 300 ? screen - 32 : 280.0;
+  }
+  final width = screen - 32;
+  if (width < 260) return width;
+  if (width > 360) return 360.0;
+  return width;
+}
+
+double _captchaRestHeight() => _androidPuzzle ? 320.0 : 56.0;
+
+double _puzzleRem() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return 1;
+  final view = views.first;
+  final logical = view.physicalSize.width / view.devicePixelRatio;
+  if (logical <= 0) return 1;
+  final inner = _captchaDialogWidth(logical) - 16;
+  final rem = inner / 320;
+  if (rem > 1) return 1;
+  if (rem < 0.8) return 0.8;
+  return rem;
 }
 
 class _LoadingButton extends StatelessWidget {
