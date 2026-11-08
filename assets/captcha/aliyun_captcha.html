@@ -7,8 +7,8 @@
     window.AliyunCaptchaConfig = { region: "cn", prefix: "1k5s16e" };
   </script>
   <style>
-    html, body { margin: 0; background: #fff; font-family: sans-serif; }
-    body { padding: 0 8px 4px; }
+    html, body { margin: 0; background: transparent; font-family: sans-serif; }
+    body { padding: 0; }
     #captcha-element { width: 100%; min-height: 40px; }
     #button {
       position: absolute;
@@ -28,9 +28,44 @@
       AliyunCaptchaBridge.postMessage(JSON.stringify(payload));
       return true;
     }
+    var puzzleMode = __PUZZLE_MODE__;
+    if (puzzleMode) {
+      var hintStyle = document.createElement("style");
+      hintStyle.textContent = "#aliyunCaptcha-sliding-text, #aliyunCaptcha-sliding-text * { color: #5c5c5c !important; -webkit-text-fill-color: #5c5c5c !important; } #aliyunCaptcha-sliding-slider, .aliyunCaptcha-sliding-slider { background: #4A89DC !important; background-color: #4A89DC !important; border-color: #2E6BB5 !important; color: #fff !important; } #aliyunCaptcha-sliding-slider *, .aliyunCaptcha-sliding-slider * { color: #fff !important; -webkit-text-fill-color: #fff !important; fill: #fff !important; }";
+      document.head.appendChild(hintStyle);
+    }
     var lastHeight = 0;
-    function measure() {
-      var bottom = 48;
+    var lastWidth = 0;
+    var puzzleReadySent = false;
+    function puzzleShown() {
+      var text = document.body.innerText || "";
+      if (text.indexOf("拼图") >= 0) return true;
+      var imgs = document.getElementsByTagName("img");
+      for (var i = 0; i < imgs.length; i++) {
+        if (imgs[i].clientHeight > 80) return true;
+      }
+      return false;
+    }
+    function darkenHint() {
+      if (!puzzleMode) return;
+      var nodes = document.body.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.children.length > 0) continue;
+        var text = (node.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("拖动滑块") < 0 && text.indexOf("完成拼图") < 0) continue;
+        if (text.length > 20) continue;
+        node.style.setProperty("color", "#5c5c5c", "important");
+        node.style.setProperty("-webkit-text-fill-color", "#5c5c5c", "important");
+      }
+    }
+    var pinCount = 0;
+    function contentBounds() {
+      var viewH = window.innerHeight || 420;
+      var viewW = window.innerWidth || 320;
+      var top = 0;
+      var bottom = 0;
+      var any = false;
       var nodes = document.body.getElementsByTagName("*");
       for (var i = 0; i < nodes.length; i++) {
         var node = nodes[i];
@@ -39,16 +74,159 @@
         if (style.display === "none" || style.visibility === "hidden") continue;
         var rect = node.getBoundingClientRect();
         if (rect.height < 2 || rect.width < 2) continue;
-        if (rect.bottom > bottom) bottom = rect.bottom;
+        if (rect.height > viewH * 0.9 && rect.width > viewW * 0.9) continue;
+        if (!any || rect.top < top) top = rect.top;
+        if (!any || rect.bottom > bottom) bottom = rect.bottom;
+        any = true;
       }
-      var h = Math.ceil(bottom);
-      if (Math.abs(h - lastHeight) < 2) return;
-      lastHeight = h;
-      report({ ok: false, height: h });
+      return any ? { top: top, bottom: bottom } : null;
     }
+    function hideLogo() {
+      var nodes = document.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("点击开始验证") >= 0) continue;
+        var cls = typeof node.className === "string" ? node.className.toLowerCase() : "";
+        var id = (node.id || "").toLowerCase();
+        var src = (node.getAttribute && node.getAttribute("src")) || "";
+        var alt = (node.getAttribute && node.getAttribute("alt")) || "";
+        var brand = text.indexOf("Alibaba") >= 0 || text.indexOf("阿里云") >= 0 || alt.indexOf("Alibaba") >= 0 || alt.indexOf("阿里") >= 0;
+        var logo = cls.indexOf("logo") >= 0 || id.indexOf("logo") >= 0 || src.indexOf("logo") >= 0;
+        if (brand || logo) node.style.setProperty("display", "none", "important");
+      }
+    }
+    function puzzleBox() {
+      var imgs = document.getElementsByTagName("img");
+      var img = null;
+      for (var i = 0; i < imgs.length; i++) {
+        if (imgs[i].clientHeight > 80) img = imgs[i];
+      }
+      if (!img) return null;
+      var node = img.parentElement;
+      while (node && node !== document.body) {
+        var text = node.innerText || "";
+        if (text.indexOf("拼图") >= 0 && node.offsetHeight > 140 && node.offsetWidth > 140) return node;
+        node = node.parentElement;
+      }
+      return img.parentElement;
+    }
+    function placePuzzle() {
+      var box = puzzleBox();
+      if (!box) return null;
+      box.style.setProperty("position", "relative", "important");
+      box.style.setProperty("left", "0px", "important");
+      box.style.setProperty("top", "0px", "important");
+      box.style.setProperty("right", "auto", "important");
+      box.style.setProperty("bottom", "auto", "important");
+      box.style.setProperty("transform", "none", "important");
+      box.style.setProperty("margin", "0px", "important");
+      var node = box.parentElement;
+      while (node && node !== document.body) {
+        var style = window.getComputedStyle(node);
+        var mask = node.offsetWidth > window.innerWidth * 0.85 && node.offsetHeight > window.innerHeight * 0.85;
+        if (mask) {
+          node.style.setProperty("position", "static", "important");
+          node.style.setProperty("background", "transparent", "important");
+        } else if (style.position === "fixed" || style.position === "absolute") {
+          node.style.setProperty("position", "relative", "important");
+          node.style.setProperty("left", "0px", "important");
+          node.style.setProperty("top", "0px", "important");
+          node.style.setProperty("transform", "none", "important");
+          node.style.setProperty("margin", "0px", "important");
+        }
+        node = node.parentElement;
+      }
+      return box;
+    }
+    function hideStart() {
+      var nodes = document.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("点击开始验证") < 0 || text.length > 24) continue;
+        node.style.setProperty("display", "none", "important");
+      }
+    }
+    function pinPopup() {
+      if (!puzzleShown() || pinCount > 3) return;
+      var bounds = contentBounds();
+      if (!bounds || Math.abs(bounds.top) < 2) return;
+      var box = document.getElementById("captcha-element");
+      if (!box) return;
+      var current = parseFloat(box.style.marginTop || "0");
+      if (isNaN(current)) current = 0;
+      box.style.marginTop = (current - bounds.top) + "px";
+      pinCount += 1;
+    }
+    var lastStage = "";
+    function bindClose() {
+      var nodes = document.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.getAttribute("data-close-bound")) continue;
+        var text = (node.textContent || "").replace(/\s/g, "");
+        var id = node.id || "";
+        var cls = typeof node.className === "string" ? node.className : "";
+        var isClose = text === "×" || text === "✕" || id.indexOf("close") >= 0 || cls.indexOf("close") >= 0;
+        if (!isClose || text.length > 4) continue;
+        node.setAttribute("data-close-bound", "1");
+        node.addEventListener("click", function () {
+          report({ ok: false, closed: true });
+        });
+      }
+    }
+    function publish() {
+      hideLogo();
+      var stage = puzzleShown() ? "puzzle" : "start";
+      var box = null;
+      if (stage === "puzzle") {
+        hideStart();
+        box = placePuzzle();
+        bindClose();
+      }
+      var bounds = contentBounds();
+      var h = stage === "start" ? 56 : 320;
+      var w = 0;
+      if (box) {
+        h = Math.ceil(box.offsetHeight) + 8;
+        w = Math.ceil(box.offsetWidth) + 8;
+      } else if (bounds) {
+        h = Math.ceil(bounds.bottom - bounds.top) + 8;
+      }
+      if (stage === "start") {
+        document.body.style.display = "block";
+        if (h > 72) h = 64;
+      }
+      if (stage === "puzzle") {
+        document.body.style.display = "flex";
+        document.body.style.justifyContent = "center";
+        document.body.style.alignItems = "center";
+        document.body.style.minHeight = "100%";
+        document.body.style.margin = "0";
+        if (h < 400) h = 400;
+        if (w < 340) w = 340;
+      }
+      if (puzzleReadySent && stage === lastStage && Math.abs(h - lastHeight) < 2 && Math.abs(w - lastWidth) < 2) {
+        darkenHint();
+        return;
+      }
+      lastHeight = h;
+      lastWidth = w;
+      lastStage = stage;
+      puzzleReadySent = true;
+      report({ ok: false, ready: true, stage: stage, height: h, width: w });
+      darkenHint();
+    }
+    function measure() {
+      publish();
+    }
+    window.addEventListener("resize", function () {
+      setTimeout(publish, 60);
+    });
     function slideLayout() {
-      // 官方宽度最低 320，再用 rem 缩到约 240，拖程短一些。
-      return { width: 320, rem: 0.75 };
+      // 拼图按弹层宽度缩放，不改碎片位置。
+      return { width: 320, rem: __CAPTCHA_REM__ };
     }
     function initCaptcha() {
       if (typeof window.initAliyunCaptcha !== "function") {
@@ -58,7 +236,7 @@
       var layout = slideLayout();
       try {
         window.initAliyunCaptcha({
-          SceneId: "1x1kohduf",
+          SceneId: "__SCENE_ID__",
           mode: "embed",
           element: "#captcha-element",
           button: "#button",
@@ -72,8 +250,7 @@
           fail: function () {},
           getInstance: function (instance) {
             window.captcha = instance;
-            report({ ok: false, ready: true });
-            measure();
+            publish();
           },
           onError: function (errorInfo) {
             var msg = (errorInfo && (errorInfo.msg || errorInfo.message)) || "安全验证加载失败";

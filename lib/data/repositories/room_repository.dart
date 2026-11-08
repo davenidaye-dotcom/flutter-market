@@ -97,6 +97,11 @@ class RoomRepository {
     return _enteredRoom(map, code);
   }
 
+  /// 离开当前房间。未进房时后端直接返回。
+  Future<void> leaveRoom() async {
+    await _client.post('/member/rooms/leave');
+  }
+
   RoomModel _enteredRoom(Map<String, dynamic> map, String code) {
     return RoomModel(
       id: code,

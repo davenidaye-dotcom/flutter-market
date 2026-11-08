@@ -90,6 +90,12 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
     state = AuthSession(user: user.copyWith(roomId: roomCode));
   }
 
+  void clearBoundRoom() {
+    final user = state.user;
+    if (user == null || (user.roomId?.isEmpty ?? true)) return;
+    state = AuthSession(user: user.copyWith(dropRoom: true));
+  }
+
   void updateNickname(String nickname) {
     final user = state.user;
     if (user == null) return;
@@ -110,6 +116,13 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
   }
 
   Future<void> logout() async {
+    if (state.user?.role == AppRole.player) {
+      try {
+        await _ref.read(roomRepositoryProvider).leaveRoom();
+      } catch (_) {}
+      await SessionStore.instance.clearCurrentRoom();
+      clearBoundRoom();
+    }
     MemberWsSession.instance.suspend();
     _dropCert();
     final username = state.user?.username;

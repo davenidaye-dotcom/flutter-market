@@ -17,7 +17,9 @@ class AliyunCaptchaPage extends StatefulWidget {
   static final GlobalKey _webKey = GlobalKey();
   static var _visible = false;
   static var _ready = false;
-  static var _webHeight = 56.0;
+  static var _stage = 'start';
+  static var _webHeight = _captchaRestHeight();
+  static var _webWidth = 0.0;
   static String? _error;
   static var _loadGen = 0;
 
@@ -47,8 +49,10 @@ class AliyunCaptchaPage extends StatefulWidget {
     _controller = null;
     _visible = false;
     _ready = false;
+    _stage = 'start';
     _error = null;
-    _webHeight = 56;
+    _webHeight = _captchaRestHeight();
+    _webWidth = 0;
     if (entry != null) {
       try {
         entry.remove();
@@ -79,16 +83,8 @@ class AliyunCaptchaPage extends StatefulWidget {
       barrierLabel: '安全验证',
       barrierColor: const Color(0x73000000),
       pageBuilder: (dialogContext, _, _) {
-        final screen = MediaQuery.sizeOf(dialogContext).width;
-        final width = screen < 300 ? screen - 32 : 280.0;
-        return Center(
-          child: Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            clipBehavior: Clip.antiAlias,
-            child: SizedBox(width: width, child: const AliyunCaptchaPage()),
-          ),
-        );
+        final width = _captchaDialogWidth(MediaQuery.sizeOf(dialogContext).width);
+        return Center(child: SizedBox(width: width, child: const AliyunCaptchaPage()));
       },
     );
   }
@@ -97,7 +93,7 @@ class AliyunCaptchaPage extends StatefulWidget {
     if (_controller != null) return;
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
+      ..setBackgroundColor(Colors.transparent)
       ..addJavaScriptChannel(
         'AliyunCaptchaBridge',
         onMessageReceived: (message) => _onWarm(message.message),
@@ -117,7 +113,7 @@ class AliyunCaptchaPage extends StatefulWidget {
 
   static Future<void> _load(WebViewController controller) async {
     final gen = ++_loadGen;
-    final html = await rootBundle.loadString('assets/captcha/aliyun_captcha.html');
+    final html = _fillCaptchaHtml(await rootBundle.loadString('assets/captcha/aliyun_captcha.html'));
     if (gen != _loadGen || !identical(_controller, controller)) return;
     await controller.loadHtmlString(html, baseUrl: 'https://o.alicdn.com/');
   }
@@ -130,6 +126,10 @@ class AliyunCaptchaPage extends StatefulWidget {
       return;
     }
     if (decoded is! Map) return;
+    if (decoded['closed'] == true) {
+      _finish(null);
+      return;
+    }
     if (decoded['ok'] == true) {
       if (!_visible) return;
       final param = decoded['param']?.toString() ?? '';
@@ -138,14 +138,18 @@ class AliyunCaptchaPage extends StatefulWidget {
       return;
     }
     var changed = false;
-    final height = decoded['height'];
-    if (height is num) {
-      final next = height.toDouble().clamp(48.0, 520.0);
-      if ((next - _webHeight).abs() > 2) {
-        _webHeight = next;
+    final stage = decoded['stage']?.toString();
+    if (stage == 'puzzle' || stage == 'start') {
+      if (_stage != stage) {
+        _stage = stage!;
+        changed = true;
+      }
+      if (stage == 'puzzle' && _error != null) {
+        _error = null;
         changed = true;
       }
     }
+    changed = _applyCaptchaSize(decoded, changed, 520);
     if (decoded['ready'] == true && !_ready) {
       _ready = true;
       changed = true;
@@ -162,8 +166,10 @@ class AliyunCaptchaPage extends StatefulWidget {
     if (!_visible) return;
     _visible = false;
     _ready = false;
+    _stage = 'start';
     _error = null;
-    _webHeight = 56;
+    _webHeight = _captchaRestHeight();
+    _webWidth = 0;
     final wait = _wait;
     _wait = null;
     _entry?.markNeedsBuild();
@@ -176,19 +182,46 @@ class AliyunCaptchaPage extends StatefulWidget {
     final controller = _controller;
     if (controller == null) return const SizedBox.shrink();
     final web = WebViewWidget(key: _webKey, controller: controller);
-    if (!_visible) {
-      return Positioned(
-        left: -1200,
-        top: 0,
-        width: 280,
-        height: 80,
-        child: IgnorePointer(child: web),
+    final width = _captchaDialogWidth(MediaQuery.sizeOf(context).width);
+    if (!_visible || (!_ready && _error == null)) {
+      return Stack(
+        children: [
+          if (_visible)
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => _finish(null),
+                child: const ColoredBox(color: Color(0x73000000)),
+              ),
+            ),
+          Positioned(
+            left: -1200,
+            top: 0,
+            width: width,
+            height: 420,
+            child: IgnorePointer(child: web),
+          ),
+          if (_visible) Center(child: _WaitingCard(onClose: () => _finish(null))),
+        ],
       );
     }
-    final screen = MediaQuery.sizeOf(context).width;
-    final width = screen < 300 ? screen - 32 : 280.0;
-    final maxH = MediaQuery.sizeOf(context).height * 0.62;
+    final maxH = MediaQuery.sizeOf(context).height * 0.78;
     final webHeight = _webHeight.clamp(48.0, maxH);
+    if (_stage == 'puzzle') {
+      return Stack(
+        children: [
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => _finish(null),
+              child: const ColoredBox(color: Color(0x73000000)),
+            ),
+          ),
+          Center(
+            child: SizedBox(width: _puzzleWidth(MediaQuery.sizeOf(context).width), height: webHeight, child: web),
+          ),
+        ],
+      );
+    }
+    final barHeight = _webHeight.clamp(48.0, 72.0);
     return Stack(
       children: [
         Positioned.fill(
@@ -205,7 +238,7 @@ class AliyunCaptchaPage extends StatefulWidget {
             child: SizedBox(
               width: width,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
+                padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -232,14 +265,6 @@ class AliyunCaptchaPage extends StatefulWidget {
                         ],
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                      child: Text(
-                        '拖到最右边完成验证',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                      ),
-                    ),
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -250,16 +275,14 @@ class AliyunCaptchaPage extends StatefulWidget {
                         ),
                       ),
                     SizedBox(
-                      height: webHeight,
-                      child: Stack(
-                        children: [
-                          web,
-                          if (!_ready && _error == null)
-                            const ColoredBox(
-                              color: Colors.white,
-                              child: _LoadingButton(),
-                            ),
-                        ],
+                      height: barHeight,
+                      child: ClipRect(
+                        child: OverflowBox(
+                          alignment: Alignment.topCenter,
+                          minHeight: 420,
+                          maxHeight: 420,
+                          child: SizedBox(width: width, height: 420, child: web),
+                        ),
                       ),
                     ),
                   ],
@@ -280,15 +303,16 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
   late final WebViewController _controller;
   String? _error;
   var _ready = false;
+  var _stage = 'start';
   var _finished = false;
-  var _webHeight = 56.0;
+  final _webHeight = _captchaRestHeight();
 
   @override
   void initState() {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..setBackgroundColor(Colors.white)
+      ..setBackgroundColor(Colors.transparent)
       ..addJavaScriptChannel(
         'AliyunCaptchaBridge',
         onMessageReceived: (message) => _onBridge(message.message),
@@ -306,7 +330,7 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
   }
 
   Future<void> _load() async {
-    final html = await rootBundle.loadString('assets/captcha/aliyun_captcha.html');
+    final html = _fillCaptchaHtml(await rootBundle.loadString('assets/captcha/aliyun_captcha.html'));
     if (!mounted || _finished) return;
     await _controller.loadHtmlString(html, baseUrl: 'https://o.alicdn.com/');
   }
@@ -320,6 +344,11 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
       return;
     }
     if (decoded is! Map) return;
+    if (decoded['closed'] == true) {
+      _finished = true;
+      Navigator.of(context).pop();
+      return;
+    }
     if (decoded['ok'] == true) {
       final param = decoded['param']?.toString() ?? '';
       if (param.isEmpty) return;
@@ -327,16 +356,20 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
       Navigator.of(context).pop(param);
       return;
     }
-    final maxH = MediaQuery.sizeOf(context).height * 0.62;
     var changed = false;
-    final height = decoded['height'];
-    if (height is num) {
-      final next = height.toDouble().clamp(48.0, maxH);
-      if ((next - _webHeight).abs() > 2) {
-        _webHeight = next;
+    final stage = decoded['stage']?.toString();
+    if (stage == 'puzzle' || stage == 'start') {
+      if (_stage != stage) {
+        _stage = stage!;
+        changed = true;
+      }
+      if (stage == 'puzzle' && _error != null) {
+        _error = null;
         changed = true;
       }
     }
+    final maxH = MediaQuery.sizeOf(context).height * 0.78;
+    changed = _applyCaptchaSize(decoded, changed, maxH);
     if (decoded['ready'] == true && !_ready) {
       _ready = true;
       changed = true;
@@ -351,61 +384,179 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            height: 44,
-            child: Row(
-              children: [
-                const SizedBox(width: 44),
-                const Expanded(
-                  child: Text(
-                    '安全验证',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                  ),
+    final width = _captchaDialogWidth(MediaQuery.sizeOf(context).width);
+    if (_stage == 'puzzle') {
+      final maxH = MediaQuery.sizeOf(context).height * 0.78;
+      return SizedBox(
+        width: _puzzleWidth(width),
+        height: AliyunCaptchaPage._webHeight.clamp(120.0, maxH),
+        child: WebViewWidget(controller: _controller),
+      );
+    }
+    final barHeight = _webHeight.clamp(48.0, 72.0);
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: width,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 44,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 44),
+                    const Expanded(
+                      child: Text(
+                        '安全验证',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close, size: 22, color: AppColors.textSecondary),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.close, size: 22, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-          const Padding(
-            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Text(
-              '拖到最右边完成验证',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-            ),
-          ),
-          if (_error != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              child: Text(
-                _error!,
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: AppColors.danger, fontSize: 14),
               ),
-            ),
-          SizedBox(
-            height: _webHeight,
-            child: Stack(
-              children: [
-                WebViewWidget(controller: _controller),
-                if (!_ready && _error == null)
-                  const ColoredBox(
-                    color: Colors.white,
-                    child: _LoadingButton(),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: Text(
+                    _error!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: AppColors.danger, fontSize: 14),
                   ),
-              ],
-            ),
+                ),
+              SizedBox(
+                height: barHeight,
+                child: ClipRect(
+                  child: OverflowBox(
+                    alignment: Alignment.topCenter,
+                    minHeight: 420,
+                    maxHeight: 420,
+                    child: SizedBox(width: width, height: 420, child: WebViewWidget(controller: _controller)),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 两端都用拼图场景。已装的旧包仍是滑块，后端两个场景都认。
+String _fillCaptchaHtml(String raw) {
+  final rem = _puzzleRem().toStringAsFixed(3);
+  return raw
+      .replaceAll('__SCENE_ID__', 'n5qc0nf5c')
+      .replaceAll('__CAPTCHA_REM__', rem)
+      .replaceAll('__PUZZLE_MODE__', 'true');
+}
+
+double _captchaDialogWidth(double screen) {
+  final width = screen - 72;
+  if (width < 240) return width;
+  if (width > 300) return 300.0;
+  return width;
+}
+
+double _captchaRestHeight() => 56.0;
+
+double _puzzleWidth(double screen) {
+  final maxW = screen - 16;
+  final reported = AliyunCaptchaPage._webWidth;
+  if (reported < 200) return maxW < 340 ? maxW : 340.0;
+  if (reported > maxW) return maxW;
+  return reported;
+}
+
+bool _applyCaptchaSize(Map decoded, bool changed, double maxH) {
+  final height = decoded['height'];
+  if (height is num) {
+    final next = _captchaHeight(height, maxH);
+    if (next != null && (next - AliyunCaptchaPage._webHeight).abs() > 2) {
+      AliyunCaptchaPage._webHeight = next;
+      changed = true;
+    }
+  }
+  final width = decoded['width'];
+  if (width is num && (width.toDouble() - AliyunCaptchaPage._webWidth).abs() > 2) {
+    AliyunCaptchaPage._webWidth = width.toDouble();
+    changed = true;
+  }
+  return changed;
+}
+
+double? _captchaHeight(num height, double maxH) {
+  final next = height.toDouble();
+  if (next < 40) return null;
+  return next.clamp(80, maxH);
+}
+
+double _puzzleRem() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return 1;
+  final view = views.first;
+  final logical = view.physicalSize.width / view.devicePixelRatio;
+  if (logical <= 0) return 1;
+  final inner = _captchaDialogWidth(logical) - 16;
+  final rem = inner / 320;
+  if (rem > 1) return 1;
+  if (rem < 0.8) return 0.8;
+  return rem;
+}
+
+class _WaitingCard extends StatelessWidget {
+  const _WaitingCard({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final width = _captchaDialogWidth(MediaQuery.sizeOf(context).width);
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: width,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 4, 0, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                height: 44,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 44),
+                    const Expanded(
+                      child: Text(
+                        '安全验证',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: onClose,
+                      icon: const Icon(Icons.close, size: 22, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const _LoadingButton(),
+            ],
+          ),
+        ),
       ),
     );
   }

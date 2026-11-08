@@ -76,6 +76,7 @@ class UserModel {
     String? avatarUrl,
     AppRole? role,
     String? roomId,
+    bool dropRoom = false,
     bool? forceChangePassword,
   }) =>
       UserModel(
@@ -84,7 +85,7 @@ class UserModel {
         nickname: nickname ?? this.nickname,
         avatarUrl: avatarUrl ?? this.avatarUrl,
         role: role ?? this.role,
-        roomId: roomId ?? this.roomId,
+        roomId: dropRoom ? null : (roomId ?? this.roomId),
         forceChangePassword: forceChangePassword ?? this.forceChangePassword,
       );
 
