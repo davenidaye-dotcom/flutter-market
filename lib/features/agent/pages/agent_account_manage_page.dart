@@ -134,6 +134,18 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
     _load();
   }
 
+  void _search() {
+    final keyword = _searchCtrl.text.trim();
+    setState(() {
+      _page = 1;
+      if (keyword.isNotEmpty) {
+        _drill.clear();
+        _childType = 'ALL';
+      }
+    });
+    _load();
+  }
+
   void _popDrill() {
     if (_drill.isEmpty) return;
     setState(() {
@@ -483,6 +495,8 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                     alignment: Alignment.centerLeft,
                     child: EmulatorSafeTextField(
                       controller: _searchCtrl,
+                      textInputAction: TextInputAction.search,
+                      onSubmitted: (_) => _search(),
                       decoration: InputDecoration(
                         border: InputBorder.none,
                         hintText: '账户搜索',
@@ -495,10 +509,7 @@ class _AgentAccountManagePageState extends ConsumerState<AgentAccountManagePage>
                 SizedBox(width: 6.w),
                 AgentTealButton(
                   label: '搜索',
-                  onTap: () {
-                    _page = 1;
-                    _load();
-                  },
+                  onTap: _search,
                 ),
                 SizedBox(width: 6.w),
                 AgentTealButton(
