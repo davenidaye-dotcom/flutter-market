@@ -292,7 +292,6 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
       },
     );
   }
-}
 
   Widget _changeTab() {
     return Column(
@@ -386,6 +385,8 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
       },
     );
   }
+
+}
 
 /// 代理名称：保留前两位和后两位，中间用 **。不足四位时保留首尾各一位。
 String maskAgentName(String raw) {
