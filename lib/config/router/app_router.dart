@@ -10,6 +10,7 @@ import '../../features/auth/pages/register_page.dart';
 import '../../features/auth/providers/auth_session_provider.dart';
 import '../../features/home/pages/home_page.dart';
 import '../../features/agent/pages/agent_account_manage_page.dart';
+import '../../features/agent/pages/agent_child_logs_page.dart';
 import '../../features/agent/pages/agent_change_password_page.dart';
 import '../../features/agent/pages/agent_payment_stats_page.dart';
 import '../../features/agent/pages/agent_personal_info_page.dart';
@@ -485,6 +486,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: 'quota',
                 builder: (_, state) => AgentQuotaChangePage(roomId: state.pathParameters['roomId']!),
+              ),
+              GoRoute(
+                path: 'my-logs',
+                builder: (_, state) => const AgentChildLogsPage.self(),
               ),
               GoRoute(
                 path: 'password',

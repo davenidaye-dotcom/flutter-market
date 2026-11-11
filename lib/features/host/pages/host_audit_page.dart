@@ -373,6 +373,17 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                         color: AppColors.textHint,
                       ),
                     ),
+                    if (item.remark.isNotEmpty) ...[
+                      SizedBox(height: 4.h),
+                      Text(
+                        item.remark,
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          height: 1.35,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

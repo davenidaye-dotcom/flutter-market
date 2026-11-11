@@ -214,6 +214,7 @@ class AgentDrawer extends ConsumerWidget {
     ('账户管理', 'accounts'),
     ('报表查询', 'reports'),
     ('额度变动', 'quota'),
+    ('我的日志', 'my-logs'),
     ('密码修改', 'password'),
   ];
 
@@ -223,6 +224,7 @@ class AgentDrawer extends ConsumerWidget {
         'accounts' => RoutePaths.agentAccounts(roomId),
         'reports' => RoutePaths.agentReports(roomId),
         'quota' => RoutePaths.agentQuota(roomId),
+        'my-logs' => RoutePaths.agentMyLogs(roomId),
         'password' => RoutePaths.agentPassword(roomId),
         _ => RoutePaths.agentPersonalInfo(roomId),
       };

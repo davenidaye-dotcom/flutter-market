@@ -75,6 +75,7 @@ class _Audit {
     this.amount,
     this.points,
     this.status = 'PENDING',
+    this.remark = '',
   });
 
   final String id;
@@ -86,12 +87,14 @@ class _Audit {
   final double? amount;
   final int? points;
   final String status;
+  /// 这条申请自己的备注。上分下分是来源句，进房是玩家填写的说明。
+  final String remark;
 }
 
 typedef HostAuditItem = _Audit;
 
 /// Map owner application row to [HostAuditItem].
-/// 不用 remark（如 房间-下分）覆盖金额摘要。
+/// 摘要仍是上分、下分、进房。remark 原样留给卡片，不拿它替换摘要。
 HostAuditItem hostAuditFromMap(Map<String, dynamic> m, AuditType type) {
   final amount = m['amount'];
   final points = m['points'] ?? m['balance'];
@@ -117,6 +120,7 @@ HostAuditItem hostAuditFromMap(Map<String, dynamic> m, AuditType type) {
     amount: amt,
     points: pts,
     status: status,
+    remark: (m['remark'] ?? '').toString().trim(),
   );
 }
 

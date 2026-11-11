@@ -69,5 +69,6 @@ abstract final class RoutePaths {
   static String agentAccounts(String roomId) => '/agent/$roomId/accounts';
   static String agentReports(String roomId) => '/agent/$roomId/reports';
   static String agentQuota(String roomId) => '/agent/$roomId/quota';
+  static String agentMyLogs(String roomId) => '/agent/$roomId/my-logs';
   static String agentPassword(String roomId) => '/agent/$roomId/password';
 }

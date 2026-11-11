@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import '../../../config/theme/app_colors.dart';
+import '../../../shared/format/game_series.dart';
 import '../../../data/repositories/providers.dart';
+import '../../auth/providers/auth_session_provider.dart';
 import '../../../shared/widgets/app_page_loading.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import '../widgets/agent_ui.dart';
@@ -10,9 +12,14 @@ import 'agent_account_child_page.dart';
 
 /// 下级登录日志 + 操作日志
 class AgentChildLogsPage extends ConsumerStatefulWidget {
-  const AgentChildLogsPage({super.key, required this.row});
+  const AgentChildLogsPage({super.key, required this.row}) : self = false;
+
+  const AgentChildLogsPage.self({super.key})
+      : row = const {},
+        self = true;
 
   final Map<String, dynamic> row;
+  final bool self;
 
   @override
   ConsumerState<AgentChildLogsPage> createState() => _AgentChildLogsPageState();
@@ -29,12 +36,18 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
   int _opPage = 1;
   bool _loginMore = true;
   bool _opMore = true;
+  List<Map<String, dynamic>> _changeRows = [];
+  int _changePage = 1;
+  bool _changeMore = true;
+  bool _changeReady = false;
+  String _changeKind = 'ALL';
   static const _pageSize = 50;
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabs = TabController(length: 3, vsync: this);
+    _tabs.addListener(_onTab);
     Future.microtask(_load);
   }
 
@@ -44,15 +57,28 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
     super.dispose();
   }
 
+  void _onTab() {
+    if (_tabs.indexIsChanging || _tabs.index != 2 || _changeReady || _loading) return;
+    _load(reset: true, tab: 2);
+  }
+
   Future<void> _load({bool reset = true, int? tab}) async {
-    final id = agentRowAccountId(widget.row);
-    if (id == null) return;
+    final id = widget.self ? null : agentRowAccountId(widget.row);
+    if (!widget.self && id == null) return;
     final which = tab ?? _tabs.index;
+    final changesOnly = which == 2;
     if (!reset) {
       if (_loadingMore || _loading) return;
       if (which == 0 && !_loginMore) return;
       if (which == 1 && !_opMore) return;
+      if (which == 2 && !_changeMore) return;
       setState(() => _loadingMore = true);
+    } else if (changesOnly) {
+      setState(() {
+        _loading = true;
+        _changePage = 1;
+        _changeMore = true;
+      });
     } else {
       setState(() {
         _loading = true;
@@ -64,9 +90,10 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
     }
     final loginPage = reset || which != 0 ? _loginPage : _loginPage + 1;
     final opPage = reset || which != 1 ? _opPage : _opPage + 1;
+    final changePage = !reset && which == 2 ? _changePage + 1 : 1;
     try {
       final repo = ref.read(agentRepositoryProvider);
-      if (reset || which == 0) {
+      if (!changesOnly && (reset || which == 0)) {
         final login = await repo.getLoginLogs(accountId: id, pageNum: reset ? 1 : loginPage, pageSize: _pageSize);
         if (!mounted) return;
         final rows = _rowsOf(login);
@@ -77,7 +104,7 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
           _loginMore = _loginRows.length < total && rows.isNotEmpty;
         });
       }
-      if (reset || which == 1) {
+      if (!changesOnly && (reset || which == 1)) {
         final ops = await repo.getOpLogs(accountId: id, pageNum: reset ? 1 : opPage, pageSize: _pageSize);
         if (!mounted) return;
         final rows = _rowsOf(ops);
@@ -86,6 +113,24 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
           _opRows = reset ? rows : [..._opRows, ...rows];
           _opPage = reset ? 1 : opPage;
           _opMore = _opRows.length < total && rows.isNotEmpty;
+        });
+      }
+      if (changesOnly) {
+        final requestedKind = _changeKind;
+        final data = await repo.getChangeLogs(
+          type: requestedKind,
+          accountId: id,
+          pageNum: changePage,
+          pageSize: _pageSize,
+        );
+        if (!mounted || requestedKind != _changeKind) return;
+        final rows = _rowsOf(data);
+        final total = int.tryParse('${data['total'] ?? rows.length}') ?? rows.length;
+        setState(() {
+          _changeRows = reset ? rows : [..._changeRows, ...rows];
+          _changePage = changePage;
+          _changeMore = _changeRows.length < total && rows.isNotEmpty;
+          _changeReady = true;
         });
       }
       if (mounted) {
@@ -112,7 +157,7 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
 
   @override
   Widget build(BuildContext context) {
-    final title = '日志 · ${maskAgentName(agentRowName(widget.row))}';
+    final title = widget.self ? '我的日志' : '日志 · ${maskAgentName(agentRowName(widget.row))}';
     return AgentPageFrame(
       title: '',
       onRefresh: _load,
@@ -127,6 +172,7 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
             tabs: const [
               Tab(text: '登录日志'),
               Tab(text: '操作日志'),
+              Tab(text: '修改日志'),
             ],
           ),
           Expanded(
@@ -137,6 +183,7 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
                     children: [
                       _loginList(),
                       _opList(),
+                      _changeTab(),
                     ],
                   ),
           ),
@@ -208,9 +255,12 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
           );
         }
         final r = _opRows[i];
+        final user = widget.self ? ref.read(authSessionProvider).user : null;
         final names = <String>[
-          agentRowName(widget.row),
-          '${widget.row['username'] ?? ''}',
+          if (user != null) user.username,
+          if (user != null) user.nickname,
+          if (!widget.self) agentRowName(widget.row),
+          if (!widget.self) '${widget.row['username'] ?? ''}',
           _text(r['operator']),
           _text(r['targetAccount']),
           _text(r['targetName']),
@@ -244,6 +294,99 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
   }
 }
 
+  Widget _changeTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 0),
+          child: Row(
+            children: [
+              _kindChip('ALL', '全部'),
+              SizedBox(width: 8.w),
+              _kindChip('ODDS', '赔率'),
+              SizedBox(width: 8.w),
+              _kindChip('SHARE', '占成'),
+            ],
+          ),
+        ),
+        Expanded(child: _changeList()),
+      ],
+    );
+  }
+
+  Widget _kindChip(String kind, String label) {
+    final on = _changeKind == kind;
+    return GestureDetector(
+      onTap: () {
+        if (on || _loading) return;
+        setState(() {
+          _changeKind = kind;
+          _changeReady = false;
+        });
+        _load(reset: true, tab: 2);
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+        decoration: BoxDecoration(
+          color: on ? AppColors.navBlue.withValues(alpha: 0.12) : const Color(0x00000000),
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 13.sp,
+            fontWeight: on ? FontWeight.w600 : FontWeight.normal,
+            color: on ? AppColors.navBlue : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _changeList() {
+    if (_changeRows.isEmpty) {
+      return Center(child: Text('暂无修改日志', style: TextStyle(fontSize: 14.sp, color: AppColors.textHint)));
+    }
+    return ListView.separated(
+      padding: EdgeInsets.fromLTRB(12.w, 8.h, 12.w, 12.h),
+      itemCount: _changeRows.length + 1,
+      separatorBuilder: (_, i) => i >= _changeRows.length - 1 ? const SizedBox.shrink() : SizedBox(height: 8.h),
+      itemBuilder: (_, i) {
+        if (i == _changeRows.length) {
+          if (_changeMore && !_loadingMore) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _load(reset: false, tab: 2);
+            });
+          }
+          return Padding(
+            padding: EdgeInsets.only(top: 8.h),
+            child: Center(child: Text(_changeMore ? '加载中' : '没有更多了', style: TextStyle(fontSize: 12.sp, color: AppColors.textHint))),
+          );
+        }
+        final r = _changeRows[i];
+        final odds = '${r['type']}' == 'ODDS';
+        final play = _text(r['playCode']);
+        final game = GameSeries.displayName(_text(r['gameType']));
+        final rows = <(String, String)>[
+          if (odds) ('改前', _orDash(r['oldValue'])),
+          if (odds) ('改后', _orDash(r['newValue'])),
+          if (!odds) ('改前占成', _pct(r['oldValue'])),
+          if (!odds) ('改后占成', _pct(r['newValue'])),
+          if (!odds && (_text(r['oldCap']).isNotEmpty || _text(r['newCap']).isNotEmpty)) ('改前上限', _pct(r['oldCap'])),
+          if (!odds && (_text(r['oldCap']).isNotEmpty || _text(r['newCap']).isNotEmpty)) ('改后上限', _pct(r['newCap'])),
+          ('操作人', _showName(r['actor'])),
+        ];
+        return _LogCard(
+          title: odds ? (play.isEmpty ? '赔率' : '赔率 · $play') : '占成',
+          time: _text(r['changedAt']),
+          badge: game.isEmpty ? null : game,
+          badgeColor: AppColors.navBlue,
+          rows: rows,
+        );
+      },
+    );
+  }
+
 /// 代理名称：保留前两位和后两位，中间用 **。不足四位时保留首尾各一位。
 String maskAgentName(String raw) {
   final s = raw.trim();
@@ -260,6 +403,16 @@ String _text(dynamic v) => v == null ? '' : '$v'.trim();
 String _orDash(dynamic v) {
   final s = _text(v);
   return s.isEmpty || s == '-' ? '—' : s;
+}
+
+String _pct(dynamic v) {
+  final s = _text(v);
+  if (s.isEmpty || s == '-') return '—';
+  final n = num.tryParse(s);
+  if (n == null) return s;
+  final shown = n.abs() <= 1 ? n * 100 : n;
+  final text = shown == shown.roundToDouble() ? shown.toInt().toString() : shown.toString();
+  return '$text%';
 }
 
 String _showName(dynamic v) => maskAgentName(_text(v));

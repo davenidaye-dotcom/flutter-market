@@ -244,6 +244,21 @@ class AgentRepository {
     return _asMap(data);
   }
 
+  Future<Map<String, dynamic>> getChangeLogs({
+    String type = 'ALL',
+    int pageNum = 1,
+    int pageSize = 20,
+    int? accountId,
+  }) async {
+    final data = await _client.get('/agent/logs/changes', query: {
+      'type': type,
+      'pageNum': pageNum,
+      'pageSize': pageSize,
+      if (accountId != null) 'accountId': accountId,
+    });
+    return _asMap(data);
+  }
+
   Future<Map<String, dynamic>> getOpLogs({
     String? scope,
     int pageNum = 1,
