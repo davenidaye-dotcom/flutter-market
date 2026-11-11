@@ -76,6 +76,7 @@ class _Audit {
     this.points,
     this.status = 'PENDING',
     this.remark = '',
+    this.memberRemark = '',
   });
 
   final String id;
@@ -89,6 +90,8 @@ class _Audit {
   final String status;
   /// 这条申请自己的备注。上分下分是来源句，进房是玩家填写的说明。
   final String remark;
+  /// 房主在成员管理里给这个玩家设的房间备注。
+  final String memberRemark;
 }
 
 typedef HostAuditItem = _Audit;
@@ -102,6 +105,8 @@ HostAuditItem hostAuditFromMap(Map<String, dynamic> m, AuditType type) {
   final pts = points is num ? points.toInt() : int.tryParse('$points');
   final nick = (m['applicantName'] ?? m['nickname'] ?? m['displayName'] ?? '').toString();
   final user = (m['applicantUsername'] ?? m['username'] ?? '').toString();
+  final shown = (nick.isEmpty ? user : nick).trim();
+  final playerRemark = (m['memberRemark'] ?? '').toString().trim();
   final id = (m['applicationId'] ?? m['id'] ?? '').toString();
   final time = (m['createdAt'] ?? m['applyTime'] ?? '').toString();
   final status = (m['status'] ?? 'PENDING').toString();
@@ -121,6 +126,7 @@ HostAuditItem hostAuditFromMap(Map<String, dynamic> m, AuditType type) {
     points: pts,
     status: status,
     remark: (m['remark'] ?? '').toString().trim(),
+    memberRemark: playerRemark == shown ? '' : playerRemark,
   );
 }
 

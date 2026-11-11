@@ -365,6 +365,17 @@ class _HostAuditPageState extends ConsumerState<HostAuditPage> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (item.memberRemark.isNotEmpty) ...[
+                      SizedBox(height: 4.h),
+                      Text(
+                        item.memberRemark,
+                        style: TextStyle(
+                          fontSize: 12.sp,
+                          height: 1.35,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
                     SizedBox(height: 4.h),
                     Text(
                       meta,
