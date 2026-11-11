@@ -29,11 +29,6 @@
       return true;
     }
     var puzzleMode = __PUZZLE_MODE__;
-    if (puzzleMode) {
-      var hintStyle = document.createElement("style");
-      hintStyle.textContent = "#aliyunCaptcha-sliding-text, #aliyunCaptcha-sliding-text * { color: #5c5c5c !important; -webkit-text-fill-color: #5c5c5c !important; } #aliyunCaptcha-sliding-slider, .aliyunCaptcha-sliding-slider { background: #4A89DC !important; background-color: #4A89DC !important; border-color: #2E6BB5 !important; color: #fff !important; } #aliyunCaptcha-sliding-slider *, .aliyunCaptcha-sliding-slider * { color: #fff !important; -webkit-text-fill-color: #fff !important; fill: #fff !important; }";
-      document.head.appendChild(hintStyle);
-    }
     var lastHeight = 0;
     var lastWidth = 0;
     var puzzleReadySent = false;
@@ -225,8 +220,7 @@
       setTimeout(publish, 60);
     });
     function slideLayout() {
-      // 拼图按弹层宽度缩放，不改碎片位置。
-      return { width: 320, rem: __CAPTCHA_REM__ };
+      return { width: __SLIDE_WIDTH__, rem: __CAPTCHA_REM__ };
     }
     function initCaptcha() {
       if (typeof window.initAliyunCaptcha !== "function") {

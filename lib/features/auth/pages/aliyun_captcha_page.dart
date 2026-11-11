@@ -452,13 +452,13 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
   }
 }
 
-/// 两端都用拼图场景。已装的旧包仍是滑块，后端两个场景都认。
+/// 两端都用滑块场景。样式交给阿里云脚本，这里不改颜色。
 String _fillCaptchaHtml(String raw) {
-  final rem = _puzzleRem().toStringAsFixed(3);
   return raw
-      .replaceAll('__SCENE_ID__', 'n5qc0nf5c')
-      .replaceAll('__CAPTCHA_REM__', rem)
-      .replaceAll('__PUZZLE_MODE__', 'true');
+      .replaceAll('__SCENE_ID__', '1x1kohduf')
+      .replaceAll('__CAPTCHA_REM__', '1')
+      .replaceAll('__SLIDE_WIDTH__', _slideWidth().round().toString())
+      .replaceAll('__PUZZLE_MODE__', 'false');
 }
 
 double _captchaDialogWidth(double screen) {
@@ -501,17 +501,13 @@ double? _captchaHeight(num height, double maxH) {
   return next.clamp(80, maxH);
 }
 
-double _puzzleRem() {
+double _slideWidth() {
   final views = WidgetsBinding.instance.platformDispatcher.views;
-  if (views.isEmpty) return 1;
+  if (views.isEmpty) return 300;
   final view = views.first;
   final logical = view.physicalSize.width / view.devicePixelRatio;
-  if (logical <= 0) return 1;
-  final inner = _captchaDialogWidth(logical) - 16;
-  final rem = inner / 320;
-  if (rem > 1) return 1;
-  if (rem < 0.8) return 0.8;
-  return rem;
+  if (logical <= 0) return 300;
+  return _captchaDialogWidth(logical);
 }
 
 class _WaitingCard extends StatelessWidget {
