@@ -425,15 +425,14 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     _load();
   }
 
-  /// 下级盈亏 = 盈亏 - 盈亏结果 - (上级交收 - 未结退水)。会员没有下级，这一列是 0。
-  num? _subordinatePnl(dynamic profit, dynamic result, dynamic uplink, {dynamic uplinkWater, bool member = false}) {
+  /// 下级盈亏 = 盈亏 - 盈亏结果 - 上级交收。上级交收 = 应收下线 - 盈亏结果。会员是 0。
+  num? _subordinatePnl(dynamic profit, dynamic result, dynamic uplink, {bool member = false}) {
     if (member) return 0;
     final a = profit is num ? profit.toDouble() : double.tryParse('${profit ?? ''}'.trim());
     final b = result is num ? result.toDouble() : double.tryParse('${result ?? ''}'.trim());
     final c = uplink is num ? uplink.toDouble() : double.tryParse('${uplink ?? ''}'.trim());
-    final w = uplinkWater is num ? uplinkWater.toDouble() : double.tryParse('${uplinkWater ?? ''}'.trim()) ?? 0;
     if (a == null || b == null || c == null) return null;
-    return a - b - (c - w);
+    return a - b - c;
   }
 
   void _popDrill() {
@@ -788,7 +787,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('盈亏', pnl, _cRed),
         _cell(
           '下级盈亏',
-          _summary['subResultPnl'] ?? _subordinatePnl(pnl, resultPnl, _summary['uplinkSettlement'], uplinkWater: _summary['uplinkWater']),
+          _summary['subResultPnl'] ?? _subordinatePnl(pnl, resultPnl, _summary['uplinkSettlement']),
           _cGreen,
         ),
         _cell('下级交货', _summary['downVolume'], _cGreen),
@@ -839,7 +838,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
         _cell('盈亏', profit, _cRed),
         _cell(
           '下级盈亏',
-          _subordinatePnl(profit, resultPnl, row['uplinkSettlement'], uplinkWater: row['uplinkWater'], member: isMember),
+          _subordinatePnl(profit, resultPnl, row['uplinkSettlement'], member: isMember),
           _cGreen,
         ),
         _cell('下级交货', row['downVolume'], _cGreen),
