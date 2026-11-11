@@ -10,6 +10,17 @@
     html, body { margin: 0; background: transparent; font-family: sans-serif; }
     body { padding: 0; }
     #captcha-element { width: 100%; min-height: 40px; }
+    #aliyunCaptcha-sliding-slider,
+    .aliyunCaptcha-sliding-slider {
+      background-color: #4A89DC !important;
+      border-color: #3A74C4 !important;
+    }
+    #aliyunCaptcha-sliding-slider *,
+    .aliyunCaptcha-sliding-slider * {
+      color: #fff !important;
+      -webkit-text-fill-color: #fff !important;
+      fill: #fff !important;
+    }
     #button {
       position: absolute;
       width: 1px;
@@ -171,8 +182,75 @@
         });
       }
     }
+    var slideInset = 16;
+    function findBar(handle) {
+      var ids = ["aliyunCaptcha-sliding-wrapper", "aliyunCaptcha-sliding-body"];
+      var handleBox = handle.getBoundingClientRect();
+      var handleMid = (handleBox.top + handleBox.bottom) / 2;
+      for (var i = 0; i < ids.length; i++) {
+        var node = document.getElementById(ids[i]);
+        if (!node || node.offsetWidth < 80 || node.offsetHeight < 20) continue;
+        var box = node.getBoundingClientRect();
+        if (Math.abs((box.top + box.bottom) / 2 - handleMid) < 30) return node;
+      }
+      return null;
+    }
+    function insetSlide() {
+      if (puzzleShown()) return;
+      var viewW = document.documentElement.clientWidth || window.innerWidth;
+      if (viewW < 80) return;
+      var handle = document.getElementById("aliyunCaptcha-sliding-slider");
+      if (!handle || handle.offsetWidth < 8) return;
+      var bar = findBar(handle);
+      if (!bar) return;
+      var handleBox = handle.getBoundingClientRect();
+      var barBox = bar.getBoundingClientRect();
+      var stick = barBox.left - handleBox.left;
+      if (stick < 0) stick = 0;
+      var target = Math.round(viewW - slideInset * 2 - stick);
+      if (target < 80) target = Math.round(viewW - slideInset * 2);
+      if (Math.abs(barBox.width - target) > 1) {
+        bar.style.setProperty("width", target + "px", "important");
+        bar.style.setProperty("min-width", target + "px", "important");
+        bar.style.setProperty("max-width", target + "px", "important");
+        bar.style.setProperty("box-sizing", "border-box", "important");
+        bar.style.setProperty("margin-left", "0px", "important");
+      }
+      handleBox = handle.getBoundingClientRect();
+      barBox = bar.getBoundingClientRect();
+      var left = handleBox.left < barBox.left ? handleBox.left : barBox.left;
+      var delta = slideInset - left;
+      if (Math.abs(delta) > 0.5) {
+        var applied = parseFloat(bar.style.left || "0");
+        if (isNaN(applied)) applied = 0;
+        bar.style.setProperty("position", "relative", "important");
+        bar.style.setProperty("left", (applied + delta) + "px", "important");
+      }
+    }
+    function paintHandle() {
+      var nodes = document.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        var id = node.id || "";
+        var cls = typeof node.className === "string" ? node.className : "";
+        var mark = id + " " + cls;
+        if (mark.indexOf("slider") < 0) continue;
+        if (mark.indexOf("text") >= 0 || mark.indexOf("wrapper") >= 0 || mark.indexOf("body") >= 0 || mark.indexOf("left") >= 0) continue;
+        if (node.offsetWidth < 24 || node.offsetWidth > 72 || node.offsetHeight < 24 || node.offsetHeight > 56) continue;
+        node.style.setProperty("background-color", "#4A89DC", "important");
+        node.style.setProperty("border-color", "#3A74C4", "important");
+        var kids = node.getElementsByTagName("*");
+        for (var j = 0; j < kids.length; j++) {
+          kids[j].style.setProperty("color", "#fff", "important");
+          kids[j].style.setProperty("-webkit-text-fill-color", "#fff", "important");
+          kids[j].style.setProperty("fill", "#fff", "important");
+        }
+      }
+    }
     function publish() {
       hideLogo();
+      paintHandle();
+      insetSlide();
       var stage = puzzleShown() ? "puzzle" : "start";
       var box = null;
       if (stage === "puzzle") {
@@ -220,7 +298,11 @@
       setTimeout(publish, 60);
     });
     function slideLayout() {
-      return { width: __SLIDE_WIDTH__, rem: __CAPTCHA_REM__ };
+      var viewW = document.documentElement.clientWidth || window.innerWidth;
+      var full = viewW > 80 ? viewW : __SLIDE_WIDTH__;
+      var width = full - slideInset * 2;
+      if (width < 80) width = full;
+      return { width: width, rem: __CAPTCHA_REM__ };
     }
     function initCaptcha() {
       if (typeof window.initAliyunCaptcha !== "function") {
