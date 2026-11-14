@@ -197,17 +197,13 @@
       }
       return { width: width, inset: inset };
     }
-    function findBar(handle) {
-      var ids = ["aliyunCaptcha-sliding-wrapper", "aliyunCaptcha-sliding-body"];
-      var handleBox = handle.getBoundingClientRect();
-      var handleMid = (handleBox.top + handleBox.bottom) / 2;
-      for (var i = 0; i < ids.length; i++) {
-        var node = document.getElementById(ids[i]);
-        if (!node || node.offsetWidth < 80 || node.offsetHeight < 20) continue;
-        var box = node.getBoundingClientRect();
-        if (Math.abs((box.top + box.bottom) / 2 - handleMid) < 30) return node;
-      }
-      return null;
+    function sizeTrack(node, width) {
+      if (Math.abs(node.getBoundingClientRect().width - width) <= 1) return;
+      node.style.setProperty("width", width + "px", "important");
+      node.style.setProperty("min-width", width + "px", "important");
+      node.style.setProperty("max-width", width + "px", "important");
+      node.style.setProperty("box-sizing", "border-box", "important");
+      node.style.setProperty("margin-left", "0px", "important");
     }
     function insetSlide() {
       if (puzzleShown()) return;
@@ -215,26 +211,18 @@
       if (viewW < 80) return;
       var handle = document.getElementById("aliyunCaptcha-sliding-slider");
       if (!handle || handle.offsetWidth < 8) return;
-      var bar = findBar(handle);
-      if (!bar) return;
       var span = slideSpan(viewW);
-      var handleBox = handle.getBoundingClientRect();
-      var barBox = bar.getBoundingClientRect();
-      var stick = barBox.left - handleBox.left;
-      if (stick < 0) stick = 0;
-      var target = Math.round(span.width - stick);
-      if (target < 80) target = span.width;
-      if (Math.abs(barBox.width - target) > 1) {
-        bar.style.setProperty("width", target + "px", "important");
-        bar.style.setProperty("min-width", target + "px", "important");
-        bar.style.setProperty("max-width", target + "px", "important");
-        bar.style.setProperty("box-sizing", "border-box", "important");
-        bar.style.setProperty("margin-left", "0px", "important");
+      var ids = ["aliyunCaptcha-sliding-wrapper", "aliyunCaptcha-sliding-body"];
+      var bar = null;
+      for (var i = 0; i < ids.length; i++) {
+        var node = document.getElementById(ids[i]);
+        if (!node || node.offsetHeight < 20) continue;
+        sizeTrack(node, span.width);
+        if (!bar) bar = node;
       }
-      handleBox = handle.getBoundingClientRect();
-      barBox = bar.getBoundingClientRect();
-      var left = handleBox.left < barBox.left ? handleBox.left : barBox.left;
-      var delta = span.inset - left;
+      if (!bar) return;
+      var box = bar.getBoundingClientRect();
+      var delta = span.inset - (viewW - box.right);
       if (Math.abs(delta) > 0.5) {
         var applied = parseFloat(bar.style.left || "0");
         if (isNaN(applied)) applied = 0;
