@@ -182,7 +182,21 @@
         });
       }
     }
-    var slideInset = 16;
+    var slideTrack = __SLIDE_TRACK__;
+    var slideInsetMin = 16;
+    function slideSpan(viewW) {
+      var width = slideTrack;
+      var inset = Math.round((viewW - width) / 2);
+      if (inset < slideInsetMin) {
+        inset = slideInsetMin;
+        width = Math.round(viewW - inset * 2);
+      }
+      if (width < 80) {
+        width = viewW;
+        inset = 0;
+      }
+      return { width: width, inset: inset };
+    }
     function findBar(handle) {
       var ids = ["aliyunCaptcha-sliding-wrapper", "aliyunCaptcha-sliding-body"];
       var handleBox = handle.getBoundingClientRect();
@@ -203,12 +217,13 @@
       if (!handle || handle.offsetWidth < 8) return;
       var bar = findBar(handle);
       if (!bar) return;
+      var span = slideSpan(viewW);
       var handleBox = handle.getBoundingClientRect();
       var barBox = bar.getBoundingClientRect();
       var stick = barBox.left - handleBox.left;
       if (stick < 0) stick = 0;
-      var target = Math.round(viewW - slideInset * 2 - stick);
-      if (target < 80) target = Math.round(viewW - slideInset * 2);
+      var target = Math.round(span.width - stick);
+      if (target < 80) target = span.width;
       if (Math.abs(barBox.width - target) > 1) {
         bar.style.setProperty("width", target + "px", "important");
         bar.style.setProperty("min-width", target + "px", "important");
@@ -219,7 +234,7 @@
       handleBox = handle.getBoundingClientRect();
       barBox = bar.getBoundingClientRect();
       var left = handleBox.left < barBox.left ? handleBox.left : barBox.left;
-      var delta = slideInset - left;
+      var delta = span.inset - left;
       if (Math.abs(delta) > 0.5) {
         var applied = parseFloat(bar.style.left || "0");
         if (isNaN(applied)) applied = 0;
@@ -300,9 +315,8 @@
     function slideLayout() {
       var viewW = document.documentElement.clientWidth || window.innerWidth;
       var full = viewW > 80 ? viewW : __SLIDE_WIDTH__;
-      var width = full - slideInset * 2;
-      if (width < 80) width = full;
-      return { width: width, rem: __CAPTCHA_REM__ };
+      var span = slideSpan(full);
+      return { width: span.width, rem: __CAPTCHA_REM__ };
     }
     function initCaptcha() {
       if (typeof window.initAliyunCaptcha !== "function") {

@@ -458,6 +458,7 @@ String _fillCaptchaHtml(String raw) {
       .replaceAll('__SCENE_ID__', '1x1kohduf')
       .replaceAll('__CAPTCHA_REM__', '1')
       .replaceAll('__SLIDE_WIDTH__', _slideWidth().round().toString())
+      .replaceAll('__SLIDE_TRACK__', '220')
       .replaceAll('__PUZZLE_MODE__', 'false');
 }
 
