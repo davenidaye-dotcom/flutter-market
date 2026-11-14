@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -14,7 +16,7 @@ class AliyunCaptchaPage extends StatefulWidget {
   static OverlayEntry? _entry;
   static Completer<String?>? _wait;
   static WebViewController? _controller;
-  static final GlobalKey _webKey = GlobalKey();
+  static var _session = 0;
   static var _visible = false;
   static var _ready = false;
   static var _stage = 'start';
@@ -46,6 +48,7 @@ class AliyunCaptchaPage extends StatefulWidget {
     final wait = _wait;
     _entry = null;
     _wait = null;
+    _session++;
     _controller = null;
     _visible = false;
     _ready = false;
@@ -91,12 +94,16 @@ class AliyunCaptchaPage extends StatefulWidget {
 
   static void _ensureController() {
     if (_controller != null) return;
+    final session = _session;
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..addJavaScriptChannel(
         'AliyunCaptchaBridge',
-        onMessageReceived: (message) => _onWarm(message.message),
+        onMessageReceived: (message) {
+          if (session != _session || !identical(_controller, controller)) return;
+          _onWarm(message.message);
+        },
       )
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -172,16 +179,28 @@ class AliyunCaptchaPage extends StatefulWidget {
     _webWidth = 0;
     final wait = _wait;
     _wait = null;
+    // 滑过一次的阿里云滑块不能再拖。丢掉这一页，下一回用新的。
+    _session++;
+    _controller = null;
     _entry?.markNeedsBuild();
     if (wait != null && !wait.isCompleted) wait.complete(value);
-    final controller = _controller;
-    if (controller != null) unawaited(_load(controller));
+    final entry = _entry;
+    if (entry != null && entry.mounted) {
+      _ensureController();
+      entry.markNeedsBuild();
+    }
   }
 
   static Widget _buildOverlay(BuildContext context) {
     final controller = _controller;
     if (controller == null) return const SizedBox.shrink();
-    final web = WebViewWidget(key: _webKey, controller: controller);
+    final web = WebViewWidget(
+      key: ValueKey(_session),
+      controller: controller,
+      gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+        Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+      },
+    );
     final width = _captchaDialogWidth(MediaQuery.sizeOf(context).width);
     if (!_visible || (!_ready && _error == null)) {
       return Stack(
@@ -198,7 +217,7 @@ class AliyunCaptchaPage extends StatefulWidget {
             top: 0,
             width: width,
             height: 420,
-            child: IgnorePointer(child: web),
+            child: web,
           ),
           if (_visible) Center(child: _WaitingCard(onClose: () => _finish(null))),
         ],
@@ -391,7 +410,12 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
       return SizedBox(
         width: _puzzleWidth(width),
         height: AliyunCaptchaPage._webHeight.clamp(120.0, maxH),
-        child: WebViewWidget(controller: _controller),
+        child: WebViewWidget(
+          controller: _controller,
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+          },
+        ),
       );
     }
     final barHeight = _webHeight.clamp(48.0, 72.0);
@@ -442,7 +466,16 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
                     alignment: Alignment.topCenter,
                     minHeight: 420,
                     maxHeight: 420,
-                    child: SizedBox(width: width, height: 420, child: WebViewWidget(controller: _controller)),
+                    child: SizedBox(
+                      width: width,
+                      height: 420,
+                      child: WebViewWidget(
+                        controller: _controller,
+                        gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+                          Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+                        },
+                      ),
+                    ),
                   ),
                 ),
               ),
