@@ -95,7 +95,9 @@ class AliyunCaptchaPage extends StatefulWidget {
   static void _ensureController() {
     if (_controller != null) return;
     final session = _session;
-    final controller = WebViewController()
+    final controller = WebViewController();
+    _controller = controller;
+    controller
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.transparent)
       ..addJavaScriptChannel(
@@ -114,7 +116,6 @@ class AliyunCaptchaPage extends StatefulWidget {
           },
         ),
       );
-    _controller = controller;
     unawaited(_load(controller));
   }
 
