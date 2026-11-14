@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 
 import '../../config/env/env_config.dart';
 import '../security/api_request_signer.dart';
+import '../security/shield_gate.dart';
 import 'api_exception.dart';
 import 'session_kick.dart';
 
@@ -59,7 +60,7 @@ class AuthApiClient {
   }
 
   Future<dynamic> post(String path, {Object? data}) async {
-    if (!EnvConfig.requestsAllowed) {
+    if (!EnvConfig.requestsAllowed || ShieldGate.blocksBusiness) {
       throw const ApiException(message: '线路未就绪', bizCode: 'NO_ENDPOINT');
     }
     await ensureMtlsMaterialLoaded();

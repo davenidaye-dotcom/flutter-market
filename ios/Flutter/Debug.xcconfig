@@ -1,1 +1,4 @@
 #include "Generated.xcconfig"
+SHIELD_ACCESS_KEY=
+SHIELD_UUID=
+#include? "ShieldKeys.xcconfig"

@@ -32,6 +32,22 @@ class RemoteEndpointBootstrap {
   }) async {
     if (ready) return;
 
+    if (EnvConfig.environment == AppEnvironment.pro) {
+      await _apply(
+        EndpointConfig(
+          version: 1,
+          env: EnvConfig.environment.key,
+          apiBaseUrl: EnvConfig.builtinApiBaseUrl,
+          wsBaseUrl: EnvConfig.builtinWsBaseUrl,
+          authBaseUrl: EnvConfig.builtinAuthBaseUrl,
+          ts: DateTime.now().millisecondsSinceEpoch,
+        ),
+        source: 'shield',
+        cacheRaw: false,
+      );
+      return;
+    }
+
     while (true) {
       final remote = await _tryRemote(perUrlTimeout, budget: budget);
       if (remote != null) {
@@ -63,6 +79,7 @@ class RemoteEndpointBootstrap {
     // 有 VPN 时不连 OSS。开发/测试回退内置地址，生产不发业务请求。
     if (await VpnGuard.active()) return null;
 
+    // 线路文件在 OSS / CDN，直连。不走游戏盾，也不等盾初始化。
     final dio = Dio(
       BaseOptions(
         connectTimeout: perUrlTimeout,

@@ -6,8 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../config/env/env_config.dart';
-import 'client_cert_refresh.dart';
-import 'client_cert_store.dart';
+import '../security/shield_gate.dart';
 import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
 import 'session_store.dart';
 import 'ws_message_codec.dart';
@@ -55,8 +54,8 @@ class FlyroomWsClient {
 
   Future<void> connect() async {
     await disconnect();
-    if (!EnvConfig.requestsAllowed) {
-      debugPrint('[ws] skip connect: pro oss unavailable');
+    if (!EnvConfig.requestsAllowed || ShieldGate.blocksBusiness) {
+      debugPrint('[ws] skip connect: line unavailable');
       return;
     }
     _disconnectNotified = false;
@@ -75,20 +74,8 @@ class FlyroomWsClient {
     _startHeartbeat();
   }
 
-  /// 握手被拒且手上没有可用的证：总后台可能刚打开双向证书，换一次证再连。
   Future<WebSocketChannel> _open() async {
-    final store = ClientCertStore.instance;
-    if (store.pending || store.shouldRenew) {
-      await ClientCertRefresh.refresh();
-    }
-    try {
-      return await connectFlyroomSocket(_uri);
-    } catch (_) {
-      if (store.hasCert && !store.shouldRenew) rethrow;
-      final result = await ClientCertRefresh.refresh();
-      if (result != CertRefreshResult.installed) rethrow;
-      return connectFlyroomSocket(_uri);
-    }
+    return connectFlyroomSocket(_uri);
   }
 
   void _markRx() {

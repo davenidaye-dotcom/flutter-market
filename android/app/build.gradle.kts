@@ -1,6 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+val shieldProps = Properties()
+val shieldFile = rootProject.file("shield-pro.properties")
+if (shieldFile.exists()) {
+    shieldFile.reader(Charsets.UTF_8).use { shieldProps.load(it) }
+}
+
+fun shieldQuote(key: String): String {
+    val raw = shieldProps.getProperty(key)?.trim().orEmpty()
+    return "\"${raw.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 }
 
 android {
@@ -13,12 +26,18 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "com.letou.letou_app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        buildConfigField("String", "SHIELD_ACCESS_KEY", "\"\"")
+        buildConfigField("String", "SHIELD_UUID", "\"\"")
     }
 
     // 注意：Flutter 打 APK 时仍可能带上未在此列出的 ABI。
@@ -51,6 +70,8 @@ android {
                 abiFilters.clear()
                 abiFilters += listOf("armeabi-v7a", "arm64-v8a")
             }
+            buildConfigField("String", "SHIELD_ACCESS_KEY", shieldQuote("accessKey"))
+            buildConfigField("String", "SHIELD_UUID", shieldQuote("uuid"))
         }
     }
 
@@ -85,4 +106,5 @@ flutter {
 
 dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
+    add("proImplementation", files("libs/appvest.jar"))
 }

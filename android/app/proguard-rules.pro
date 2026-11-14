@@ -6,6 +6,8 @@
 -keep class io.flutter.** { *; }
 -keep class io.flutter.plugins.** { *; }
 
+-keep class com.cf.msc.sdk.** { *; }
+
 # Keep native methods
 -keepclasseswithmembernames class * {
     native <methods>;

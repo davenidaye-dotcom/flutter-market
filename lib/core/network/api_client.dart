@@ -10,6 +10,7 @@ import 'must_change_password.dart';
 import 'session_kick.dart';
 import 'session_store.dart';
 import '../security/api_request_signer.dart';
+import '../security/shield_gate.dart';
 
 /// HTTP client for FlyRoom `/api/v1`
 class ApiClient {
@@ -73,11 +74,11 @@ class ApiClient {
   }
 
   void rebindTls() {
-    bindMtlsClient(_dio, presentClientCert: true);
+    bindMtlsClient(_dio, presentClientCert: false);
   }
 
   void _requireEndpoint() {
-    if (EnvConfig.requestsAllowed) return;
+    if (EnvConfig.requestsAllowed && !ShieldGate.blocksBusiness) return;
     throw const ApiException(message: '线路未就绪', bizCode: 'NO_ENDPOINT');
   }
 
@@ -90,9 +91,6 @@ class ApiClient {
       throw const ApiException(message: '未登录', bizCode: 'NO_TOKEN');
     }
     await ensureMtlsMaterialLoaded();
-    if (ClientCertStore.instance.pending || ClientCertStore.instance.shouldRenew) {
-      await ClientCertRefresh.refresh();
-    }
     // 等领证的时候如果已经退出或换成了另一个账号，不能把新 token 打到旧的房间请求上。
     if (SessionStore.instance.accessToken != tokenAtStart) {
       throw const ApiException(message: '登录已取消', bizCode: 'LOGIN_SUPERSEDED');

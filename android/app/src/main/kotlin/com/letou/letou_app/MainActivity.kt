@@ -36,6 +36,14 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/shield")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "init" -> result.success(shieldInit())
+                    "localPort" -> result.success(shieldLocalPort())
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "flyroom/update")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -168,6 +176,37 @@ class MainActivity : FlutterActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setTurnScreenOn(true)
             setShowWhenLocked(true)
+        }
+    }
+
+    private fun shieldReady(): Boolean {
+        return BuildConfig.SHIELD_ACCESS_KEY.isNotEmpty() && BuildConfig.SHIELD_UUID.isNotEmpty()
+    }
+
+    private fun shieldInit(): Boolean {
+        if (!shieldReady()) return false
+        return try {
+            val code = Class.forName("com.cf.msc.sdk.AppVest")
+                .getMethod("init", String::class.java, String::class.java)
+                .invoke(null, BuildConfig.SHIELD_ACCESS_KEY, BuildConfig.SHIELD_UUID) as Int
+            code != -1
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    private fun shieldLocalPort(): Map<String, Any>? {
+        if (!shieldReady()) return null
+        return try {
+            val conn = Class.forName("com.cf.msc.sdk.AppVest")
+                .getMethod("getServerIPAndPort", String::class.java, Int::class.javaPrimitiveType!!)
+                .invoke(null, "", 443) ?: return null
+            val ip = conn.javaClass.getMethod("getServerIp").invoke(conn) as? String
+            val portValue = conn.javaClass.getMethod("getServerPort").invoke(conn)
+            val port = (portValue as? Number)?.toInt() ?: -1
+            if (ip.isNullOrBlank() || port <= 0) null else mapOf("ip" to ip, "port" to port)
+        } catch (_: Throwable) {
+            null
         }
     }
 }

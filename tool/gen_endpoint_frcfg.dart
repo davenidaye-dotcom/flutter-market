@@ -60,6 +60,7 @@ void main(List<String> args) {
   print('wrote assets/bootstrap/endpoint.frcfg');
   print('env=$env api=$api ws=$ws');
   print('signKid=$signKid cfgKid=$cfgKid');
-  print('upload → OSS flyroom/$env/endpoint.frcfg');
+  final objectName = env == 'pro' ? 'endpoint.pro1.frcfg' : 'endpoint.frcfg';
+  print('upload → OSS flyroom/$env/$objectName');
   print('backend must contain secrets."$signKid" = same sign-secret');
 }

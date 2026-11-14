@@ -13,6 +13,9 @@
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
+		A1B1C0012EC0A10000000001 /* appvest_framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B1C0032EC0A10000000003 /* appvest_framework */; };
+		A1B1C0022EC0A10000000002 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B1C0052EC0A10000000005 /* libz.tbd */; };
+		A1B1C0072EC0A10000000007 /* ShieldBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B1C0082EC0A10000000008 /* ShieldBridge.m */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
@@ -59,6 +62,11 @@
 		97C146FD1CF9000F007C117D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1B1C0032EC0A10000000003 /* appvest_framework */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = appvest_framework; sourceTree = "<group>"; };
+		A1B1C0042EC0A10000000004 /* appvest.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = appvest.h; sourceTree = "<group>"; };
+		A1B1C0082EC0A10000000008 /* ShieldBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ShieldBridge.m; sourceTree = "<group>"; };
+		A1B1C0092EC0A10000000009 /* ShieldBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ShieldBridge.h; sourceTree = "<group>"; };
+		A1B1C0052EC0A10000000005 /* libz.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libz.tbd; path = usr/lib/libz.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -66,6 +74,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1B1C0012EC0A10000000001 /* appvest_framework in Frameworks */,
+				A1B1C0022EC0A10000000002 /* libz.tbd in Frameworks */,
 				78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -115,6 +125,7 @@
 		97C146F01CF9000F007C117D /* Runner */ = {
 			isa = PBXGroup;
 			children = (
+				A1B1C0062EC0A10000000006 /* AppVest */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -126,6 +137,18 @@
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
 			path = Runner;
+			sourceTree = "<group>";
+		};
+
+		A1B1C0062EC0A10000000006 /* AppVest */ = {
+			isa = PBXGroup;
+			children = (
+				A1B1C0032EC0A10000000003 /* appvest_framework */,
+				A1B1C0042EC0A10000000004 /* appvest.h */,
+				A1B1C0092EC0A10000000009 /* ShieldBridge.h */,
+				A1B1C0082EC0A10000000008 /* ShieldBridge.m */,
+			);
+			path = AppVest;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -282,6 +305,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
+				A1B1C0072EC0A10000000007 /* ShieldBridge.m in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 			);
@@ -384,6 +408,11 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.letou.letouApp;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Runner/AppVest",
+				);
+
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -564,6 +593,11 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.letou.letouApp;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Runner/AppVest",
+				);
+
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -587,6 +621,11 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.letou.letouApp;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(SRCROOT)/Runner/AppVest",
+				);
+
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
