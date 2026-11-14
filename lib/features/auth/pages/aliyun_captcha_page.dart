@@ -238,7 +238,7 @@ class AliyunCaptchaPage extends StatefulWidget {
             child: SizedBox(
               width: width,
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+                padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -265,6 +265,7 @@ class AliyunCaptchaPage extends StatefulWidget {
                         ],
                       ),
                     ),
+                    const _SlideHint(),
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
@@ -401,7 +402,7 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
       child: SizedBox(
         width: width,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 4, 0, 8),
+          padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -423,10 +424,11 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
                     ),
                   ],
                 ),
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  ),
+                  const _SlideHint(),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                   child: Text(
                     _error!,
                     textAlign: TextAlign.center,
@@ -456,17 +458,15 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
 String _fillCaptchaHtml(String raw) {
   return raw
       .replaceAll('__SCENE_ID__', '1x1kohduf')
-      .replaceAll('__CAPTCHA_REM__', '1')
+      .replaceAll('__CAPTCHA_REM__', '0.75')
       .replaceAll('__SLIDE_WIDTH__', _slideWidth().round().toString())
       .replaceAll('__SLIDE_TRACK__', '268')
       .replaceAll('__PUZZLE_MODE__', 'false');
 }
 
 double _captchaDialogWidth(double screen) {
-  final width = screen - 72;
-  if (width < 240) return width;
-  if (width > 300) return 300.0;
-  return width;
+  if (screen < 312) return screen - 32;
+  return 280;
 }
 
 double _captchaRestHeight() => 56.0;
@@ -549,11 +549,27 @@ class _WaitingCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              const _SlideHint(),
               const _LoadingButton(),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SlideHint extends StatelessWidget {
+  const _SlideHint();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Text(
+        '拖到最右边完成验证',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
       ),
     );
   }

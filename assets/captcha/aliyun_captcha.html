@@ -8,8 +8,8 @@
   </script>
   <style>
     html, body { margin: 0; background: transparent; font-family: sans-serif; }
-    body { padding: 0; }
-    #captcha-element { width: 100%; min-height: 40px; }
+    body { padding: 0 0 4px; }
+    #captcha-element { width: 100%; min-height: 40px; display: flex; justify-content: center; }
     #aliyunCaptcha-sliding-slider,
     .aliyunCaptcha-sliding-slider {
       background-color: #4A89DC !important;
@@ -197,13 +197,17 @@
       }
       return { width: width, inset: inset };
     }
-    function sizeTrack(node, width) {
-      if (Math.abs(node.getBoundingClientRect().width - width) <= 1) return;
-      node.style.setProperty("width", width + "px", "important");
-      node.style.setProperty("min-width", width + "px", "important");
-      node.style.setProperty("max-width", width + "px", "important");
-      node.style.setProperty("box-sizing", "border-box", "important");
-      node.style.setProperty("margin-left", "0px", "important");
+    function findBar(handle) {
+      var ids = ["aliyunCaptcha-sliding-wrapper", "aliyunCaptcha-sliding-body"];
+      var handleBox = handle.getBoundingClientRect();
+      var handleMid = (handleBox.top + handleBox.bottom) / 2;
+      for (var i = 0; i < ids.length; i++) {
+        var node = document.getElementById(ids[i]);
+        if (!node || node.offsetWidth < 80 || node.offsetHeight < 20) continue;
+        var box = node.getBoundingClientRect();
+        if (Math.abs((box.top + box.bottom) / 2 - handleMid) < 30) return node;
+      }
+      return null;
     }
     function insetSlide() {
       if (puzzleShown()) return;
@@ -211,18 +215,26 @@
       if (viewW < 80) return;
       var handle = document.getElementById("aliyunCaptcha-sliding-slider");
       if (!handle || handle.offsetWidth < 8) return;
-      var span = slideSpan(viewW);
-      var ids = ["aliyunCaptcha-sliding-wrapper", "aliyunCaptcha-sliding-body"];
-      var bar = null;
-      for (var i = 0; i < ids.length; i++) {
-        var node = document.getElementById(ids[i]);
-        if (!node || node.offsetHeight < 20) continue;
-        sizeTrack(node, span.width);
-        if (!bar) bar = node;
-      }
+      var bar = findBar(handle);
       if (!bar) return;
-      var box = bar.getBoundingClientRect();
-      var delta = span.inset - (viewW - box.right);
+      var span = slideSpan(viewW);
+      var handleBox = handle.getBoundingClientRect();
+      var barBox = bar.getBoundingClientRect();
+      var stick = barBox.left - handleBox.left;
+      if (stick < 0) stick = 0;
+      var target = Math.round(span.width - stick);
+      if (target < 80) target = span.width;
+      if (Math.abs(barBox.width - target) > 1) {
+        bar.style.setProperty("width", target + "px", "important");
+        bar.style.setProperty("min-width", target + "px", "important");
+        bar.style.setProperty("max-width", target + "px", "important");
+        bar.style.setProperty("box-sizing", "border-box", "important");
+        bar.style.setProperty("margin-left", "0px", "important");
+      }
+      handleBox = handle.getBoundingClientRect();
+      barBox = bar.getBoundingClientRect();
+      var rightGap = viewW - Math.max(handleBox.right, barBox.right);
+      var delta = span.inset - rightGap;
       if (Math.abs(delta) > 0.5) {
         var applied = parseFloat(bar.style.left || "0");
         if (isNaN(applied)) applied = 0;
@@ -253,7 +265,6 @@
     function publish() {
       hideLogo();
       paintHandle();
-      insetSlide();
       var stage = puzzleShown() ? "puzzle" : "start";
       var box = null;
       if (stage === "puzzle") {
@@ -294,17 +305,22 @@
       report({ ok: false, ready: true, stage: stage, height: h, width: w });
       darkenHint();
     }
+    var layoutObserver = null;
     function measure() {
-      publish();
+      if (layoutObserver) layoutObserver.disconnect();
+      try {
+        publish();
+      } finally {
+        if (layoutObserver) {
+          layoutObserver.observe(document.body, { childList: true, subtree: true, attributes: true });
+        }
+      }
     }
     window.addEventListener("resize", function () {
       setTimeout(publish, 60);
     });
     function slideLayout() {
-      var viewW = document.documentElement.clientWidth || window.innerWidth;
-      var full = viewW > 80 ? viewW : __SLIDE_WIDTH__;
-      var span = slideSpan(full);
-      return { width: span.width, rem: __CAPTCHA_REM__ };
+      return { width: 320, rem: __CAPTCHA_REM__ };
     }
     function initCaptcha() {
       if (typeof window.initAliyunCaptcha !== "function") {
@@ -367,8 +383,8 @@
       }
       loadSdk();
       if (window.MutationObserver) {
-        var observer = new MutationObserver(function () { measure(); });
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+        layoutObserver = new MutationObserver(function () { measure(); });
+        layoutObserver.observe(document.body, { childList: true, subtree: true, attributes: true });
       }
     }
     boot();
