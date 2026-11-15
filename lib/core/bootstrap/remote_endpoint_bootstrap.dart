@@ -13,7 +13,7 @@ import 'bootstrap_seeds.dart';
 import 'config_crypto.dart';
 
 /// 启动时从 OSS/CDN 拉加密线路 → 解密 → 应用到 [EnvConfig]。
-/// 生产包一直停在启动页重试，拉到 OSS 才进 App。开发/测试拉不到时用内置测试地址。
+/// 正式备用包一直停在启动页重试，拉到 OSS 才进 App。开发/测试拉不到时用内置测试地址。
 class RemoteEndpointBootstrap {
   RemoteEndpointBootstrap._();
   static final RemoteEndpointBootstrap instance = RemoteEndpointBootstrap._();
@@ -31,22 +31,6 @@ class RemoteEndpointBootstrap {
     Duration budget = const Duration(seconds: 8),
   }) async {
     if (ready) return;
-
-    if (EnvConfig.environment == AppEnvironment.pro) {
-      await _apply(
-        EndpointConfig(
-          version: 1,
-          env: EnvConfig.environment.key,
-          apiBaseUrl: EnvConfig.builtinApiBaseUrl,
-          wsBaseUrl: EnvConfig.builtinWsBaseUrl,
-          authBaseUrl: EnvConfig.builtinAuthBaseUrl,
-          ts: DateTime.now().millisecondsSinceEpoch,
-        ),
-        source: 'shield',
-        cacheRaw: false,
-      );
-      return;
-    }
 
     while (true) {
       final remote = await _tryRemote(perUrlTimeout, budget: budget);

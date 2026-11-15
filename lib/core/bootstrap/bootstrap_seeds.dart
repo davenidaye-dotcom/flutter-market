@@ -6,17 +6,13 @@ class BootstrapSeeds {
   /// 可选运行时覆盖（调试/灰度）
   static const defineUrl = String.fromEnvironment('BOOTSTRAP_URL', defaultValue: '');
 
-  static const _proBuild =
-      String.fromEnvironment('APP_ENV', defaultValue: 'dev') == 'pro';
-
-  /// 按环境拼路径后缀。正式包不带这些地址。
+  /// 按环境拼路径后缀。正式备用包读 pro 的 endpoint.pro1.frcfg。
   static List<String> urlsForEnv(String envKey) {
     final out = <String>[];
     if (defineUrl.trim().isNotEmpty) {
       out.add(defineUrl.trim());
     }
-    if (_proBuild || envKey == 'pro') return out;
-    const objectName = 'endpoint.frcfg';
+    final objectName = envKey == 'pro' ? 'endpoint.pro1.frcfg' : 'endpoint.frcfg';
     // 反转存放，运行时翻回，避免明文一眼搜到完整 OSS
     final seeds = <String>[
       // 主：请改成你们真实 bucket

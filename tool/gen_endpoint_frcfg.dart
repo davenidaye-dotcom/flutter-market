@@ -53,14 +53,20 @@ void main(List<String> args) {
   if (!dir.existsSync()) dir.createSync(recursive: true);
   final file = File('tool/out/endpoint.$env.frcfg');
   file.writeAsStringSync(blob);
-  final assetDir = Directory('assets/bootstrap');
-  if (!assetDir.existsSync()) assetDir.createSync(recursive: true);
-  File('assets/bootstrap/endpoint.frcfg').writeAsStringSync(blob);
   print('wrote ${file.path}');
-  print('wrote assets/bootstrap/endpoint.frcfg');
+  final objectName = env == 'pro' ? 'endpoint.pro1.frcfg' : 'endpoint.frcfg';
+  if (env == 'pro') {
+    File('tool/out/$objectName').writeAsStringSync(blob);
+    print('wrote tool/out/$objectName');
+  }
+  if (env != 'pro') {
+    final assetDir = Directory('assets/bootstrap');
+    if (!assetDir.existsSync()) assetDir.createSync(recursive: true);
+    File('assets/bootstrap/endpoint.frcfg').writeAsStringSync(blob);
+    print('wrote assets/bootstrap/endpoint.frcfg');
+  }
   print('env=$env api=$api ws=$ws');
   print('signKid=$signKid cfgKid=$cfgKid');
-  final objectName = env == 'pro' ? 'endpoint.pro1.frcfg' : 'endpoint.frcfg';
   print('upload → OSS flyroom/$env/$objectName');
   print('backend must contain secrets."$signKid" = same sign-secret');
 }

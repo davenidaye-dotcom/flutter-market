@@ -34,14 +34,14 @@ class EnvConfig {
   static bool get hasEndpoint =>
       _apiBaseUrlOverride != null && _wsBaseUrlOverride != null;
 
-  /// 开发/测试拉不到 OSS 时仍走内置测试地址。正式包不拉 OSS。
+  /// 开发/测试拉不到 OSS 时仍走内置测试地址。正式备用包拉不到 OSS 时地址为空。
   static bool get requestsAllowed => apiBaseUrl.isNotEmpty && wsBaseUrl.isNotEmpty;
 
-  // 开发、测试走测试机。正式包只连盾返回的本机端口，这里的主机不是源站。
+  // 开发、测试走测试机。正式备用包只使用 OSS 下发的地址。
   static String get builtinApiBaseUrl => switch (environment) {
         AppEnvironment.dev => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
         AppEnvironment.test => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
-        AppEnvironment.pro => 'https://127.0.0.1/api/v1/eybyqamwedxng8shw5vn',
+        AppEnvironment.pro => '',
       };
 
   /// 登录和换证也走 443。认证请求不带客户端证，optional 下照常通过。
@@ -50,7 +50,7 @@ class EnvConfig {
   static String get builtinWsBaseUrl => switch (environment) {
         AppEnvironment.dev => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
         AppEnvironment.test => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
-        AppEnvironment.pro => 'wss://127.0.0.1/ws/v1/eybyqamwedxng8shw5vn',
+        AppEnvironment.pro => '',
       };
 
   /// HTTP API prefix (no trailing slash).

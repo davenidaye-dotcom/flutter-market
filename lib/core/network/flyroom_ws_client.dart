@@ -7,6 +7,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../config/env/env_config.dart';
 import '../security/shield_gate.dart';
+import 'client_cert_refresh.dart';
+import 'client_cert_store.dart';
 import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
 import 'session_store.dart';
 import 'ws_message_codec.dart';
@@ -57,6 +59,9 @@ class FlyroomWsClient {
     if (!EnvConfig.requestsAllowed || ShieldGate.blocksBusiness) {
       debugPrint('[ws] skip connect: line unavailable');
       return;
+    }
+    if (ClientCertStore.instance.pending) {
+      await ClientCertRefresh.refresh();
     }
     _disconnectNotified = false;
     sessionToken = SessionStore.instance.accessToken;

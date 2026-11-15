@@ -5,6 +5,8 @@ import '../models/user_model.dart';
 import '../../core/network/api_client.dart';
 import '../../core/network/auth_api_client.dart';
 import '../../core/network/api_exception.dart';
+import '../../core/network/client_cert_refresh.dart';
+import '../../core/network/client_cert_store.dart';
 import '../../core/network/session_store.dart';
 import '../../features/auth/device_login_store.dart';
 
@@ -110,8 +112,17 @@ class AuthRepository {
       }
     }
     _ensureEpoch(commitEpoch, token);
+    await _takeCert(map);
 
     return user;
+  }
+
+  /// 后端关闭时响应里没有领证标记，这里什么都不做。
+  Future<void> _takeCert(Map<String, dynamic> map) async {
+    ClientCertStore.instance.applyLoginMap(map);
+    if (!ClientCertStore.instance.pending) return;
+    if ((SessionStore.instance.accessToken ?? '').isEmpty) return;
+    await ClientCertRefresh.refresh();
   }
 
   void _ensureEpoch(int commitEpoch, [String? ownedToken]) {
@@ -151,6 +162,7 @@ class AuthRepository {
     } else if (SessionStore.instance.epoch != epoch) {
       throw const ApiException(message: '\u767b\u5f55\u5df2\u53d6\u6d88', bizCode: 'LOGIN_SUPERSEDED');
     }
+    await _takeCert(map);
     ApiClient.instance.rebindTls();
     try {
       return UserModel.fromLoginPayload(map, fallbackUsername: username.trim());

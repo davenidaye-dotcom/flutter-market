@@ -7,7 +7,6 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../security/shield_cert_pin.dart';
-import '../security/shield_gate.dart';
 import '../security/vpn_guard.dart';
 import 'client_cert_store.dart';
 
@@ -87,14 +86,14 @@ Future<WebSocketChannel> connectFlyroomSocket(Uri uri) async {
   await ensureMtlsMaterialLoaded();
   final channel = IOWebSocketChannel.connect(
     uri,
-    customClient: _httpClient(false),
+    customClient: _httpClient(ClientCertStore.instance.hasCert),
   );
   await channel.ready;
   return channel;
 }
 
-/// 不再出示客户端证。dev/test 的服务端证仍由包内测试根签发。
-/// 正式包不信公网根，也不按域名核对，只在盾隧道里核对公钥指纹。
+/// 内存里有客户端证才出示。dev/test 的服务端证仍由包内测试根签发。
+/// 正式备用包直连 OSS 下发的主机，不信公网根，只核对源站公钥指纹。
 HttpClient _httpClient(bool presentClientCert) {
   final trustPublicRoots = _appEnv != 'pro' && !_trustPrivateRoot && !presentClientCert;
   final context = SecurityContext(withTrustedRoots: trustPublicRoots);
@@ -121,43 +120,11 @@ HttpClient _httpClient(bool presentClientCert) {
   };
   client.badCertificateCallback = (cert, _, _) =>
       _appEnv == 'pro' && shieldCertPinMatches(cert.der);
-  if (_appEnv == 'pro') {
-    client.idleTimeout = Duration.zero;
-    client.connectionFactory = (_, _, _) => _shieldConnect(context);
-  }
   return client;
 }
 
-/// 正式包 TCP 只拨盾的本机端口。不传业务域名，TLS 只核对公钥指纹。
-/// 直连时 HttpClient 不会再给 connectionFactory 返回的套接字做一次握手。
-Future<ConnectionTask<Socket>> _shieldConnect(SecurityContext context) async {
-  if (VpnGuard.blocked) {
-    throw const VpnBlockedException();
-  }
-  final endpoint = await ShieldGate.localEndpoint();
-  if (endpoint == null) {
-    throw const SocketException('shield unavailable');
-  }
-  final task = await Socket.startConnect(endpoint.ip, endpoint.port);
-  return ConnectionTask.fromSocket(
-    task.socket.then((raw) async {
-      try {
-        return await SecureSocket.secure(
-          raw,
-          context: context,
-          onBadCertificate: (cert) => shieldCertPinMatches(cert.der),
-        );
-      } catch (_) {
-        raw.destroy();
-        rethrow;
-      }
-    }),
-    task.cancel,
-  );
-}
-
 HttpClient _downloadClient() {
-  // 安装包地址不固定，保持直连，不走游戏盾。
+  // 安装包地址不固定，保持直连。
   final context = SecurityContext(withTrustedRoots: true);
   final ca = _caBytes;
   if (ca != null && ca.isNotEmpty) {

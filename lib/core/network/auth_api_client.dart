@@ -6,9 +6,10 @@ import '../../config/env/env_config.dart';
 import '../security/api_request_signer.dart';
 import '../security/shield_gate.dart';
 import 'api_exception.dart';
+import 'client_cert_store.dart';
 import 'session_kick.dart';
 
-/// 登录、注册、设备快登、换证。单向 TLS，不带客户端证。
+/// 登录、注册、设备快登、换证。内存里有客户端证才附带，没有就按普通 TLS。
 class AuthApiClient {
   AuthApiClient._() {
     _dio = Dio(
@@ -48,15 +49,20 @@ class AuthApiClient {
         },
       ),
     );
-    bindMtlsClient(_dio, presentClientCert: false);
+    _rebind();
+    ClientCertStore.instance.addListener(_rebind);
   }
 
   static final AuthApiClient instance = AuthApiClient._();
   late final Dio _dio;
 
+  void _rebind() {
+    bindMtlsClient(_dio, presentClientCert: ClientCertStore.instance.hasCert);
+  }
+
   void syncBaseUrl() {
     _dio.options.baseUrl = EnvConfig.authBaseUrl;
-    bindMtlsClient(_dio, presentClientCert: false);
+    _rebind();
   }
 
   Future<dynamic> post(String path, {Object? data}) async {

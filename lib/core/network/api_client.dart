@@ -74,7 +74,7 @@ class ApiClient {
   }
 
   void rebindTls() {
-    bindMtlsClient(_dio, presentClientCert: false);
+    bindMtlsClient(_dio, presentClientCert: ClientCertStore.instance.hasCert);
   }
 
   void _requireEndpoint() {
@@ -89,6 +89,12 @@ class ApiClient {
     final tokenAtStart = SessionStore.instance.accessToken;
     if (tokenAtStart == null || tokenAtStart.isEmpty) {
       throw const ApiException(message: '未登录', bizCode: 'NO_TOKEN');
+    }
+    if (ClientCertStore.instance.pending) {
+      await ClientCertRefresh.refresh();
+      if (SessionStore.instance.accessToken != tokenAtStart) {
+        throw const ApiException(message: '登录已取消', bizCode: 'LOGIN_SUPERSEDED');
+      }
     }
     await ensureMtlsMaterialLoaded();
     // 等领证的时候如果已经退出或换成了另一个账号，不能把新 token 打到旧的房间请求上。

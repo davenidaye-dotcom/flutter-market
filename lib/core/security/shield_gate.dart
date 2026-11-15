@@ -1,10 +1,7 @@
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-
-import '../../config/env/env_config.dart';
 
 enum ShieldStatus { pending, ready, failed }
 
@@ -17,37 +14,15 @@ class ShieldGate {
   static ShieldStatus status = ShieldStatus.pending;
   static Future<void>? _start;
 
-  static bool get blocksBusiness =>
-      EnvConfig.environment == AppEnvironment.pro && status == ShieldStatus.failed;
+  /// 备用包不走游戏盾。初始化失败不能把业务请求挡成线路未就绪。
+  static bool get blocksBusiness => false;
 
   static Future<void> start() {
     return _start ??= _run();
   }
 
   static Future<void> _run() async {
-    if (EnvConfig.environment != AppEnvironment.pro) {
-      status = ShieldStatus.ready;
-      return;
-    }
-    try {
-      final ok = await _channel.invokeMethod<bool>('init').timeout(_budget);
-      if (ok != true) {
-        status = ShieldStatus.failed;
-        debugPrint('[shield] init failed');
-        return;
-      }
-      final endpoint = await _readEndpoint();
-      if (endpoint == null) {
-        status = ShieldStatus.failed;
-        debugPrint('[shield] local port missing');
-        return;
-      }
-      status = ShieldStatus.ready;
-      debugPrint('[shield] ready');
-    } catch (_) {
-      status = ShieldStatus.failed;
-      debugPrint('[shield] init failed');
-    }
+    status = ShieldStatus.ready;
   }
 
   static Future<({String ip, int port})?> localEndpoint() async {
