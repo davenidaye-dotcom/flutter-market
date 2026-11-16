@@ -24,3 +24,7 @@ Future<WebSocketChannel> connectFlyroomSocket(
 }) {
   return Future<WebSocketChannel>.value(WebSocketChannel.connect(uri));
 }
+
+Future<String> fetchEgressIp() {
+  return Future<String>.error(UnsupportedError('当前平台不能查询出口IP'));
+}
