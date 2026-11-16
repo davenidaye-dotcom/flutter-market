@@ -197,3 +197,45 @@ class _VpnGuardAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) => _inner.close(force: force);
 }
+
+final _ipv4 = RegExp(
+  r'(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)',
+);
+
+/// 本机当前出口 IP，也就是防火墙封禁记录里的来源 IP。直连公网，不走盾。
+Future<String> fetchEgressIp() async {
+  await VpnGuard.assertClear();
+  Object? last;
+  for (final url in const ['https://myip.ipip.net', 'https://api.ipify.org']) {
+    try {
+      final body = await _egressText(url);
+      final ip = _ipv4.firstMatch(body)?.group(0);
+      if (ip != null) return ip;
+      last = const FormatException('未获取到出口IP');
+    } catch (e) {
+      last = e;
+      if (e is VpnBlockedException) break;
+    }
+  }
+  if (last is VpnBlockedException) throw last;
+  throw last ?? const FormatException('未获取到出口IP');
+}
+
+Future<String> _egressText(String url) async {
+  final client = HttpClient(context: SecurityContext(withTrustedRoots: true))
+    ..connectionTimeout = const Duration(seconds: 8)
+    ..findProxy = ((_) => 'DIRECT')
+    ..badCertificateCallback = (_, _, _) => false;
+  try {
+    final request = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 8));
+    final response = await request.close().timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) {
+      await response.drain<void>();
+      throw HttpException('IP查询失败', uri: request.uri);
+    }
+    final bytes = await response.fold<List<int>>(<int>[], (buf, chunk) => buf..addAll(chunk));
+    return utf8.decode(bytes, allowMalformed: true);
+  } finally {
+    client.close(force: true);
+  }
+}

@@ -16,8 +16,10 @@ import '../../../shared/widgets/glossy_button.dart';
 import '../../../shared/widgets/gradient_background.dart';
 import '../../../shared/widgets/app_back.dart';
 import '../../../shared/widgets/emulator_safe_text_field.dart';
+import '../../../core/security/vpn_guard.dart';
 import '../../../shared/widgets/page_app_bar.dart';
 import 'aliyun_captcha_page.dart';
+import '../../../core/network/mtls_bind_stub.dart' if (dart.library.io) '../../../core/network/mtls_bind_io.dart';
 import '../login_remember_store.dart';
 import '../providers/auth_session_provider.dart';
 
@@ -62,6 +64,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _passwordFocus = FocusNode();
   bool _remember = false;
   bool _loading = false;
+  String? _egressIp;
+  bool _ipRefreshing = false;
+  int _ipGen = 0;
 
   /// 登录入口模式：玩家 / 经营端（房主+代理 portal）
   bool _hostMode = false;
@@ -72,7 +77,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     final prefill = LoginPrefill.take();
     if (prefill != null) _hostMode = prefill.hostMode;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) AliyunCaptchaPage.prewarm(context);
+      if (!mounted) return;
+      AliyunCaptchaPage.prewarm(context);
+      unawaited(_refreshEgressIp(toastOnError: false));
     });
     Future.microtask(() async {
       await AppRelease.localVersion();
@@ -95,6 +102,33 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     _usernameCtrl.text = account.username;
     _passwordCtrl.text = account.password;
     FocusManager.instance.primaryFocus?.unfocus();
+  }
+
+  Future<String?> _refreshEgressIp({required bool toastOnError}) async {
+    final gen = ++_ipGen;
+    setState(() => _ipRefreshing = true);
+    try {
+      final ip = await fetchEgressIp();
+      if (!mounted || gen != _ipGen) return null;
+      setState(() => _egressIp = ip);
+      return ip;
+    } catch (e) {
+      if (toastOnError && mounted && gen == _ipGen) {
+        AppToast.error(e is VpnBlockedException ? e.toString() : 'IP获取失败');
+      }
+      return null;
+    } finally {
+      if (mounted && gen == _ipGen) setState(() => _ipRefreshing = false);
+    }
+  }
+
+  Future<void> _copyEgressIp() async {
+    if (_ipRefreshing) return;
+    final ip = await _refreshEgressIp(toastOnError: true);
+    if (ip == null || !mounted) return;
+    await Clipboard.setData(ClipboardData(text: ip));
+    if (!mounted) return;
+    AppToast.success('已复制');
   }
 
   Future<void> _openRegister() async {
@@ -221,6 +255,15 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               final cardHeight = (constraints.maxHeight - keyboard).clamp(0.0, constraints.maxHeight);
               return Stack(
                 children: [
+                  Positioned(
+                    left: 16.w,
+                    top: 4.h,
+                    child: _EgressIpChip(
+                      ip: _egressIp,
+                      refreshing: _ipRefreshing,
+                      onCopy: _copyEgressIp,
+                    ),
+                  ),
                   SingleChildScrollView(
                     padding: EdgeInsets.fromLTRB(28.w, 0, 28.w, keyboard),
                     child: ConstrainedBox(
@@ -367,6 +410,47 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _EgressIpChip extends StatelessWidget {
+  const _EgressIpChip({
+    required this.ip,
+    required this.refreshing,
+    required this.onCopy,
+  });
+
+  final String? ip;
+  final bool refreshing;
+  final VoidCallback onCopy;
+
+  @override
+  Widget build(BuildContext context) {
+    final label = ip ?? (refreshing ? '获取中' : '获取失败');
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(fontSize: 13.sp, color: AppColors.textPrimary),
+        ),
+        SizedBox(width: 8.w),
+        GestureDetector(
+          onTap: refreshing ? null : onCopy,
+          behavior: HitTestBehavior.opaque,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6.w, vertical: 4.h),
+            child: Text(
+              refreshing ? '刷新中' : '复制',
+              style: TextStyle(
+                fontSize: 13.sp,
+                color: refreshing ? AppColors.textHint : AppColors.primary,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

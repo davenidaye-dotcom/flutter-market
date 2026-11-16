@@ -17,3 +17,7 @@ void bindMtlsClient(Dio dio, {required bool presentClientCert}) {}
 Future<WebSocketChannel> connectFlyroomSocket(Uri uri) {
   return Future<WebSocketChannel>.value(WebSocketChannel.connect(uri));
 }
+
+Future<String> fetchEgressIp() {
+  return Future<String>.error(UnsupportedError('当前平台不能查询出口IP'));
+}
