@@ -7,9 +7,9 @@
     window.AliyunCaptchaConfig = { region: "cn", prefix: "1k5s16e" };
   </script>
   <style>
-    html, body { margin: 0; height: 100%; background: transparent; font-family: sans-serif; }
-    body { min-height: 100%; display: flex; align-items: center; justify-content: center; }
-    #captcha-element { width: 100%; background: transparent; display: flex; align-items: center; justify-content: center; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: sans-serif; }
+    body { min-height: 100%; }
+    #captcha-element { width: 100%; height: 100%; background: transparent; }
     #button {
       position: absolute;
       width: 1px;
@@ -17,11 +17,29 @@
       opacity: 0;
       pointer-events: none;
     }
+    #fr-start {
+      display: none;
+      position: fixed;
+      z-index: 2147483000;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      background: #ffffff;
+      color: #4A89DC;
+      -webkit-text-fill-color: #4A89DC;
+      border: 1px solid #4A89DC;
+      box-shadow: none;
+      font-weight: 600;
+      text-align: center;
+      -webkit-appearance: none;
+      appearance: none;
+    }
   </style>
 </head>
 <body>
   <div id="captcha-element"></div>
   <button id="button" type="button" tabindex="-1" aria-hidden="true"></button>
+  <button id="fr-start" type="button">点击开始验证</button>
   <script>
     function report(payload) {
       if (!window.AliyunCaptchaBridge) return false;
@@ -59,7 +77,13 @@
       var card = restoreCard();
       if (!card) return;
       var host = document.getElementById("captcha-element");
-      if (host && card.parentNode !== host) host.appendChild(card);
+      if (!host) return;
+      host.style.setProperty("display", "flex", "important");
+      host.style.setProperty("align-items", "center", "important");
+      host.style.setProperty("justify-content", "center", "important");
+      host.style.setProperty("width", "100%", "important");
+      host.style.setProperty("height", "100%", "important");
+      if (card.parentNode !== host) host.appendChild(card);
       card.style.setProperty("position", "relative", "important");
       card.style.setProperty("left", "auto", "important");
       card.style.setProperty("top", "auto", "important");
@@ -67,7 +91,8 @@
       card.style.setProperty("bottom", "auto", "important");
       card.style.setProperty("float", "none", "important");
       card.style.setProperty("transform", "none", "important");
-      card.style.setProperty("margin", "0 auto", "important");
+      card.style.setProperty("margin", "0", "important");
+      card.style.setProperty("flex", "0 0 auto", "important");
     }
     function darkenHint() {
       if (!puzzleMode) return;
@@ -143,6 +168,108 @@
         node.style.setProperty("display", "none", "important");
       }
     }
+    function aliyunStartNode() {
+      var nodes = document.getElementsByTagName("*");
+      var hit = null;
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.id === "button" || node.id === "fr-start") continue;
+        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("点击开始验证") < 0 || text.length > 24) continue;
+        hit = node;
+      }
+      return hit;
+    }
+    function hideAliyunStart(hit) {
+      var node = hit;
+      while (node && node !== document.body && node.id !== "captcha-element" && node.id !== "fr-start") {
+        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        var onlyStart = text.indexOf("点击开始验证") >= 0 && text.length <= 24;
+        var strip = node.offsetWidth > 80 && node.offsetHeight > 0 && node.offsetHeight < 140;
+        if (!onlyStart && !strip) break;
+        var next = node.parentElement;
+        node.style.setProperty("display", "none", "important");
+        node = next;
+      }
+    }
+    function startButton() {
+      var hit = aliyunStartNode();
+      if (!hit) return null;
+      var bar = hit;
+      var node = hit.parentElement;
+      while (node && node !== document.body && node.id !== "captcha-element") {
+        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("点击开始验证") < 0 || text.length > 24) break;
+        bar = node;
+        node = node.parentElement;
+      }
+      return bar;
+    }
+    function unlockPuzzleClicks() {
+      var nodes = document.body.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) nodes[i].style.removeProperty("pointer-events");
+    }
+    function styleStart() {
+      var own = document.getElementById("fr-start");
+      if (own) own.style.setProperty("display", "none", "important");
+      if (puzzleShown()) {
+        unlockPuzzleClicks();
+        return;
+      }
+      var bar = startButton();
+      if (!bar) return;
+      var host = document.getElementById("captcha-element");
+      if (host && bar.parentNode !== host) host.appendChild(bar);
+      bar.style.setProperty("position", "relative", "important");
+      bar.style.setProperty("left", "0", "important");
+      bar.style.setProperty("top", "0", "important");
+      bar.style.setProperty("right", "auto", "important");
+      bar.style.setProperty("bottom", "auto", "important");
+      bar.style.setProperty("transform", "none", "important");
+      bar.style.setProperty("display", "flex", "important");
+      bar.style.setProperty("width", "100%", "important");
+      bar.style.setProperty("height", "100%", "important");
+      bar.style.setProperty("min-width", "0", "important");
+      bar.style.setProperty("max-width", "100%", "important");
+      bar.style.setProperty("overflow", "hidden", "important");
+      bar.style.setProperty("margin", "0", "important");
+      bar.style.setProperty("padding", "0", "important");
+      bar.style.setProperty("box-sizing", "border-box", "important");
+      bar.style.setProperty("border-radius", "999px", "important");
+      bar.style.setProperty("background", "#ffffff", "important");
+      bar.style.setProperty("background-image", "none", "important");
+      bar.style.setProperty("border", "1px solid #4A89DC", "important");
+      bar.style.setProperty("box-shadow", "none", "important");
+      bar.style.setProperty("color", "#4A89DC", "important");
+      bar.style.setProperty("-webkit-text-fill-color", "#4A89DC", "important");
+      bar.style.setProperty("font-size", "__START_FONT__px", "important");
+      bar.style.setProperty("font-weight", "600", "important");
+      bar.style.setProperty("text-align", "center", "important");
+      bar.style.setProperty("align-items", "center", "important");
+      bar.style.setProperty("justify-content", "center", "important");
+      bar.style.setProperty("pointer-events", "auto", "important");
+      bar.style.setProperty("z-index", "2", "important");
+      if (host) {
+        var extras = host.children;
+        for (var n = 0; n < extras.length; n++) {
+          if (extras[n] === bar) continue;
+          extras[n].style.setProperty("pointer-events", "none", "important");
+        }
+      }
+      var kids = bar.getElementsByTagName("*");
+      for (var k = 0; k < kids.length; k++) {
+        var kid = kids[k];
+        var text = (kid.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("点击开始验证") >= 0) {
+          kid.style.setProperty("color", "#4A89DC", "important");
+          kid.style.setProperty("-webkit-text-fill-color", "#4A89DC", "important");
+          kid.style.setProperty("font-size", "__START_FONT__px", "important");
+          kid.style.setProperty("font-weight", "600", "important");
+          continue;
+        }
+        kid.style.setProperty("display", "none", "important");
+      }
+    };
     function pinPopup() {
       if (!puzzleShown() || pinCount > 3) return;
       var bounds = contentBounds();
@@ -237,6 +364,7 @@
       for (var i = 0; i < nodes.length; i++) {
         var node = nodes[i];
         var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        if (node.id === "fr-start") continue;
         if (text.indexOf("点击开始验证") < 0 || text.length > 24) continue;
         node.click();
         return true;
@@ -255,6 +383,21 @@
       if (clickStart()) restoreOpened = true;
     }
     var ignoreClick = false;
+    var jsOpened = false;
+    function openByJs() {
+      hideStart();
+      if (jsOpened || puzzleShown()) return;
+      if (window.captcha && typeof window.captcha.show === "function") {
+        jsOpened = true;
+        try { window.captcha.show(); } catch (e) { jsOpened = false; }
+        return;
+      }
+      var button = document.getElementById("button");
+      if (!button) return;
+      jsOpened = true;
+      button.click();
+    }
+    window.openByJs = openByJs;
     function publish() {
       hideLogo();
       var stage = puzzleShown() ? "puzzle" : "start";
@@ -262,6 +405,8 @@
         hideStart();
         placeRestore();
         bindClose();
+      } else {
+        hideStart();
       }
       if (puzzleReadySent && stage === lastStage) {
         darkenHint();
@@ -298,7 +443,7 @@
       try {
         window.initAliyunCaptcha({
           SceneId: "__SCENE_ID__",
-          mode: "embed",
+          mode: "popup",
           element: "#captcha-element",
           button: "#button",
           language: "cn",
@@ -309,11 +454,15 @@
           },
           fail: function () {},
           onClose: function () {
+            if (ignoreClick) return;
             report({ ok: false, closed: true });
           },
           getInstance: function (instance) {
             window.captcha = instance;
-            setTimeout(publish, 80);
+            setTimeout(function () {
+              publish();
+              openByJs();
+            }, 80);
           },
           onError: function (errorInfo) {
             var msg = (errorInfo && (errorInfo.msg || errorInfo.message)) || "安全验证加载失败";
@@ -359,10 +508,26 @@
       }
       return false;
     }
+    function openPuzzle() {
+      ignoreClick = true;
+      var hidden = document.getElementById("button");
+      if (hidden) hidden.click();
+      setTimeout(function () { ignoreClick = false; }, 600);
+    }
+    function pointOnStart(event) {
+      var own = document.getElementById("fr-start");
+      if (!own || own.style.display === "none") return false;
+      var rect = own.getBoundingClientRect();
+      return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+    }
     document.addEventListener("click", function (event) {
-      if (ignoreClick) return;
+      if (ignoreClick || !puzzleShown()) return;
+      if (pointOnStart(event)) {
+        openPuzzle();
+        return;
+      }
       var target = event.target;
-      if (!target || target.id === "button") return;
+      if (!target || target.id === "button" || target.id === "fr-start") return;
       var node = target;
       while (node && node !== document.body) {
         var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
@@ -376,6 +541,15 @@
       if (!window.AliyunCaptchaBridge) {
         setTimeout(boot, 50);
         return;
+      }
+      var own = document.getElementById("fr-start");
+      if (own && !own.getAttribute("data-bound")) {
+        own.setAttribute("data-bound", "1");
+        own.addEventListener("click", function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          openPuzzle();
+        });
       }
       loadSdk();
       if (window.MutationObserver) {

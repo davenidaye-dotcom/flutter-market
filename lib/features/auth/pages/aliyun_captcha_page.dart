@@ -72,6 +72,10 @@ class AliyunCaptchaPage extends StatefulWidget {
       if (existing != null && !existing.isCompleted) return existing.future;
       _visible = true;
       entry.markNeedsBuild();
+      final controller = _controller;
+      Future<void>.delayed(const Duration(milliseconds: 60), () {
+        controller?.runJavaScript('window.openByJs && window.openByJs()');
+      });
       final wait = Completer<String?>();
       _wait = wait;
       return wait.future;
@@ -219,11 +223,13 @@ class AliyunCaptchaPage extends StatefulWidget {
         child: const ColoredBox(color: Color(0x73000000)),
       ),
     );
-    return Stack(
-      children: [
-        barrier,
-        Positioned.fill(child: SafeArea(child: web)),
-      ],
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          barrier,
+          Positioned.fill(child: SafeArea(child: web)),
+        ],
+      ),
     );
   }
 
@@ -401,12 +407,39 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
 
 /// 场景 1l8c7q1md 是拼图。页面接入阿里云的 JS，尺寸跟着屏幕。
 String _fillCaptchaHtml(String raw) {
+  final scale = _uiScale();
   return raw
       .replaceAll('__SCENE_ID__', '1l8c7q1md')
       .replaceAll('__CAPTCHA_REM__', _restoreRem().toStringAsFixed(2))
       .replaceAll('__SLIDE_WIDTH__', _restoreWidth().round().toString())
       .replaceAll('__SLIDE_TRACK__', '268')
-      .replaceAll('__PUZZLE_MODE__', 'true');
+      .replaceAll('__PUZZLE_MODE__', 'true')
+      .replaceAll('__START_WIDTH__', _loginButtonWidth().round().toString())
+      .replaceAll('__START_HEIGHT__', (48 * scale.$1).toStringAsFixed(2))
+      .replaceAll('__START_RADIUS__', (24 * scale.$2).toStringAsFixed(2))
+      .replaceAll('__START_FONT__', (16 * scale.$3).toStringAsFixed(2));
+}
+
+/// 跟登录按钮同一套缩放：高按屏高，圆角取较小边，字按屏宽。
+(double, double, double) _uiScale() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return (1, 1, 1);
+  final view = views.first;
+  final width = view.physicalSize.width / view.devicePixelRatio;
+  final height = view.physicalSize.height / view.devicePixelRatio;
+  if (width <= 0 || height <= 0) return (1, 1, 1);
+  final sw = width / 375;
+  final sh = height / 812;
+  return (sh, sw < sh ? sw : sh, sw);
+}
+
+double _loginButtonWidth() {
+  final views = WidgetsBinding.instance.platformDispatcher.views;
+  if (views.isEmpty) return 271;
+  final view = views.first;
+  final width = view.physicalSize.width / view.devicePixelRatio;
+  if (width <= 0) return 271;
+  return width * (1 - 104 / 375);
 }
 
 double _captchaDialogWidth(double screen) {
