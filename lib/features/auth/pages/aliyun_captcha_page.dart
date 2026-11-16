@@ -488,14 +488,14 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
   }
 }
 
-/// 两端都用滑块场景。样式交给阿里云脚本，这里不改颜色。
+/// 拼图场景 1l8c7q1md。页面接入阿里云 JS，样式交给脚本。
 String _fillCaptchaHtml(String raw) {
   return raw
-      .replaceAll('__SCENE_ID__', '1x1kohduf')
+      .replaceAll('__SCENE_ID__', '1l8c7q1md')
       .replaceAll('__CAPTCHA_REM__', '0.75')
       .replaceAll('__SLIDE_WIDTH__', _slideWidth().round().toString())
       .replaceAll('__SLIDE_TRACK__', '268')
-      .replaceAll('__PUZZLE_MODE__', 'false');
+      .replaceAll('__PUZZLE_MODE__', 'true');
 }
 
 double _captchaDialogWidth(double screen) {
