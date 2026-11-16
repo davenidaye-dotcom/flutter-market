@@ -145,10 +145,12 @@ class _HomePageState extends ConsumerState<HomePage> {
       unawaited(_saveHistory());
     } catch (e) {
       if (!mounted) return;
+      final failedEmpty = _history.isEmpty;
       setState(() {
         _historyLoading = false;
-        if (_history.isEmpty) _historyError = _errMsg(e);
+        if (failedEmpty) _historyError = _errMsg(e);
       });
+      if (failedEmpty) rethrow;
     }
   }
 
@@ -425,12 +427,15 @@ class _HomePageState extends ConsumerState<HomePage> {
       onPointerDown: _hideKeyboardOutside,
       child: GradientBackground(
         child: SafeArea(
-          child: AppPullRefresh(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return AppPullRefresh(
             onRefresh: _loadHistory,
             child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
               padding: EdgeInsets.symmetric(horizontal: 20.w),
-              child: Column(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(height: 12.h),
@@ -479,7 +484,10 @@ class _HomePageState extends ConsumerState<HomePage> {
                   SizedBox(height: 40.h),
                 ],
               ),
+              ),
             ),
+          );
+            },
           ),
         ),
       ),
