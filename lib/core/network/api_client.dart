@@ -9,6 +9,7 @@ import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
 import 'must_change_password.dart';
 import 'session_kick.dart';
 import 'session_store.dart';
+import '../../features/auth/device_login_store.dart';
 import '../security/api_request_signer.dart';
 import '../security/shield_gate.dart';
 
@@ -30,11 +31,13 @@ class ApiClient {
       InterceptorsWrapper(
         onRequest: (options, handler) {
           SessionKick.attach(options);
+          ShieldGate.attachRuleHost(options.headers);
           final roomId = SessionStore.instance.roomId;
           if (roomId != null && roomId.isNotEmpty) {
             options.headers['X-Room-Id'] = roomId;
           }
           options.headers['clientid'] = EnvConfig.clientId;
+          DeviceLoginStore.attach(options.headers);
           ApiRequestSigner.attach(options);
           handler.next(options);
         },
@@ -77,7 +80,8 @@ class ApiClient {
     bindMtlsClient(_dio, presentClientCert: false);
   }
 
-  void _requireEndpoint() {
+  Future<void> _requireEndpoint() async {
+    await ShieldGate.retryPortIfInited();
     if (EnvConfig.requestsAllowed && !ShieldGate.blocksBusiness) return;
     throw const ApiException(message: '线路未就绪', bizCode: 'NO_ENDPOINT');
   }
@@ -85,7 +89,7 @@ class ApiClient {
   Future<Response<T>> _send<T>(
     Future<Response<T>> Function() send,
   ) async {
-    _requireEndpoint();
+    await _requireEndpoint();
     final tokenAtStart = SessionStore.instance.accessToken;
     if (tokenAtStart == null || tokenAtStart.isEmpty) {
       throw const ApiException(message: '未登录', bizCode: 'NO_TOKEN');
@@ -226,7 +230,7 @@ class ApiClient {
 
   /// 二进制下载（客服图片等）；走同一套签名/鉴权，不走 JSON unwrap。
   Future<Uint8List> getBytes(String path) async {
-    _requireEndpoint();
+    await _requireEndpoint();
     try {
       final res = await _send(
         () => _dio.get<List<int>>(

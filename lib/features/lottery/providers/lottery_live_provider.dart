@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/audio/bgm_prompt.dart';
 import '../../../core/network/flyroom_ws_client.dart';
+import '../../../core/security/shield_gate.dart';
 import '../../../core/network/member_ws_session.dart';
 import '../../../core/network/session_kick.dart';
 import '../../../core/network/session_store.dart';
@@ -127,7 +128,14 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
       : super(RoomLotteryLiveState(
           showQuick: SessionStore.instance.showQuick,
           betConfirm: SessionStore.instance.betConfirm,
-        ));
+        )) {
+    ShieldGate.addPortListener(_onShieldPortChanged);
+  }
+
+  void _onShieldPortChanged() {
+    if (_wsDisposed || _ws == null || _wsShared) return;
+    unawaited(_connectWsImpl(isHost: _wsIsHost, games: state.games, isReconnect: true));
+  }
 
   final Ref _ref;
   final String roomId;
@@ -3217,6 +3225,7 @@ class RoomLotteryLiveNotifier extends StateNotifier<RoomLotteryLiveState> {
 
   @override
   void dispose() {
+    ShieldGate.removePortListener(_onShieldPortChanged);
     _wsDisposed = true;
     _wsConnectGen++;
     _showQuickPoll?.cancel();

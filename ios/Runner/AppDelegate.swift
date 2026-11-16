@@ -21,7 +21,12 @@ import UIKit
       case "init":
         result(Self.shieldInit())
       case "localPort":
-        result(Self.shieldLocalPort())
+        let host = call.arguments as? String ?? ""
+        result(Self.shieldLocalPort(host))
+      case "stop":
+        result(ShieldStop() == 0)
+      case "reinit":
+        result(ShieldReinit() == 0)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -42,12 +47,12 @@ import UIKit
     return ShieldInit(key, uuid) == 0
   }
 
-  private static func shieldLocalPort() -> [String: Any]? {
+  private static func shieldLocalPort(_ host: String) -> [String: Any]? {
     guard shieldSecrets() != nil else { return nil }
     var ip = [CChar](repeating: 0, count: 32)
     var port: Int32 = -1
     let rc = ip.withUnsafeMutableBufferPointer { buf in
-      ShieldLocalPort(buf.baseAddress, 32, &port)
+      ShieldLocalPort(buf.baseAddress, 32, &port, host)
     }
     let text = String(cString: ip)
     if rc != 0 || port <= 0 || text.isEmpty {

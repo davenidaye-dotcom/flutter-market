@@ -48,6 +48,12 @@ class ApiException implements Exception {
         );
       }
     }
+    if (status == 403) {
+      return const ApiException(
+        message: '登录失效 请重新登录',
+        code: 403,
+      );
+    }
     if (error.type == DioExceptionType.connectionTimeout ||
         error.type == DioExceptionType.sendTimeout ||
         error.type == DioExceptionType.receiveTimeout ||

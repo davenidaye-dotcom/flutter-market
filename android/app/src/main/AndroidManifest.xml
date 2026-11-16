@@ -61,5 +61,9 @@
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="http"/>
         </intent>
+        <package android:name="com.redfinger.app"/>
+        <package android:name="com.redfinger.global.agent1"/>
+        <package android:name="com.cyjh.ddyun"/>
+        <package android:name="com.ld.dianquan"/>
     </queries>
 </manifest>

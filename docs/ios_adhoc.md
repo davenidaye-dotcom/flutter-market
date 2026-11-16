@@ -64,15 +64,17 @@ Team ID：`7S7P9BQWY8`。
 ```bash
 export PATH="/Users/joe/flutter/bin:$PATH"
 cd /Users/joe/project/stockhome/flutter-market/flutter-market
-flutter build ipa --dart-define=APP_ENV=pro --release --export-method ad-hoc
+flutter build ipa --dart-define=APP_ENV=pro --release --export-options-plist=ios/ExportOptions.plist
 ```
+
+`ios/ExportOptions.plist` 把导出方式固定为 ad-hoc。不要改成 `enterprise`、`app-store` 或开发分发。签名仍然只允许描述文件里的设备号安装。
 
 第一次会下载 iOS 真机引擎，大约 93MB。速度停在 `0.0MB/s` 时，开着 Clash 停掉重跑：
 
 ```bash
 export https_proxy=http://127.0.0.1:7897
 export http_proxy=http://127.0.0.1:7897
-flutter build ipa --dart-define=APP_ENV=pro --release --export-method ad-hoc
+flutter build ipa --dart-define=APP_ENV=pro --release --export-options-plist=ios/ExportOptions.plist
 ```
 
 引擎下完后才会编译。编译成功的标志是：
@@ -100,7 +102,7 @@ open /Users/joe/project/stockhome/flutter-market/flutter-market/build/ios/archiv
 
 1. 左边 **Archives**，选中这次的 **Runner**。
 2. 点右边 **Distribute App**。
-3. 选 **Custom**，再选 **Ad Hoc**。有的页面直接叫 **Release Testing**，选那个即可。
+3. 选 **Custom**，再选 **Ad Hoc**。有的页面直接叫 **Release Testing**，选那个即可。不要选 **App Store**、**Enterprise** 或 **Development**。这一步不读 `ios/ExportOptions.plist`，选错就不再核对设备号。
 4. **App Thinning** 选 **None**，不要选某一款机型。点 **Next**。
 5. 选 **Automatically manage signing**，Team 选 **Nguyen Thi Tai Linh**。
 6. 提示创建 **Apple Distribution** 证书时点同意。又要吊销旧证书时，同样点 **Revoke Certificate**。钥匙串密码仍是这台 Mac 的开机密码，点 **始终允许**。
@@ -108,7 +110,7 @@ open /Users/joe/project/stockhome/flutter-market/flutter-market/build/ios/archiv
    - Team：Nguyen Thi Tai Linh
    - Certificate：Cloud Managed Apple Distribution
    - Profile：iOS Team Ad Hoc Provisioning Profile: com.letou.letouApp
-8. 点 **Export**。文件名可以保持默认。这次保存在桌面：
+8. 摘要里的 Profile 必须是 **iOS Team Ad Hoc Provisioning Profile: com.letou.letouApp**。不是这一行就不要导出。点 **Export**。文件名可以保持默认。这次保存在桌面：
 
 ```text
 /Users/joe/Desktop/Runner 2026-10-18 14-54-20/letou_app.ipa
@@ -144,3 +146,14 @@ xcrun devicectl device install app --device "iPhone" \
 没有线、也不想登记 UDID 时，走 TestFlight，不走这份 Ad Hoc 包。
 
 已经有 UDID、也已经导出 ipa 时，可以把 `letou_app.ipa` 上传到分发网页，用那台登记过的 iPhone 的 Safari 打开链接安装。不要用微信内置浏览器打开。装完后同样要在 **VPN 与设备管理** 里信任证书。
+
+## 8. 云手机不登记
+
+云手机的 UDID 不要加进开发者账号，也不要重新导出一份把云手机带上的包。已经登记过的真实 iPhone 继续用原来的链接安装。
+
+签过名仍然核对设备号。描述文件里没有的设备，打开链接也会安装失败。
+
+验收：
+
+- 新买的 iOS 云手机，不登记它的设备号，用这条安装链接安装。通过标准是安装失败，App 不会出现。
+- 已经登记过的自己的 iPhone，用同一个链接安装并登录。通过标准是能打开，登录和现在一样。

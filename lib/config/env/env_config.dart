@@ -44,8 +44,12 @@ class EnvConfig {
         AppEnvironment.pro => 'https://127.0.0.1/api/v1/eybyqamwedxng8shw5vn',
       };
 
-  /// 登录和换证也走 443。认证请求不带客户端证，optional 下照常通过。
-  static String get builtinAuthBaseUrl => builtinApiBaseUrl;
+  /// 正式包登录、注册、换证直连 Web 防火墙。不走游戏盾，不带客户端证。
+  static String get builtinAuthBaseUrl => switch (environment) {
+        AppEnvironment.pro =>
+          'https://login.rfexample.com/api/v1/eybyqamwedxng8shw5vn',
+        _ => builtinApiBaseUrl,
+      };
 
   static String get builtinWsBaseUrl => switch (environment) {
         AppEnvironment.dev => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
@@ -59,9 +63,10 @@ class EnvConfig {
   /// WebSocket prefix (no trailing slash).
   static String get wsBaseUrl => _wsBaseUrlOverride ?? _fallbackWsBaseUrl;
 
-  /// 登录 / 换证。未单独下发时与 [apiBaseUrl] 相同。
-  static String get authBaseUrl =>
-      _authBaseUrlOverride ?? _apiBaseUrlOverride ?? _fallbackApiBaseUrl;
+  /// 登录 / 换证。正式包固定走防火墙域名，不跟业务线路走。
+  static String get authBaseUrl => environment == AppEnvironment.pro
+      ? builtinAuthBaseUrl
+      : _authBaseUrlOverride ?? _apiBaseUrlOverride ?? _fallbackApiBaseUrl;
 
   static String get _fallbackApiBaseUrl => builtinApiBaseUrl;
 

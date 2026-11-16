@@ -16,6 +16,11 @@ class SessionWatch {
   bool _host = false;
   bool _active = false;
 
+  void reopen() {
+    if (!_active) return;
+    unawaited(_open());
+  }
+
   void sync({required bool loggedIn, required bool host}) {
     final token = SessionStore.instance.accessToken;
     if (!loggedIn || token == null || token.isEmpty) {

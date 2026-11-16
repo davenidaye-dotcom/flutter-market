@@ -18,14 +18,25 @@ int ShieldInit(NSString *accessKey, NSString *uuid) {
     return [ShieldVest() init:accessKey uuid:uuid];
 }
 
-int ShieldLocalPort(char *ipOut, int ipLen, int *portOut) {
+int ShieldLocalPort(char *ipOut, int ipLen, int *portOut, NSString *host) {
     security_connection_t conn;
     memset(&conn, 0, sizeof(conn));
-    int rc = [ShieldVest() getServerIPAndPort:&conn host:@"" port:443];
+    if (host == nil) {
+        host = @"";
+    }
+    int rc = [ShieldVest() getServerIPAndPort:&conn host:host port:443];
     if (rc != 0 || conn.port <= 0 || conn.ip[0] == '\0') {
         return -1;
     }
     strlcpy(ipOut, conn.ip, (size_t)ipLen);
     *portOut = conn.port;
     return 0;
+}
+
+int ShieldStop(void) {
+    return [ShieldVest() stopAllListenerPorts];
+}
+
+int ShieldReinit(void) {
+    return [ShieldVest() reinit];
 }

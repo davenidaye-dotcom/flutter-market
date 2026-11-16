@@ -25,15 +25,13 @@ class AuthRepository {
         ? '/auth/member/login'
         : '/auth/portal/login';
 
-    // 玩家登录带 deviceId，服务端才会下发 deviceToken（用于下次快速登录）
-    final deviceId = expectedRole == AppRole.player
-        ? await DeviceLoginStore.deviceId()
-        : null;
+    // 登录把 deviceId 绑进令牌。玩家才会拿到 deviceToken，房主只绑定设备。
+    final deviceId = await DeviceLoginStore.deviceId();
     final data = await AuthApiClient.instance.post(path, data: {
       'username': username.trim(),
       'password': password,
       'clientType': 'APP',
-      'deviceId': ?deviceId,
+      'deviceId': deviceId,
       if (captchaToken.isNotEmpty) 'captchaVerifyParam': captchaToken,
     });
     return _finishLogin(
@@ -131,11 +129,13 @@ class AuthRepository {
     String? nickname,
   }) async {
     final epoch = SessionStore.instance.bumpEpoch();
+    final deviceId = await DeviceLoginStore.deviceId();
     final data = await AuthApiClient.instance.post('/auth/member/register', data: {
       'username': username.trim(),
       'password': password,
       if (nickname != null && nickname.isNotEmpty) 'nickname': nickname,
       'clientType': 'APP',
+      'deviceId': deviceId,
       if (captchaToken.isNotEmpty) 'captchaVerifyParam': captchaToken,
     });
     if (data is! Map) {

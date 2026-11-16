@@ -48,6 +48,18 @@ class MemberWsSession {
     }
   }
 
+  /// 盾的本地端口变了。还有持有者时拆掉旧连接，按新端口再连。
+  Future<void> reconnectIfHeld() async {
+    if (_suspended || _holders <= 0) return;
+    await _shutdown();
+    try {
+      await ensureConnected();
+      _reconnectAttempt = 0;
+    } catch (_) {
+      _scheduleReconnect();
+    }
+  }
+
   /// 退出、被踢或换账号。拆掉当前连接，直到下一次 [acquire] 才允许重连。
   void suspend() {
     _suspended = true;

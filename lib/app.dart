@@ -11,10 +11,12 @@ import 'config/env/env_config.dart';
 import 'config/router/app_router.dart';
 import 'config/router/route_paths.dart';
 import 'config/theme/app_theme.dart';
+import 'core/network/member_ws_session.dart';
 import 'core/network/must_change_password.dart';
 import 'core/network/session_kick.dart';
 import 'core/network/session_store.dart';
 import 'core/network/session_watch.dart';
+import 'core/security/shield_gate.dart';
 import 'features/auth/providers/auth_session_provider.dart';
 import 'features/host/widgets/host_apply_notice_dialog.dart';
 import 'features/profile/app_release.dart';
@@ -28,12 +30,14 @@ class LetouApp extends ConsumerStatefulWidget {
   ConsumerState<LetouApp> createState() => _LetouAppState();
 }
 
-class _LetouAppState extends ConsumerState<LetouApp> {
+class _LetouAppState extends ConsumerState<LetouApp> with WidgetsBindingObserver {
   final SessionWatch _sessionWatch = SessionWatch();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    ShieldGate.addPortListener(_onShieldPort);
     // 首帧后撤 splash，不依赖 LoginPage 是否挂载
     unawaited(BgmPrompt.loadLocal());
     MustChangePassword.handler = () {
@@ -73,6 +77,31 @@ class _LetouAppState extends ConsumerState<LetouApp> {
     });
   }
 
+  @override
+  void dispose() {
+    ShieldGate.removePortListener(_onShieldPort);
+    WidgetsBinding.instance.removeObserver(this);
+    _sessionWatch.stop();
+    SessionKick.handler = null;
+    MustChangePassword.handler = null;
+    super.dispose();
+  }
+
+  void _onShieldPort() {
+    _sessionWatch.reopen();
+    unawaited(MemberWsSession.instance.reconnectIfHeld());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    unawaited(_resumeShield());
+  }
+
+  Future<void> _resumeShield() async {
+    await ShieldGate.refreshAfterResume();
+  }
+
   Future<void> _promptUpdate() async {
     for (var i = 0; i < 10; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -82,16 +111,6 @@ class _LetouAppState extends ConsumerState<LetouApp> {
         return;
       }
     }
-  }
-
-  @override
-  void dispose() {
-    _sessionWatch.stop();
-    if (SessionKick.handler != null) {
-      SessionKick.handler = null;
-    }
-    MustChangePassword.handler = null;
-    super.dispose();
   }
 
   @override

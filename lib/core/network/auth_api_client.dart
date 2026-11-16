@@ -3,6 +3,8 @@ import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
 import 'package:dio/dio.dart';
 
 import '../../config/env/env_config.dart';
+import 'api_client.dart';
+import '../../features/auth/device_login_store.dart';
 import '../security/api_request_signer.dart';
 import '../security/shield_gate.dart';
 import 'api_exception.dart';
@@ -27,6 +29,7 @@ class AuthApiClient {
         onRequest: (options, handler) {
           SessionKick.attach(options);
           options.headers['clientid'] = EnvConfig.clientId;
+          DeviceLoginStore.attach(options.headers);
           ApiRequestSigner.attach(options);
           handler.next(options);
         },
@@ -48,21 +51,27 @@ class AuthApiClient {
         },
       ),
     );
-    bindMtlsClient(_dio, presentClientCert: false);
+    bindAuthClient(_dio);
   }
 
   static final AuthApiClient instance = AuthApiClient._();
+
+  static Future<void> ensureRegion() => ensureMainland();
+
+  /// 登录失败、注册结束、退出后不再拨盾。
+  static void closeTunnel() {
+    ShieldGate.release();
+    instance.syncBaseUrl();
+    ApiClient.instance.rebindTls();
+  }
   late final Dio _dio;
 
   void syncBaseUrl() {
     _dio.options.baseUrl = EnvConfig.authBaseUrl;
-    bindMtlsClient(_dio, presentClientCert: false);
+    bindAuthClient(_dio);
   }
 
   Future<dynamic> post(String path, {Object? data}) async {
-    if (!EnvConfig.requestsAllowed || ShieldGate.blocksBusiness) {
-      throw const ApiException(message: '线路未就绪', bizCode: 'NO_ENDPOINT');
-    }
     await ensureMtlsMaterialLoaded();
     try {
       final res = await _dio.post<dynamic>(path, data: data);

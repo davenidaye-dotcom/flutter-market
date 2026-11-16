@@ -5,10 +5,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
-import '../../profile/app_release.dart';
 import '../../../config/router/route_paths.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../core/network/api_exception.dart';
+import '../../../core/network/auth_api_client.dart';
+import '../../../core/security/shield_gate.dart';
 import '../../../core/network/session_store.dart';
 import '../../../data/models/app_role.dart';
 import '../../../shared/widgets/auth_card.dart';
@@ -75,7 +76,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (mounted) AliyunCaptchaPage.prewarm(context);
     });
     Future.microtask(() async {
-      await AppRelease.localVersion();
       await _applyRemember();
       if (!mounted) return;
       // 记住密码读完再回显，否则会被本地保存的旧账号盖掉
@@ -128,6 +128,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         unawaited(SessionStore.instance.clear());
       } else {
         SessionStore.instance.bumpEpoch();
+        AuthApiClient.closeTunnel();
       }
     }
     setState(() => _hostMode = hostMode);
@@ -154,7 +155,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     setState(() => _loading = true);
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
+    var shieldOpened = false;
     try {
+      await AuthApiClient.ensureRegion();
+      if (!mounted) return;
       final param = await AliyunCaptchaPage.open(context);
       if (!mounted) return;
       if (param == null || param.isEmpty) {
@@ -185,8 +189,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           live.id != user.id ||
           live.username != user.username ||
           live.role != user.role) {
+        if (live == null) AuthApiClient.closeTunnel();
         return;
       }
+      await ShieldGate.start();
+      shieldOpened = true;
+      if (!mounted) return;
       // 房主后台建号或重置密码后，先改密才能进经营端
       if (live.isHostSide && live.forceChangePassword) {
         context.go('${RoutePaths.changePassword}?force=1');
@@ -199,6 +207,9 @@ class _LoginPageState extends ConsumerState<LoginPage> {
               : RoutePaths.home;
       context.go(dest);
     } catch (e) {
+      if (shieldOpened && (e is! ApiException || e.bizCode != 'LOGIN_SUPERSEDED')) {
+        AuthApiClient.closeTunnel();
+      }
       if (e is ApiException && e.bizCode == 'LOGIN_SUPERSEDED') return;
       AppToast.error(loginFailureText(e));
     } finally {
@@ -324,25 +335,6 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       ),
                     ),
                   ),
-                  if (keyboard == 0)
-                    Positioned(
-                      right: 16.w,
-                      bottom: 12.h,
-                      child: GestureDetector(
-                        onTap: () => AppRelease.check(context),
-                        behavior: HitTestBehavior.opaque,
-                        child: Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 6.h),
-                          child: ListenableBuilder(
-                            listenable: AppRelease.builtinVersion,
-                            builder: (context, _) => Text(
-                              AppRelease.displayVersion(AppRelease.builtinVersion.value),
-                              style: TextStyle(fontSize: 11.sp, color: AppColors.textHint),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               );
             },

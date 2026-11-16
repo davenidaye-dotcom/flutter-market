@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:go_router/go_router.dart';
 import '../../../config/router/route_paths.dart';
+import '../../../core/network/api_exception.dart';
+import '../../../core/network/auth_api_client.dart';
+import '../../../core/network/session_store.dart';
 import '../../../config/theme/app_colors.dart';
 import '../../../data/repositories/providers.dart';
 import '../../../shared/widgets/auth_card.dart';
@@ -58,17 +61,24 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     FocusManager.instance.primaryFocus?.unfocus();
     setState(() => _loading = true);
     try {
+      await AuthApiClient.ensureRegion();
+      if (!mounted) return;
       final param = await AliyunCaptchaPage.open(context);
       if (!mounted) return;
       if (param == null || param.isEmpty) {
         AppToast.info('已取消安全验证');
         return;
       }
-      await ref.read(authRepositoryProvider).register(
-            username: username,
-            password: password,
-            captchaToken: param,
-          );
+      try {
+        await ref.read(authRepositoryProvider).register(
+              username: username,
+              password: password,
+              captchaToken: param,
+            );
+      } finally {
+        AuthApiClient.closeTunnel();
+      }
+      await SessionStore.instance.clear();
       if (!mounted) return;
       AppToast.success('注册成功');
       final account = (username: username, password: password);
@@ -78,7 +88,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
         context.go(RoutePaths.login, extra: account);
       }
     } catch (e) {
-      AppToast.error(e.toString());
+      AppToast.error(e is ApiException ? loginFailureText(e) : e.toString());
     } finally {
       if (mounted) setState(() => _loading = false);
     }

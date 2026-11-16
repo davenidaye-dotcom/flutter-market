@@ -202,116 +202,27 @@ class AliyunCaptchaPage extends StatefulWidget {
         Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
       },
     );
-    final width = _captchaDialogWidth(MediaQuery.sizeOf(context).width);
-    if (!_visible || (!_ready && _error == null)) {
-      return Stack(
-        children: [
-          if (_visible)
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => _finish(null),
-                child: const ColoredBox(color: Color(0x73000000)),
-              ),
-            ),
-          Positioned(
-            left: -1200,
-            top: 0,
-            width: width,
-            height: 420,
-            child: web,
-          ),
-          if (_visible) Center(child: _WaitingCard(onClose: () => _finish(null))),
-        ],
+    final cardW = _loginCardWidth(MediaQuery.sizeOf(context).width);
+    if (!_visible) {
+      return Positioned(
+        left: -1200,
+        top: 0,
+        width: cardW,
+        height: cardW * 1.55,
+        child: web,
       );
     }
-    final maxH = MediaQuery.sizeOf(context).height * 0.78;
-    final webHeight = _webHeight.clamp(48.0, maxH);
-    if (_stage == 'puzzle') {
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: () => _finish(null),
-              child: const ColoredBox(color: Color(0x73000000)),
-            ),
-          ),
-          Center(
-            child: SizedBox(width: _puzzleWidth(MediaQuery.sizeOf(context).width), height: webHeight, child: web),
-          ),
-        ],
-      );
-    }
-    final barHeight = _webHeight.clamp(48.0, 72.0);
+    final barrier = Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _finish(null),
+        child: const ColoredBox(color: Color(0x73000000)),
+      ),
+    );
     return Stack(
       children: [
-        Positioned.fill(
-          child: GestureDetector(
-            onTap: () => _finish(null),
-            child: const ColoredBox(color: Color(0x73000000)),
-          ),
-        ),
-        Center(
-          child: Material(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            clipBehavior: Clip.antiAlias,
-            child: SizedBox(
-              width: width,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(0, 4, 0, 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      height: 44,
-                      child: Row(
-                        children: [
-                          const SizedBox(width: 44),
-                          const Expanded(
-                            child: Text(
-                              '安全验证',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => _finish(null),
-                            icon: const Icon(Icons.close, size: 22, color: AppColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const _SlideHint(),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                        child: Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(color: AppColors.danger, fontSize: 14),
-                        ),
-                      ),
-                    SizedBox(
-                      height: barHeight,
-                      child: ClipRect(
-                        child: OverflowBox(
-                          alignment: Alignment.topCenter,
-                          minHeight: 420,
-                          maxHeight: 420,
-                          child: SizedBox(width: width, height: 420, child: web),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+        barrier,
+        Positioned.fill(child: SafeArea(child: web)),
       ],
     );
   }
@@ -488,14 +399,14 @@ class _AliyunCaptchaPageState extends State<AliyunCaptchaPage> {
   }
 }
 
-/// 两端都用滑块场景。样式交给阿里云脚本，这里不改颜色。
+/// 场景 1l8c7q1md 是拼图。页面接入阿里云的 JS，尺寸跟着屏幕。
 String _fillCaptchaHtml(String raw) {
   return raw
-      .replaceAll('__SCENE_ID__', '1x1kohduf')
-      .replaceAll('__CAPTCHA_REM__', '0.75')
-      .replaceAll('__SLIDE_WIDTH__', _slideWidth().round().toString())
+      .replaceAll('__SCENE_ID__', '1l8c7q1md')
+      .replaceAll('__CAPTCHA_REM__', _restoreRem().toStringAsFixed(2))
+      .replaceAll('__SLIDE_WIDTH__', _restoreWidth().round().toString())
       .replaceAll('__SLIDE_TRACK__', '268')
-      .replaceAll('__PUZZLE_MODE__', 'false');
+      .replaceAll('__PUZZLE_MODE__', 'true');
 }
 
 double _captchaDialogWidth(double screen) {
@@ -536,13 +447,33 @@ double? _captchaHeight(num height, double maxH) {
   return next.clamp(80, maxH);
 }
 
-double _slideWidth() {
+double _loginCardWidth(double screen) {
+  final side = 28 * screen / 375;
+  final width = screen - side * 2;
+  if (width < 220) return screen - 24;
+  return width;
+}
+
+double _restoreRem() {
+  // 拼图弹窗大约 280 宽，再放大到登录框那么宽。
+  final rem = _restoreWidth() / 280;
+  if (rem < 0.9) return 0.9;
+  if (rem > 1.35) return 1.35;
+  return rem;
+}
+
+double _restoreWidth() {
   final views = WidgetsBinding.instance.platformDispatcher.views;
-  if (views.isEmpty) return 300;
+  if (views.isEmpty) return 320;
   final view = views.first;
-  final logical = view.physicalSize.width / view.devicePixelRatio;
-  if (logical <= 0) return 300;
-  return _captchaDialogWidth(logical);
+  final logicalW = view.physicalSize.width / view.devicePixelRatio;
+  final logicalH = view.physicalSize.height / view.devicePixelRatio;
+  if (logicalW <= 0) return 320;
+  final card = _loginCardWidth(logicalW);
+  final safeH = logicalH > 200 ? logicalH - 80 : logicalH;
+  final fit = safeH / 1.55;
+  if (fit < 220) return card < 220 ? card : 220;
+  return card < fit ? card : fit;
 }
 
 class _WaitingCard extends StatelessWidget {
@@ -601,7 +532,7 @@ class _SlideHint extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Text(
-        '拖到最右边完成验证',
+        '请完成安全验证',
         textAlign: TextAlign.center,
         style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
       ),

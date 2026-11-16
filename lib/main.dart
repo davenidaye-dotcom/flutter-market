@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_easyloading/flutter_easyloading.dart';
@@ -8,8 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app.dart';
 import 'core/bootstrap/remote_endpoint_bootstrap.dart';
 import 'core/network/session_store.dart';
-import 'core/security/shield_gate.dart';
 import 'core/security/vpn_guard.dart';
+import 'features/auth/device_login_store.dart';
 
 Future<void> main() async {
   final widgetsBinding = WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +22,7 @@ Future<void> main() async {
 
   // 会话 + OSS/CDN 线路引导（失败自动降级缓存/内置，不阻塞过久）
   VpnGuard.watch();
-  unawaited(ShieldGate.start());
+  await DeviceLoginStore.deviceId();
   await SessionStore.instance.load();
   await RemoteEndpointBootstrap.instance.ensureReady();
 

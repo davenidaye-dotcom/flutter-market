@@ -3,6 +3,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 Future<void> ensureMtlsMaterialLoaded() async {}
 
+Future<void> ensureMainland() async {}
+
 Future<void> downloadPackage(
   String url,
   String savePath, {
@@ -14,6 +16,11 @@ Future<void> downloadPackage(
 
 void bindMtlsClient(Dio dio, {required bool presentClientCert}) {}
 
-Future<WebSocketChannel> connectFlyroomSocket(Uri uri) {
+void bindAuthClient(Dio dio) {}
+
+Future<WebSocketChannel> connectFlyroomSocket(
+  Uri uri, {
+  Map<String, dynamic>? headers,
+}) {
   return Future<WebSocketChannel>.value(WebSocketChannel.connect(uri));
 }

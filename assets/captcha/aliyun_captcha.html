@@ -7,20 +7,9 @@
     window.AliyunCaptchaConfig = { region: "cn", prefix: "1k5s16e" };
   </script>
   <style>
-    html, body { margin: 0; background: transparent; font-family: sans-serif; }
-    body { padding: 0 0 4px; }
-    #captcha-element { width: 100%; min-height: 40px; display: flex; justify-content: center; }
-    #aliyunCaptcha-sliding-slider,
-    .aliyunCaptcha-sliding-slider {
-      background-color: #4A89DC !important;
-      border-color: #3A74C4 !important;
-    }
-    #aliyunCaptcha-sliding-slider *,
-    .aliyunCaptcha-sliding-slider * {
-      color: #fff !important;
-      -webkit-text-fill-color: #fff !important;
-      fill: #fff !important;
-    }
+    html, body { margin: 0; height: 100%; background: transparent; font-family: sans-serif; }
+    body { min-height: 100%; display: flex; align-items: center; justify-content: center; }
+    #captcha-element { width: 100%; background: transparent; display: flex; align-items: center; justify-content: center; }
     #button {
       position: absolute;
       width: 1px;
@@ -45,12 +34,40 @@
     var puzzleReadySent = false;
     function puzzleShown() {
       var text = document.body.innerText || "";
-      if (text.indexOf("拼图") >= 0) return true;
+      if (text.indexOf("拖动滑块") >= 0 || text.indexOf("还原") >= 0) return true;
       var imgs = document.getElementsByTagName("img");
       for (var i = 0; i < imgs.length; i++) {
-        if (imgs[i].clientHeight > 80) return true;
+        if (imgs[i].clientHeight > 80 && imgs[i].clientWidth > 120) return true;
       }
       return false;
+    }
+    function restoreCard() {
+      var box = puzzleBox();
+      if (!box) return null;
+      var card = box;
+      var node = box;
+      while (node && node !== document.body) {
+        var rect = node.getBoundingClientRect();
+        if (rect.width >= window.innerWidth * 0.96 && rect.height >= window.innerHeight * 0.9) break;
+        if (rect.width > 140 && rect.height > 160) card = node;
+        node = node.parentElement;
+      }
+      return card;
+    }
+    function placeRestore() {
+      if (!puzzleShown()) return;
+      var card = restoreCard();
+      if (!card) return;
+      var host = document.getElementById("captcha-element");
+      if (host && card.parentNode !== host) host.appendChild(card);
+      card.style.setProperty("position", "relative", "important");
+      card.style.setProperty("left", "auto", "important");
+      card.style.setProperty("top", "auto", "important");
+      card.style.setProperty("right", "auto", "important");
+      card.style.setProperty("bottom", "auto", "important");
+      card.style.setProperty("float", "none", "important");
+      card.style.setProperty("transform", "none", "important");
+      card.style.setProperty("margin", "0 auto", "important");
     }
     function darkenHint() {
       if (!puzzleMode) return;
@@ -59,8 +76,8 @@
         var node = nodes[i];
         if (node.children.length > 0) continue;
         var text = (node.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("拖动滑块") < 0 && text.indexOf("完成拼图") < 0) continue;
-        if (text.length > 20) continue;
+        if (text.indexOf("拖动滑块") < 0 && text.indexOf("完成拼图") < 0 && text.indexOf("还原完整") < 0) continue;
+        if (text.length > 24) continue;
         node.style.setProperty("color", "#5c5c5c", "important");
         node.style.setProperty("-webkit-text-fill-color", "#5c5c5c", "important");
       }
@@ -112,38 +129,10 @@
       var node = img.parentElement;
       while (node && node !== document.body) {
         var text = node.innerText || "";
-        if (text.indexOf("拼图") >= 0 && node.offsetHeight > 140 && node.offsetWidth > 140) return node;
+        if ((text.indexOf("拼图") >= 0 || text.indexOf("还原") >= 0) && node.offsetHeight > 140 && node.offsetWidth > 140) return node;
         node = node.parentElement;
       }
       return img.parentElement;
-    }
-    function placePuzzle() {
-      var box = puzzleBox();
-      if (!box) return null;
-      box.style.setProperty("position", "relative", "important");
-      box.style.setProperty("left", "0px", "important");
-      box.style.setProperty("top", "0px", "important");
-      box.style.setProperty("right", "auto", "important");
-      box.style.setProperty("bottom", "auto", "important");
-      box.style.setProperty("transform", "none", "important");
-      box.style.setProperty("margin", "0px", "important");
-      var node = box.parentElement;
-      while (node && node !== document.body) {
-        var style = window.getComputedStyle(node);
-        var mask = node.offsetWidth > window.innerWidth * 0.85 && node.offsetHeight > window.innerHeight * 0.85;
-        if (mask) {
-          node.style.setProperty("position", "static", "important");
-          node.style.setProperty("background", "transparent", "important");
-        } else if (style.position === "fixed" || style.position === "absolute") {
-          node.style.setProperty("position", "relative", "important");
-          node.style.setProperty("left", "0px", "important");
-          node.style.setProperty("top", "0px", "important");
-          node.style.setProperty("transform", "none", "important");
-          node.style.setProperty("margin", "0px", "important");
-        }
-        node = node.parentElement;
-      }
-      return box;
     }
     function hideStart() {
       var nodes = document.getElementsByTagName("*");
@@ -242,67 +231,45 @@
         bar.style.setProperty("left", (applied + delta) + "px", "important");
       }
     }
-    function paintHandle() {
+    var restoreOpened = false;
+    function clickStart() {
       var nodes = document.getElementsByTagName("*");
       for (var i = 0; i < nodes.length; i++) {
         var node = nodes[i];
-        var id = node.id || "";
-        var cls = typeof node.className === "string" ? node.className : "";
-        var mark = id + " " + cls;
-        if (mark.indexOf("slider") < 0) continue;
-        if (mark.indexOf("text") >= 0 || mark.indexOf("wrapper") >= 0 || mark.indexOf("body") >= 0 || mark.indexOf("left") >= 0) continue;
-        if (node.offsetWidth < 24 || node.offsetWidth > 72 || node.offsetHeight < 24 || node.offsetHeight > 56) continue;
-        node.style.setProperty("background-color", "#4A89DC", "important");
-        node.style.setProperty("border-color", "#3A74C4", "important");
-        var kids = node.getElementsByTagName("*");
-        for (var j = 0; j < kids.length; j++) {
-          kids[j].style.setProperty("color", "#fff", "important");
-          kids[j].style.setProperty("-webkit-text-fill-color", "#fff", "important");
-          kids[j].style.setProperty("fill", "#fff", "important");
-        }
+        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("点击开始验证") < 0 || text.length > 24) continue;
+        node.click();
+        return true;
       }
+      return false;
     }
+    function openRestore() {
+      if (puzzleShown()) {
+        restoreOpened = true;
+        hideStart();
+        return;
+      }
+      if (restoreOpened) return;
+      var button = document.getElementById("button");
+      if (button) button.click();
+      if (clickStart()) restoreOpened = true;
+    }
+    var ignoreClick = false;
     function publish() {
       hideLogo();
-      paintHandle();
       var stage = puzzleShown() ? "puzzle" : "start";
-      var box = null;
       if (stage === "puzzle") {
         hideStart();
-        box = placePuzzle();
+        placeRestore();
         bindClose();
       }
-      var bounds = contentBounds();
-      var h = stage === "start" ? 56 : 320;
-      var w = 0;
-      if (box) {
-        h = Math.ceil(box.offsetHeight) + 8;
-        w = Math.ceil(box.offsetWidth) + 8;
-      } else if (bounds) {
-        h = Math.ceil(bounds.bottom - bounds.top) + 8;
-      }
-      if (stage === "start") {
-        document.body.style.display = "block";
-        if (h > 72) h = 64;
-      }
-      if (stage === "puzzle") {
-        document.body.style.display = "flex";
-        document.body.style.justifyContent = "center";
-        document.body.style.alignItems = "center";
-        document.body.style.minHeight = "100%";
-        document.body.style.margin = "0";
-        if (h < 400) h = 400;
-        if (w < 340) w = 340;
-      }
-      if (puzzleReadySent && stage === lastStage && Math.abs(h - lastHeight) < 2 && Math.abs(w - lastWidth) < 2) {
+      if (puzzleReadySent && stage === lastStage) {
         darkenHint();
         return;
       }
-      lastHeight = h;
-      lastWidth = w;
       lastStage = stage;
       puzzleReadySent = true;
-      report({ ok: false, ready: true, stage: stage, height: h, width: w });
+      report({ ok: false, ready: true, stage: stage });
       darkenHint();
     }
     var layoutObserver = null;
@@ -320,7 +287,7 @@
       setTimeout(publish, 60);
     });
     function slideLayout() {
-      return { width: 320, rem: __CAPTCHA_REM__ };
+      return { width: __SLIDE_WIDTH__, rem: __CAPTCHA_REM__ };
     }
     function initCaptcha() {
       if (typeof window.initAliyunCaptcha !== "function") {
@@ -337,14 +304,16 @@
           language: "cn",
           delayBeforeSuccess: false,
           rem: layout.rem,
-          slideStyle: { width: layout.width, height: 40 },
           success: function (captchaVerifyParam) {
             report({ ok: true, param: captchaVerifyParam });
           },
           fail: function () {},
+          onClose: function () {
+            report({ ok: false, closed: true });
+          },
           getInstance: function (instance) {
             window.captcha = instance;
-            publish();
+            setTimeout(publish, 80);
           },
           onError: function (errorInfo) {
             var msg = (errorInfo && (errorInfo.msg || errorInfo.message)) || "安全验证加载失败";
@@ -376,6 +345,33 @@
       }
       initCaptcha();
     }
+    function insideChallenge(target) {
+      var node = target;
+      while (node && node !== document.body) {
+        var rect = node.getBoundingClientRect();
+        var covers = rect.width > window.innerWidth * 0.92 && rect.height > window.innerHeight * 0.92;
+        if (!covers && rect.height > 80 && rect.width > 120) {
+          var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+          var imgs = node.getElementsByTagName ? node.getElementsByTagName("img") : [];
+          if (text.indexOf("还原") >= 0 || text.indexOf("拖动") >= 0 || imgs.length > 0) return true;
+        }
+        node = node.parentElement;
+      }
+      return false;
+    }
+    document.addEventListener("click", function (event) {
+      if (ignoreClick) return;
+      var target = event.target;
+      if (!target || target.id === "button") return;
+      var node = target;
+      while (node && node !== document.body) {
+        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
+        if (text.indexOf("点击开始验证") >= 0 && text.length <= 24) return;
+        node = node.parentElement;
+      }
+      if (insideChallenge(target)) return;
+      report({ ok: false, closed: true });
+    });
     function boot() {
       if (!window.AliyunCaptchaBridge) {
         setTimeout(boot, 50);

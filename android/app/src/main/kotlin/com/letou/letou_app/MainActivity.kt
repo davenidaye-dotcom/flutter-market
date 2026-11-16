@@ -40,7 +40,9 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "init" -> result.success(shieldInit())
-                    "localPort" -> result.success(shieldLocalPort())
+                    "localPort" -> result.success(shieldLocalPort(call.arguments as? String ?: ""))
+                    "stop" -> result.success(shieldStop())
+                    "reinit" -> result.success(false)
                     else -> result.notImplemented()
                 }
             }
@@ -184,29 +186,43 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun shieldInit(): Boolean {
+        if (CloudPhoneGate.blocked(applicationContext)) return false
         if (!shieldReady()) return false
         return try {
             val code = Class.forName("com.cf.msc.sdk.AppVest")
                 .getMethod("init", String::class.java, String::class.java)
                 .invoke(null, BuildConfig.SHIELD_ACCESS_KEY, BuildConfig.SHIELD_UUID) as Int
-            code != -1
+            code == 0
         } catch (_: Throwable) {
             false
         }
     }
 
-    private fun shieldLocalPort(): Map<String, Any>? {
+    private fun shieldLocalPort(host: String): Map<String, Any>? {
+        if (CloudPhoneGate.blocked(applicationContext)) return null
         if (!shieldReady()) return null
         return try {
             val conn = Class.forName("com.cf.msc.sdk.AppVest")
                 .getMethod("getServerIPAndPort", String::class.java, Int::class.javaPrimitiveType!!)
-                .invoke(null, "", 443) ?: return null
+                .invoke(null, host, 443) ?: return null
             val ip = conn.javaClass.getMethod("getServerIp").invoke(conn) as? String
             val portValue = conn.javaClass.getMethod("getServerPort").invoke(conn)
             val port = (portValue as? Number)?.toInt() ?: -1
             if (ip.isNullOrBlank() || port <= 0) null else mapOf("ip" to ip, "port" to port)
         } catch (_: Throwable) {
             null
+        }
+    }
+
+    private fun shieldStop(): Boolean {
+        if (!shieldReady()) return false
+        return try {
+            val code = Class.forName("com.cf.msc.sdk.AppVest")
+                .getMethod("stopAllListenerPorts")
+                .invoke(null) as Int
+            code == 0
+        } catch (_: Throwable) {
+            false
         }
     }
 }

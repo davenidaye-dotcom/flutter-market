@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../config/env/env_config.dart';
+import '../../features/auth/device_login_store.dart';
 import '../security/shield_gate.dart';
 import 'mtls_bind_stub.dart' if (dart.library.io) 'mtls_bind_io.dart';
 import 'session_store.dart';
@@ -54,9 +55,9 @@ class FlyroomWsClient {
 
   Future<void> connect() async {
     await disconnect();
+    await ShieldGate.retryPortIfInited();
     if (!EnvConfig.requestsAllowed || ShieldGate.blocksBusiness) {
-      debugPrint('[ws] skip connect: line unavailable');
-      return;
+      throw StateError('shield unavailable');
     }
     _disconnectNotified = false;
     sessionToken = SessionStore.instance.accessToken;
@@ -75,7 +76,13 @@ class FlyroomWsClient {
   }
 
   Future<WebSocketChannel> _open() async {
-    return connectFlyroomSocket(_uri);
+    final deviceId = DeviceLoginStore.peek();
+    return connectFlyroomSocket(
+      _uri,
+      headers: deviceId == null || deviceId.isEmpty
+          ? null
+          : {DeviceLoginStore.headerName: deviceId},
+    );
   }
 
   void _markRx() {

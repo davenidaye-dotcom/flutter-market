@@ -7,6 +7,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../security/shield_cert_pin.dart';
+import 'api_exception.dart';
 import '../security/shield_gate.dart';
 import '../security/vpn_guard.dart';
 import 'client_cert_store.dart';
@@ -23,6 +24,66 @@ Future<void>? _loading;
 
 Future<void> ensureMtlsMaterialLoaded() {
   return _loading ??= _load();
+}
+
+const _mainlandBlocked = '当前地区暂不支持登录';
+const _mainlandUnknown = '当前网络无法确认地区，请稍后重试';
+
+/// 登录和注册前直连查询出口地址。不走盾，包内不放业务域名。
+Future<void> ensureMainland() async {
+  await VpnGuard.assertClear();
+  final mainland = await _isMainland();
+  if (mainland == null) {
+    throw const ApiException(message: _mainlandUnknown, isNetwork: true);
+  }
+  if (!mainland) {
+    throw const ApiException(message: _mainlandBlocked);
+  }
+}
+
+Future<bool?> _isMainland() async {
+  final ipip = await _publicGet('https://myip.ipip.net');
+  final fromIpip = _ipipMainland(ipip);
+  if (fromIpip != null) return fromIpip;
+  final who = await _publicGet('https://ipwho.is/');
+  return _whoMainland(who);
+}
+
+bool? _ipipMainland(String? text) {
+  if (text == null || text.isEmpty) return null;
+  const mark = '来自于：';
+  final at = text.indexOf(mark);
+  if (at < 0) return null;
+  final place = text.substring(at + mark.length).trim();
+  if (place.startsWith('中国香港') || place.startsWith('中国澳门') || place.startsWith('中国台湾')) {
+    return false;
+  }
+  if (place.startsWith('香港') || place.startsWith('澳门') || place.startsWith('台湾')) {
+    return false;
+  }
+  return place.startsWith('中国 ');
+}
+
+bool? _whoMainland(String? text) {
+  if (text == null || text.isEmpty) return null;
+  final match = RegExp('"country_code"\\s*:\\s*"([A-Za-z]{2})"').firstMatch(text);
+  final code = match?.group(1);
+  if (code == null) return null;
+  return code.toUpperCase() == 'CN';
+}
+
+Future<String?> _publicGet(String url) async {
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+  try {
+    final request = await client.getUrl(Uri.parse(url));
+    final response = await request.close().timeout(const Duration(seconds: 8));
+    if (response.statusCode != 200) return null;
+    return await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 8));
+  } catch (_) {
+    return null;
+  } finally {
+    client.close(force: true);
+  }
 }
 
 Future<void> _load() async {
@@ -79,15 +140,46 @@ void bindMtlsClient(Dio dio, {required bool presentClientCert}) {
   old.close();
 }
 
-Future<WebSocketChannel> connectFlyroomSocket(Uri uri) async {
+/// 正式包认证请求直连防火墙域名，信任公网根，不拨游戏盾。
+void bindAuthClient(Dio dio) {
+  final old = dio.httpClientAdapter;
+  dio.httpClientAdapter = _TlsOnlyAdapter(
+    IOHttpClientAdapter(
+      createHttpClient: _appEnv == 'pro' ? _authClient : () => _httpClient(false),
+    ),
+  );
+  old.close();
+}
+
+HttpClient _authClient() {
+  final client = HttpClient(context: SecurityContext(withTrustedRoots: true));
+  client.findProxy = (_) {
+    if (VpnGuard.blocked) {
+      throw const VpnBlockedException();
+    }
+    return 'DIRECT';
+  };
+  client.badCertificateCallback = (_, _, _) => false;
+  return client;
+}
+
+Future<WebSocketChannel> connectFlyroomSocket(
+  Uri uri, {
+  Map<String, dynamic>? headers,
+}) async {
   if (uri.scheme.toLowerCase() != 'wss') {
     throw const TlsException('refuse cleartext websocket');
   }
   await VpnGuard.assertClear();
   await ensureMtlsMaterialLoaded();
+  final merged = <String, dynamic>{
+    if (_appEnv == 'pro') 'host': ShieldGate.ruleHost,
+    ...?headers,
+  };
   final channel = IOWebSocketChannel.connect(
     uri,
     customClient: _httpClient(false),
+    headers: merged.isEmpty ? null : merged,
   );
   await channel.ready;
   return channel;
@@ -128,7 +220,7 @@ HttpClient _httpClient(bool presentClientCert) {
   return client;
 }
 
-/// 正式包 TCP 只拨盾的本机端口。不传业务域名，TLS 只核对公钥指纹。
+/// 正式包 TCP 只拨盾的本机端口。四层要端口不带域名，www.demo.com 只放在 HTTP Host。TLS 只核对公钥指纹。
 /// 直连时 HttpClient 不会再给 connectionFactory 返回的套接字做一次握手。
 Future<ConnectionTask<Socket>> _shieldConnect(SecurityContext context) async {
   if (VpnGuard.blocked) {

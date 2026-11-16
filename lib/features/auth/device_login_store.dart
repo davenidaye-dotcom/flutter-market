@@ -8,12 +8,25 @@ import '../../core/utils/request_id.dart';
 class DeviceLoginStore {
   DeviceLoginStore._();
 
+  static const headerName = 'X-FR-Device';
   static const _kDeviceId = 'flyroom_device_id';
   static const _kLastUser = 'flyroom_device_last_user';
   static const _secure = FlutterSecureStorage();
 
   static String _tokenKey(String username) =>
       'flyroom_device_token_${username.trim().toLowerCase()}';
+
+  static String? _cached;
+
+  /// 已经读过的设备号。请求拦截器里不能再异步去读存储。
+  static String? peek() => _cached;
+
+  static void attach(Map<String, dynamic> headers) {
+    final id = _cached;
+    if (id != null && id.isNotEmpty) {
+      headers[headerName] = id;
+    }
+  }
 
   static Future<String> deviceId() async {
     final prefs = await SharedPreferences.getInstance();
@@ -22,6 +35,7 @@ class DeviceLoginStore {
       id = newRequestId();
       await prefs.setString(_kDeviceId, id);
     }
+    _cached = id;
     return id;
   }
 

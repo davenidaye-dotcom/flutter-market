@@ -8,6 +8,7 @@ import '../../../data/models/user_model.dart';
 import '../../../data/repositories/providers.dart';
 import '../../room/cs_unread.dart';
 import '../device_login_store.dart';
+import '../../../core/network/auth_api_client.dart';
 import '../../../core/network/client_cert_store.dart';
 import '../../../core/network/member_ws_session.dart';
 import '../../../core/network/session_store.dart';
@@ -128,6 +129,7 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
     final username = state.user?.username;
     final cleared = await _ref.read(authRepositoryProvider).logout();
     if (!cleared) return;
+    AuthApiClient.closeTunnel();
     if (username != null) await DeviceLoginStore.clear(username);
     _ref.read(csUnreadCountProvider.notifier).clear();
     state = const AuthSession();
@@ -137,6 +139,7 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
   void abandonLocal() {
     MemberWsSession.instance.suspend();
     _dropCert();
+    AuthApiClient.closeTunnel();
     state = const AuthSession();
   }
 
@@ -150,6 +153,7 @@ class AuthSessionNotifier extends StateNotifier<AuthSession> {
   void dropLocal() {
     MemberWsSession.instance.suspend();
     _dropCert();
+    AuthApiClient.closeTunnel();
     // 被踢/会话失效：不能让登录页立刻拿旧设备令牌又登回去
     final username = state.user?.username;
     if (username != null) unawaited(DeviceLoginStore.clear(username));

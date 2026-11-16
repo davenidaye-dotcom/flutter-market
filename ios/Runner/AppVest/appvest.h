@@ -17,6 +17,7 @@ __attribute__((visibility("default")))
 @interface AppVest : NSObject
 
 -(int)init: (NSString*)accessKey  uuid:(NSString*)uuid;
+-(int)initUniApp: (NSString*)accessKey  uuid:(NSString*)uuid;
 -(int)reinit;
 -(int)addListeningPort: (int)port __attribute__((deprecated));
 -(int)getLocalPort: (int)port __attribute__((deprecated));
@@ -26,6 +27,8 @@ __attribute__((visibility("default")))
 -(int)setTimeouts:(int)read_timeout  write_timeout: (int)write_timeout;
 -(int)getServerIPAndPort: (security_connection_t*)conn host:(NSString*)host port:(int)port;
 -(int)setCredit: (NSString*)uid  credit:(int)credit;
+-(int)stopListenerPort: (NSString*)host port:(int)port;
+-(int)stopAllListenerPorts;
 
 @end
 
