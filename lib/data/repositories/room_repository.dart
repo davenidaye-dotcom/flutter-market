@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/network/api_client.dart';
 import '../../core/network/api_exception.dart';
 import '../../core/network/session_store.dart';
@@ -123,7 +125,10 @@ class RoomRepository {
       '/member/rooms/history',
       query: {'limit': limit},
     );
-    if (data is! List) return const [];
+    if (data is! List) {
+      debugPrint('[history] data ${data.runtimeType}');
+      return const [];
+    }
     final list = data.whereType<Map>().map((e) {
       final m = Map<String, dynamic>.from(e);
       return RoomModel(

@@ -143,7 +143,9 @@ class _HomePageState extends ConsumerState<HomePage> {
         _historyError = null;
       });
       unawaited(_saveHistory());
+      debugPrint('[history] page rooms ${list.length}');
     } catch (e) {
+      debugPrint('[history] page fail ${_errMsg(e)}');
       if (!mounted) return;
       final failedEmpty = _history.isEmpty;
       setState(() {

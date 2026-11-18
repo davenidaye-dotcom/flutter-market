@@ -22,6 +22,8 @@ class EnvConfig {
   EnvConfig._();
 
   static const _envKey = String.fromEnvironment('APP_ENV', defaultValue: 'dev');
+  static const _localApi = String.fromEnvironment('LOCAL_API', defaultValue: '');
+  static const _localWs = String.fromEnvironment('LOCAL_WS', defaultValue: '');
 
   static final AppEnvironment environment = AppEnvironment.fromKey(_envKey);
 
@@ -38,11 +40,16 @@ class EnvConfig {
   static bool get requestsAllowed => apiBaseUrl.isNotEmpty && wsBaseUrl.isNotEmpty;
 
   // 开发、测试走测试机。正式包只连盾返回的本机端口，这里的主机不是源站。
-  static String get builtinApiBaseUrl => switch (environment) {
-        AppEnvironment.dev => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
-        AppEnvironment.test => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
-        AppEnvironment.pro => 'https://127.0.0.1/api/v1/eybyqamwedxng8shw5vn',
-      };
+  static String get builtinApiBaseUrl {
+    if (environment != AppEnvironment.pro && _localApi.isNotEmpty) {
+      return _localApi;
+    }
+    return switch (environment) {
+      AppEnvironment.dev => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
+      AppEnvironment.test => 'https://207.148.105.182/api/v1/b7rr3yvrvpu7j278j5',
+      AppEnvironment.pro => 'https://127.0.0.1/api/v1/eybyqamwedxng8shw5vn',
+    };
+  }
 
   /// 正式包登录、注册、换证直连 Web 防火墙。不走游戏盾，不带客户端证。
   static String get builtinAuthBaseUrl => switch (environment) {
@@ -51,11 +58,16 @@ class EnvConfig {
         _ => builtinApiBaseUrl,
       };
 
-  static String get builtinWsBaseUrl => switch (environment) {
-        AppEnvironment.dev => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
-        AppEnvironment.test => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
-        AppEnvironment.pro => 'wss://127.0.0.1/ws/v1/eybyqamwedxng8shw5vn',
-      };
+  static String get builtinWsBaseUrl {
+    if (environment != AppEnvironment.pro && _localWs.isNotEmpty) {
+      return _localWs;
+    }
+    return switch (environment) {
+      AppEnvironment.dev => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
+      AppEnvironment.test => 'wss://207.148.105.182/ws/v1/b7rr3yvrvpu7j278j5',
+      AppEnvironment.pro => 'wss://127.0.0.1/ws/v1/eybyqamwedxng8shw5vn',
+    };
+  }
 
   /// HTTP API prefix (no trailing slash).
   static String get apiBaseUrl => _apiBaseUrlOverride ?? _fallbackApiBaseUrl;

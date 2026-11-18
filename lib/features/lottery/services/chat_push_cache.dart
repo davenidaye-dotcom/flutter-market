@@ -62,7 +62,7 @@ class ChatPushCache {
   static final ChatPushCache instance = ChatPushCache._();
 
   /// 聊天历史按期数（与后端 CHAT_HISTORY_ISSUE_COUNT 对齐，只用于请求窗口）。
-  static const chatHistoryIssueLimit = 15;
+  static const chatHistoryIssueLimit = 10;
   /// 进房预拉、开奖历史表：每彩种向服务器要的最新开奖条数。
   static const drawHistoryLimit = chatHistoryIssueLimit;
   static const serverDrawLimit = drawHistoryLimit;

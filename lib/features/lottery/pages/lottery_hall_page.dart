@@ -411,7 +411,13 @@ class _GameCard extends ConsumerWidget {
       child: Container(
         padding: EdgeInsets.all(14.w),
         decoration: BoxDecoration(
-          color: Colors.white,
+          gradient: const LinearGradient(
+            begin: Alignment.bottomLeft,
+            end: Alignment.topRight,
+            colors: [Color(0xFFEAF5FD), Color(0xFFC9E3F8), Color(0xFF9FCBEE)],
+            stops: [0, 0.38, 1],
+          ),
+          border: Border.all(color: const Color(0xFFC5CCD4), width: 0.6),
           borderRadius: BorderRadius.circular(12.r),
           boxShadow: [
             BoxShadow(
@@ -439,7 +445,7 @@ class _GameCard extends ConsumerWidget {
                   currentIssue.isEmpty
                       ? (prevIssue.isNotEmpty ? '第$prevIssue期' : '等待开奖数据')
                       : '第$currentIssue期',
-                  style: TextStyle(fontSize: 12.sp, color: AppColors.textSecondary),
+                  style: TextStyle(fontSize: 12.sp, color: const Color(0xFF3E5164)),
                 ),
               ],
             ),
@@ -450,7 +456,7 @@ class _GameCard extends ConsumerWidget {
                   roomId: roomId,
                   gameId: gameId,
                   pendingPlaceholder: false,
-                  style: TextStyle(fontSize: 13.sp, color: AppColors.textSecondary),
+                  style: TextStyle(fontSize: 13.sp, color: const Color(0xFF3E5164)),
                 ),
                 SizedBox(width: 8.w),
                 Expanded(

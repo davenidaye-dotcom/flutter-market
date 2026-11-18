@@ -27,6 +27,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   final _usernameCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  bool _submitting = false;
   bool _loading = false;
 
   @override
@@ -38,6 +39,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   }
 
   Future<void> _register() async {
+    if (_submitting) return;
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
     final confirm = _confirmCtrl.text;
@@ -59,16 +61,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     }
 
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => _loading = true);
+    setState(() => _submitting = true);
     try {
       await AuthApiClient.ensureRegion();
       if (!mounted) return;
       final param = await AliyunCaptchaPage.open(context);
       if (!mounted) return;
       if (param == null || param.isEmpty) {
-        AppToast.info('已取消安全验证');
+        AppToast.info(AliyunCaptchaPage.takeNotice() ?? '已取消安全验证');
         return;
       }
+      setState(() => _loading = true);
       try {
         await ref.read(authRepositoryProvider).register(
               username: username,
@@ -90,7 +93,12 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     } catch (e) {
       AppToast.error(e is ApiException ? loginFailureText(e) : e.toString());
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -146,7 +154,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                 Color(0xFFC9A07A),
                                 AppColors.accentBrown,
                               ],
-                              onPressed: _register,
+                              onPressed: _submitting ? null : _register,
                               loading: _loading,
                             ),
                             SizedBox(height: 16.h),

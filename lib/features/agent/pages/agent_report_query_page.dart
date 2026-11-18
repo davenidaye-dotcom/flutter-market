@@ -165,19 +165,28 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   void _onQuick(int i) {
-    if (i < 0 || i >= _quickItems.length) return;
+    if (_loading || i < 0 || i >= _quickItems.length) return;
     final it = _quickItems[i];
     setState(() {
       _quick = i;
       _start = it.start;
       _end = it.end;
       _page = 1;
+      _rows = [];
+      _summary = {};
+      _loading = true;
     });
     _load(applyQuery: true);
   }
 
   void _search() {
-    setState(() => _page = 1);
+    if (_loading) return;
+    setState(() {
+      _page = 1;
+      _rows = [];
+      _summary = {};
+      _loading = true;
+    });
     _load(applyQuery: true);
   }
 
@@ -218,6 +227,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       }
       return;
     }
+    if (_loading && fromPull) return;
     final gen = ++_loadGen;
     if (!fromPull && mounted) {
       setState(() {
@@ -373,7 +383,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
     final id = row['accountId'] is int
         ? row['accountId'] as int
         : int.tryParse('${row['accountId'] ?? ''}');
-    if (id == null) return;
+    if (_loading || id == null) return;
     final name = '${row['displayName'] ?? row['username'] ?? id}'.trim();
     setState(() {
       _ticketMemberId = id;
@@ -383,6 +393,8 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       _ticketGameType = '';
       _ticketIssueSummary = {};
       _rows = [];
+      _summary = {};
+      _loading = true;
       _page = 1;
     });
     _load();
@@ -408,6 +420,7 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
   }
 
   void _openChildren(Map<String, dynamic> row) {
+    if (_loading) return;
     final id = row['accountId'] is int
         ? row['accountId'] as int
         : int.tryParse('${row['accountId'] ?? ''}');
@@ -420,6 +433,9 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
       _ticketIssueNo = '';
       _ticketGameType = '';
       _ticketIssueSummary = {};
+      _rows = [];
+      _summary = {};
+      _loading = true;
       _page = 1;
     });
     _load();
@@ -496,12 +512,12 @@ class _AgentReportQueryPageState extends ConsumerState<AgentReportQueryPage> {
               totalPages: _totalPages,
               total: _total,
               onPrev: () {
-                if (_page <= 1) return;
+                if (_loading || _page <= 1) return;
                 setState(() => _page--);
                 _load();
               },
               onNext: () {
-                if (_page >= _totalPages) return;
+                if (_loading || _page >= _totalPages) return;
                 setState(() => _page++);
                 _load();
               },

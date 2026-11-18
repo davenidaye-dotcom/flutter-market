@@ -120,7 +120,7 @@ void main() {
   });
 
   group('buffer 裁剪', () {
-    test('超过窗口的开奖只留最近 15 期', () {
+    test('超过窗口的开奖只留最近 10 期', () {
       for (var i = 5250; i <= 5274; i++) {
         cache.pushOnce(
           roomId: roomId,
@@ -136,7 +136,7 @@ void main() {
           .whereType<String>()
           .toList();
       expect(issues.length, ChatPushCache.chatHistoryIssueLimit);
-      expect(issues.first, '5260');
+      expect(issues.first, '5265');
       expect(issues.last, '5274');
     });
   });

@@ -13,7 +13,7 @@
 		74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74858FAE1ED2DC5600515810 /* AppDelegate.swift */; };
 		7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */; };
 		78A318202AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage in Frameworks */ = {isa = PBXBuildFile; productRef = 78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */; };
-		A1B1C0012EC0A10000000001 /* appvest_framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B1C0032EC0A10000000003 /* appvest_framework */; };
+		A1B1C0012EC0A10000000001 /* appvest_framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B1C0032EC0A10000000003 /* appvest_framework */; platformFilter = ios; };
 		A1B1C0022EC0A10000000002 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = A1B1C0052EC0A10000000005 /* libz.tbd */; };
 		A1B1C0072EC0A10000000007 /* ShieldBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A1B1C0082EC0A10000000008 /* ShieldBridge.m */; };
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };

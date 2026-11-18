@@ -1,6 +1,36 @@
 #import "ShieldBridge.h"
-#import "appvest.h"
 #import <string.h>
+
+#if TARGET_OS_SIMULATOR
+
+int ShieldInit(NSString *accessKey, NSString *uuid) {
+    (void)accessKey;
+    (void)uuid;
+    return -1;
+}
+
+int ShieldLocalPort(char *ipOut, int ipLen, int *portOut, NSString *host) {
+    (void)host;
+    if (ipOut != NULL && ipLen > 0) {
+        ipOut[0] = '\0';
+    }
+    if (portOut != NULL) {
+        *portOut = -1;
+    }
+    return -1;
+}
+
+int ShieldStop(void) {
+    return 0;
+}
+
+int ShieldReinit(void) {
+    return -1;
+}
+
+#else
+
+#import "appvest.h"
 
 static AppVest *ShieldVest(void) {
     static AppVest *vest;
@@ -40,3 +70,5 @@ int ShieldStop(void) {
 int ShieldReinit(void) {
     return [ShieldVest() reinit];
 }
+
+#endif

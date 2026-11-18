@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../../config/env/env_config.dart';
 import 'api_exception.dart';
 import 'client_cert_refresh.dart';
@@ -80,6 +81,12 @@ class ApiClient {
     bindMtlsClient(_dio, presentClientCert: false);
   }
 
+  static String _historyBody(Object? data) {
+    final text = data?.toString() ?? '';
+    if (text.length <= 400) return text;
+    return text.substring(0, 400);
+  }
+
   Future<void> _requireEndpoint() async {
     await ShieldGate.retryPortIfInited();
     if (EnvConfig.requestsAllowed && !ShieldGate.blocksBusiness) return;
@@ -135,6 +142,7 @@ class ApiClient {
     Map<String, dynamic>? query,
     Duration? receiveTimeout,
   }) async {
+    final history = path.contains('/rooms/history');
     try {
       final res = await _send(
         () => _dio.get<dynamic>(
@@ -145,9 +153,23 @@ class ApiClient {
               : Options(receiveTimeout: receiveTimeout),
         ),
       );
+      if (history) {
+        debugPrint('[history] http ${res.statusCode} body ${_historyBody(res.data)}');
+      }
       return unwrapResponse(res);
     } on DioException catch (e) {
+      if (history) {
+        debugPrint(
+          '[history] dio ${e.type.name} status ${e.response?.statusCode} '
+          'body ${_historyBody(e.response?.data)} cause ${_historyBody(e.error)}',
+        );
+      }
       throw ApiException.fromDio(e);
+    } on ApiException catch (e) {
+      if (history) {
+        debugPrint('[history] api code ${e.code} biz ${e.bizCode} msg ${e.message}');
+      }
+      rethrow;
     }
   }
 

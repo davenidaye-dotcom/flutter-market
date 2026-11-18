@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -163,11 +164,20 @@ HttpClient _authClient() {
   return client;
 }
 
+/// 正式包继续拒绝明文。开发包只放行本机回环，给本机 9080 用。
+bool _allowLocalCleartext(Uri uri) {
+  if (_appEnv == 'pro') return false;
+  final scheme = uri.scheme.toLowerCase();
+  if (scheme != 'http' && scheme != 'ws') return false;
+  final host = uri.host.toLowerCase();
+  return host == '127.0.0.1' || host == 'localhost' || host == '::1';
+}
+
 Future<WebSocketChannel> connectFlyroomSocket(
   Uri uri, {
   Map<String, dynamic>? headers,
 }) async {
-  if (uri.scheme.toLowerCase() != 'wss') {
+  if (uri.scheme.toLowerCase() != 'wss' && !_allowLocalCleartext(uri)) {
     throw const TlsException('refuse cleartext websocket');
   }
   await VpnGuard.assertClear();
@@ -228,18 +238,41 @@ Future<ConnectionTask<Socket>> _shieldConnect(SecurityContext context) async {
   }
   final endpoint = await ShieldGate.localEndpoint();
   if (endpoint == null) {
+    debugPrint('[shield-tls] no port');
     throw const SocketException('shield unavailable');
   }
+  debugPrint('[shield-tls] dial ${endpoint.ip}:${endpoint.port}');
   final task = await Socket.startConnect(endpoint.ip, endpoint.port);
+  final connected = task.socket.catchError((Object e) {
+    debugPrint('[shield-tls] tcp fail $e');
+    throw e;
+  });
   return ConnectionTask.fromSocket(
-    task.socket.then((raw) async {
+    connected.then((raw) async {
+      debugPrint('[shield-tls] tcp ok');
       try {
-        return await SecureSocket.secure(
+        final secured = await SecureSocket.secure(
           raw,
           context: context,
-          onBadCertificate: (cert) => shieldCertPinMatches(cert.der),
+          onBadCertificate: (cert) {
+            bool ok;
+            Object? err;
+            try {
+              ok = shieldCertPinMatches(cert.der);
+            } catch (e) {
+              ok = false;
+              err = e;
+            }
+            debugPrint(
+              '[shield-tls] pin match=$ok subject=${cert.subject} issuer=${cert.issuer} err=$err',
+            );
+            return ok;
+          },
         );
-      } catch (_) {
+        debugPrint('[shield-tls] tls ok');
+        return secured;
+      } catch (e) {
+        debugPrint('[shield-tls] tls fail $e');
         raw.destroy();
         rethrow;
       }
@@ -278,7 +311,8 @@ class _TlsOnlyAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
-    if (options.uri.scheme.toLowerCase() != 'https') {
+    if (options.uri.scheme.toLowerCase() != 'https' &&
+        !_allowLocalCleartext(options.uri)) {
       throw DioException(
         requestOptions: options,
         type: DioExceptionType.connectionError,

@@ -2,560 +2,130 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <script>
     window.AliyunCaptchaConfig = { region: "cn", prefix: "1k5s16e" };
   </script>
   <style>
-    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; font-family: sans-serif; }
-    body { min-height: 100%; }
-    #captcha-element { width: 100%; height: 100%; background: transparent; }
+    html, body { margin: 0; width: 100%; height: 100%; background: transparent; }
+    #captcha-element { width: 100%; height: 100%; }
     #button {
       position: absolute;
+      left: 0;
+      top: 0;
       width: 1px;
       height: 1px;
-      opacity: 0;
-      pointer-events: none;
-    }
-    #fr-start {
-      display: none;
-      position: fixed;
-      z-index: 2147483000;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
-      background: #ffffff;
-      color: #4A89DC;
-      -webkit-text-fill-color: #4A89DC;
-      border: 1px solid #4A89DC;
-      box-shadow: none;
-      font-weight: 600;
-      text-align: center;
-      -webkit-appearance: none;
-      appearance: none;
+      border: 0;
+      opacity: 0;
     }
   </style>
 </head>
 <body>
   <div id="captcha-element"></div>
   <button id="button" type="button" tabindex="-1" aria-hidden="true"></button>
-  <button id="fr-start" type="button">点击开始验证</button>
   <script>
     function report(payload) {
-      if (!window.AliyunCaptchaBridge) return false;
+      if (!window.AliyunCaptchaBridge) return;
       AliyunCaptchaBridge.postMessage(JSON.stringify(payload));
-      return true;
     }
-    var puzzleMode = __PUZZLE_MODE__;
-    var lastHeight = 0;
-    var lastWidth = 0;
-    var puzzleReadySent = false;
-    function puzzleShown() {
-      var text = document.body.innerText || "";
-      if (text.indexOf("拖动滑块") >= 0 || text.indexOf("还原") >= 0) return true;
-      var imgs = document.getElementsByTagName("img");
-      for (var i = 0; i < imgs.length; i++) {
-        if (imgs[i].clientHeight > 80 && imgs[i].clientWidth > 120) return true;
-      }
-      return false;
-    }
-    function restoreCard() {
-      var box = puzzleBox();
-      if (!box) return null;
-      var card = box;
-      var node = box;
-      while (node && node !== document.body) {
-        var rect = node.getBoundingClientRect();
-        if (rect.width >= window.innerWidth * 0.96 && rect.height >= window.innerHeight * 0.9) break;
-        if (rect.width > 140 && rect.height > 160) card = node;
-        node = node.parentElement;
-      }
-      return card;
-    }
-    function placeRestore() {
-      if (!puzzleShown()) return;
-      var card = restoreCard();
-      if (!card) return;
-      var host = document.getElementById("captcha-element");
-      if (!host) return;
-      host.style.setProperty("display", "flex", "important");
-      host.style.setProperty("align-items", "center", "important");
-      host.style.setProperty("justify-content", "center", "important");
-      host.style.setProperty("width", "100%", "important");
-      host.style.setProperty("height", "100%", "important");
-      if (card.parentNode !== host) host.appendChild(card);
-      card.style.setProperty("position", "relative", "important");
-      card.style.setProperty("left", "auto", "important");
-      card.style.setProperty("top", "auto", "important");
-      card.style.setProperty("right", "auto", "important");
-      card.style.setProperty("bottom", "auto", "important");
-      card.style.setProperty("float", "none", "important");
-      card.style.setProperty("transform", "none", "important");
-      card.style.setProperty("margin", "0", "important");
-      card.style.setProperty("flex", "0 0 auto", "important");
-    }
-    function darkenHint() {
-      if (!puzzleMode) return;
-      var nodes = document.body.getElementsByTagName("*");
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        if (node.children.length > 0) continue;
-        var text = (node.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("拖动滑块") < 0 && text.indexOf("完成拼图") < 0 && text.indexOf("还原完整") < 0) continue;
-        if (text.length > 24) continue;
-        node.style.setProperty("color", "#5c5c5c", "important");
-        node.style.setProperty("-webkit-text-fill-color", "#5c5c5c", "important");
-      }
-    }
-    var pinCount = 0;
-    function contentBounds() {
-      var viewH = window.innerHeight || 420;
-      var viewW = window.innerWidth || 320;
-      var top = 0;
-      var bottom = 0;
-      var any = false;
-      var nodes = document.body.getElementsByTagName("*");
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        if (node.id === "button") continue;
-        var style = window.getComputedStyle(node);
-        if (style.display === "none" || style.visibility === "hidden") continue;
-        var rect = node.getBoundingClientRect();
-        if (rect.height < 2 || rect.width < 2) continue;
-        if (rect.height > viewH * 0.9 && rect.width > viewW * 0.9) continue;
-        if (!any || rect.top < top) top = rect.top;
-        if (!any || rect.bottom > bottom) bottom = rect.bottom;
-        any = true;
-      }
-      return any ? { top: top, bottom: bottom } : null;
-    }
-    function hideLogo() {
-      var nodes = document.getElementsByTagName("*");
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("点击开始验证") >= 0) continue;
-        var cls = typeof node.className === "string" ? node.className.toLowerCase() : "";
-        var id = (node.id || "").toLowerCase();
-        var src = (node.getAttribute && node.getAttribute("src")) || "";
-        var alt = (node.getAttribute && node.getAttribute("alt")) || "";
-        var brand = text.indexOf("Alibaba") >= 0 || text.indexOf("阿里云") >= 0 || alt.indexOf("Alibaba") >= 0 || alt.indexOf("阿里") >= 0;
-        var logo = cls.indexOf("logo") >= 0 || id.indexOf("logo") >= 0 || src.indexOf("logo") >= 0;
-        if (brand || logo) node.style.setProperty("display", "none", "important");
-      }
-    }
-    function puzzleBox() {
-      var imgs = document.getElementsByTagName("img");
-      var img = null;
-      for (var i = 0; i < imgs.length; i++) {
-        if (imgs[i].clientHeight > 80) img = imgs[i];
-      }
-      if (!img) return null;
-      var node = img.parentElement;
-      while (node && node !== document.body) {
-        var text = node.innerText || "";
-        if ((text.indexOf("拼图") >= 0 || text.indexOf("还原") >= 0) && node.offsetHeight > 140 && node.offsetWidth > 140) return node;
-        node = node.parentElement;
-      }
-      return img.parentElement;
-    }
-    function hideStart() {
-      var nodes = document.getElementsByTagName("*");
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("点击开始验证") < 0 || text.length > 24) continue;
-        node.style.setProperty("display", "none", "important");
-      }
-    }
-    function aliyunStartNode() {
-      var nodes = document.getElementsByTagName("*");
-      var hit = null;
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        if (node.id === "button" || node.id === "fr-start") continue;
-        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("点击开始验证") < 0 || text.length > 24) continue;
-        hit = node;
-      }
-      return hit;
-    }
-    function hideAliyunStart(hit) {
-      var node = hit;
-      while (node && node !== document.body && node.id !== "captcha-element" && node.id !== "fr-start") {
-        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-        var onlyStart = text.indexOf("点击开始验证") >= 0 && text.length <= 24;
-        var strip = node.offsetWidth > 80 && node.offsetHeight > 0 && node.offsetHeight < 140;
-        if (!onlyStart && !strip) break;
-        var next = node.parentElement;
-        node.style.setProperty("display", "none", "important");
-        node = next;
-      }
-    }
-    function startButton() {
-      var hit = aliyunStartNode();
-      if (!hit) return null;
-      var bar = hit;
-      var node = hit.parentElement;
-      while (node && node !== document.body && node.id !== "captcha-element") {
-        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("点击开始验证") < 0 || text.length > 24) break;
-        bar = node;
-        node = node.parentElement;
-      }
-      return bar;
-    }
-    function unlockPuzzleClicks() {
-      var nodes = document.body.getElementsByTagName("*");
-      for (var i = 0; i < nodes.length; i++) nodes[i].style.removeProperty("pointer-events");
-    }
-    function styleStart() {
-      var own = document.getElementById("fr-start");
-      if (own) own.style.setProperty("display", "none", "important");
-      if (puzzleShown()) {
-        unlockPuzzleClicks();
-        return;
-      }
-      var bar = startButton();
-      if (!bar) return;
-      var host = document.getElementById("captcha-element");
-      if (host && bar.parentNode !== host) host.appendChild(bar);
-      bar.style.setProperty("position", "relative", "important");
-      bar.style.setProperty("left", "0", "important");
-      bar.style.setProperty("top", "0", "important");
-      bar.style.setProperty("right", "auto", "important");
-      bar.style.setProperty("bottom", "auto", "important");
-      bar.style.setProperty("transform", "none", "important");
-      bar.style.setProperty("display", "flex", "important");
-      bar.style.setProperty("width", "100%", "important");
-      bar.style.setProperty("height", "100%", "important");
-      bar.style.setProperty("min-width", "0", "important");
-      bar.style.setProperty("max-width", "100%", "important");
-      bar.style.setProperty("overflow", "hidden", "important");
-      bar.style.setProperty("margin", "0", "important");
-      bar.style.setProperty("padding", "0", "important");
-      bar.style.setProperty("box-sizing", "border-box", "important");
-      bar.style.setProperty("border-radius", "999px", "important");
-      bar.style.setProperty("background", "#ffffff", "important");
-      bar.style.setProperty("background-image", "none", "important");
-      bar.style.setProperty("border", "1px solid #4A89DC", "important");
-      bar.style.setProperty("box-shadow", "none", "important");
-      bar.style.setProperty("color", "#4A89DC", "important");
-      bar.style.setProperty("-webkit-text-fill-color", "#4A89DC", "important");
-      bar.style.setProperty("font-size", "__START_FONT__px", "important");
-      bar.style.setProperty("font-weight", "600", "important");
-      bar.style.setProperty("text-align", "center", "important");
-      bar.style.setProperty("align-items", "center", "important");
-      bar.style.setProperty("justify-content", "center", "important");
-      bar.style.setProperty("pointer-events", "auto", "important");
-      bar.style.setProperty("z-index", "2", "important");
-      if (host) {
-        var extras = host.children;
-        for (var n = 0; n < extras.length; n++) {
-          if (extras[n] === bar) continue;
-          extras[n].style.setProperty("pointer-events", "none", "important");
-        }
-      }
-      var kids = bar.getElementsByTagName("*");
-      for (var k = 0; k < kids.length; k++) {
-        var kid = kids[k];
-        var text = (kid.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("点击开始验证") >= 0) {
-          kid.style.setProperty("color", "#4A89DC", "important");
-          kid.style.setProperty("-webkit-text-fill-color", "#4A89DC", "important");
-          kid.style.setProperty("font-size", "__START_FONT__px", "important");
-          kid.style.setProperty("font-weight", "600", "important");
-          continue;
-        }
-        kid.style.setProperty("display", "none", "important");
-      }
-    };
-    function pinPopup() {
-      if (!puzzleShown() || pinCount > 3) return;
-      var bounds = contentBounds();
-      if (!bounds || Math.abs(bounds.top) < 2) return;
-      var box = document.getElementById("captcha-element");
-      if (!box) return;
-      var current = parseFloat(box.style.marginTop || "0");
-      if (isNaN(current)) current = 0;
-      box.style.marginTop = (current - bounds.top) + "px";
-      pinCount += 1;
-    }
-    var lastStage = "";
-    function bindClose() {
-      var nodes = document.getElementsByTagName("*");
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        if (node.getAttribute("data-close-bound")) continue;
-        var text = (node.textContent || "").replace(/\s/g, "");
-        var id = node.id || "";
-        var cls = typeof node.className === "string" ? node.className : "";
-        var isClose = text === "×" || text === "✕" || id.indexOf("close") >= 0 || cls.indexOf("close") >= 0;
-        if (!isClose || text.length > 4) continue;
-        node.setAttribute("data-close-bound", "1");
-        node.addEventListener("click", function () {
-          report({ ok: false, closed: true });
-        });
-      }
-    }
-    var slideTrack = __SLIDE_TRACK__;
-    var slideInsetMin = 16;
-    function slideSpan(viewW) {
-      var width = slideTrack;
-      var inset = Math.round((viewW - width) / 2);
-      if (inset < slideInsetMin) {
-        inset = slideInsetMin;
-        width = Math.round(viewW - inset * 2);
-      }
-      if (width < 80) {
-        width = viewW;
-        inset = 0;
-      }
-      return { width: width, inset: inset };
-    }
-    function findBar(handle) {
-      var ids = ["aliyunCaptcha-sliding-wrapper", "aliyunCaptcha-sliding-body"];
-      var handleBox = handle.getBoundingClientRect();
-      var handleMid = (handleBox.top + handleBox.bottom) / 2;
-      for (var i = 0; i < ids.length; i++) {
-        var node = document.getElementById(ids[i]);
-        if (!node || node.offsetWidth < 80 || node.offsetHeight < 20) continue;
-        var box = node.getBoundingClientRect();
-        if (Math.abs((box.top + box.bottom) / 2 - handleMid) < 30) return node;
-      }
-      return null;
-    }
-    function insetSlide() {
-      if (puzzleShown()) return;
-      var viewW = document.documentElement.clientWidth || window.innerWidth;
-      if (viewW < 80) return;
-      var handle = document.getElementById("aliyunCaptcha-sliding-slider");
-      if (!handle || handle.offsetWidth < 8) return;
-      var bar = findBar(handle);
-      if (!bar) return;
-      var span = slideSpan(viewW);
-      var handleBox = handle.getBoundingClientRect();
-      var barBox = bar.getBoundingClientRect();
-      var stick = barBox.left - handleBox.left;
-      if (stick < 0) stick = 0;
-      var target = Math.round(span.width - stick);
-      if (target < 80) target = span.width;
-      if (Math.abs(barBox.width - target) > 1) {
-        bar.style.setProperty("width", target + "px", "important");
-        bar.style.setProperty("min-width", target + "px", "important");
-        bar.style.setProperty("max-width", target + "px", "important");
-        bar.style.setProperty("box-sizing", "border-box", "important");
-        bar.style.setProperty("margin-left", "0px", "important");
-      }
-      handleBox = handle.getBoundingClientRect();
-      barBox = bar.getBoundingClientRect();
-      var rightGap = viewW - Math.max(handleBox.right, barBox.right);
-      var delta = span.inset - rightGap;
-      if (Math.abs(delta) > 0.5) {
-        var applied = parseFloat(bar.style.left || "0");
-        if (isNaN(applied)) applied = 0;
-        bar.style.setProperty("position", "relative", "important");
-        bar.style.setProperty("left", (applied + delta) + "px", "important");
-      }
-    }
-    var restoreOpened = false;
-    function clickStart() {
-      var nodes = document.getElementsByTagName("*");
-      for (var i = 0; i < nodes.length; i++) {
-        var node = nodes[i];
-        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-        if (node.id === "fr-start") continue;
-        if (text.indexOf("点击开始验证") < 0 || text.length > 24) continue;
-        node.click();
-        return true;
-      }
-      return false;
-    }
-    function openRestore() {
-      if (puzzleShown()) {
-        restoreOpened = true;
-        hideStart();
-        return;
-      }
-      if (restoreOpened) return;
+    var sdkReady = false;
+    var inited = false;
+    var openRequested = false;
+    var opened = false;
+    function showOnce() {
+      if (opened) return;
       var button = document.getElementById("button");
-      if (button) button.click();
-      if (clickStart()) restoreOpened = true;
-    }
-    var ignoreClick = false;
-    var jsOpened = false;
-    function openByJs() {
-      hideStart();
-      if (jsOpened || puzzleShown()) return;
-      if (window.captcha && typeof window.captcha.show === "function") {
-        jsOpened = true;
-        try { window.captcha.show(); } catch (e) { jsOpened = false; }
+      if (!button) {
+        report({ ok: false, closed: true, msg: "安全验证加载失败" });
         return;
       }
-      var button = document.getElementById("button");
-      if (!button) return;
-      jsOpened = true;
+      opened = true;
       button.click();
+      watchShown();
     }
-    window.openByJs = openByJs;
-    function publish() {
-      hideLogo();
-      var stage = puzzleShown() ? "puzzle" : "start";
-      if (stage === "puzzle") {
-        hideStart();
-        placeRestore();
-        bindClose();
-      } else {
-        hideStart();
-      }
-      if (puzzleReadySent && stage === lastStage) {
-        darkenHint();
-        return;
-      }
-      lastStage = stage;
-      puzzleReadySent = true;
-      report({ ok: false, ready: true, stage: stage });
-      darkenHint();
-    }
-    var layoutObserver = null;
-    function measure() {
-      if (layoutObserver) layoutObserver.disconnect();
-      try {
-        publish();
-      } finally {
-        if (layoutObserver) {
-          layoutObserver.observe(document.body, { childList: true, subtree: true, attributes: true });
+    function watchShown() {
+      var tries = 0;
+      var timer = setInterval(function () {
+        tries += 1;
+        if (captchaVisible()) {
+          clearInterval(timer);
+          report({ ok: false, shown: true });
+          return;
         }
-      }
+        if (tries >= 40) clearInterval(timer);
+      }, 200);
     }
-    window.addEventListener("resize", function () {
-      setTimeout(publish, 60);
-    });
-    function slideLayout() {
-      return { width: __SLIDE_WIDTH__, rem: __CAPTCHA_REM__ };
-    }
-    function initCaptcha() {
-      if (typeof window.initAliyunCaptcha !== "function") {
-        report({ ok: false, msg: "安全验证加载失败" });
-        return;
+    function captchaVisible() {
+      var nodes = document.body.getElementsByTagName("*");
+      for (var i = 0; i < nodes.length; i++) {
+        var node = nodes[i];
+        if (node.id === "button" || node.id === "captcha-element") continue;
+        var rect = node.getBoundingClientRect();
+        if (rect.width > 80 && rect.height > 30) return true;
       }
-      var layout = slideLayout();
+      return false;
+    }
+    function ensureInit() {
+      if (window.captcha || inited) return;
+      if (!sdkReady || typeof window.initAliyunCaptcha !== "function") return;
+      inited = true;
       try {
         window.initAliyunCaptcha({
-          SceneId: "__SCENE_ID__",
+          SceneId: "1l8c7q1md",
           mode: "popup",
           element: "#captcha-element",
           button: "#button",
           language: "cn",
-          delayBeforeSuccess: false,
-          rem: layout.rem,
           success: function (captchaVerifyParam) {
             report({ ok: true, param: captchaVerifyParam });
           },
           fail: function () {},
           onClose: function () {
-            if (ignoreClick) return;
             report({ ok: false, closed: true });
           },
           getInstance: function (instance) {
             window.captcha = instance;
-            setTimeout(function () {
-              publish();
-              openByJs();
-            }, 80);
+            report({ ok: false, ready: true });
+            if (openRequested) showOnce();
           },
           onError: function (errorInfo) {
             var msg = (errorInfo && (errorInfo.msg || errorInfo.message)) || "安全验证加载失败";
-            report({ ok: false, msg: String(msg) });
+            report({ ok: false, closed: true, msg: String(msg) });
           }
         });
       } catch (e) {
-        report({ ok: false, msg: "安全验证加载失败" });
+        report({ ok: false, closed: true, msg: "安全验证加载失败" });
       }
     }
+    function openByJs() {
+      openRequested = true;
+      if (window.captcha) {
+        showOnce();
+        return;
+      }
+      ensureInit();
+    }
+    window.openByJs = openByJs;
     function loadSdk() {
       var script = document.createElement("script");
       script.src = "https://o.alicdn.com/captcha-frontend/aliyunCaptcha/AliyunCaptcha.js";
-      script.onload = function () { initWhenSized(0); };
-      script.onerror = function () { report({ ok: false, msg: "安全验证加载失败" }); };
+      script.onload = function () {
+        sdkReady = true;
+        if (openRequested) ensureInit();
+      };
+      script.onerror = function () {
+        report({ ok: false, closed: true, msg: "安全验证加载失败" });
+      };
       document.head.appendChild(script);
-      setTimeout(function () {
-        if (typeof window.initAliyunCaptcha !== "function") {
-          report({ ok: false, msg: "安全验证加载失败" });
-        }
-      }, 8000);
     }
-    function initWhenSized(tries) {
-      var box = document.getElementById("captcha-element");
-      var available = box ? box.clientWidth : 0;
-      if (available < 8 && tries < 20) {
-        setTimeout(function () { initWhenSized(tries + 1); }, 50);
-        return;
-      }
-      initCaptcha();
-    }
-    function insideChallenge(target) {
-      var node = target;
-      while (node && node !== document.body) {
-        var rect = node.getBoundingClientRect();
-        var covers = rect.width > window.innerWidth * 0.92 && rect.height > window.innerHeight * 0.92;
-        if (!covers && rect.height > 80 && rect.width > 120) {
-          var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-          var imgs = node.getElementsByTagName ? node.getElementsByTagName("img") : [];
-          if (text.indexOf("还原") >= 0 || text.indexOf("拖动") >= 0 || imgs.length > 0) return true;
-        }
-        node = node.parentElement;
-      }
-      return false;
-    }
-    function openPuzzle() {
-      ignoreClick = true;
-      var hidden = document.getElementById("button");
-      if (hidden) hidden.click();
-      setTimeout(function () { ignoreClick = false; }, 600);
-    }
-    function pointOnStart(event) {
-      var own = document.getElementById("fr-start");
-      if (!own || own.style.display === "none") return false;
-      var rect = own.getBoundingClientRect();
-      return event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
-    }
-    document.addEventListener("click", function (event) {
-      if (ignoreClick || !puzzleShown()) return;
-      if (pointOnStart(event)) {
-        openPuzzle();
-        return;
-      }
-      var target = event.target;
-      if (!target || target.id === "button" || target.id === "fr-start") return;
-      var node = target;
-      while (node && node !== document.body) {
-        var text = (node.innerText || node.textContent || "").replace(/\s/g, "");
-        if (text.indexOf("点击开始验证") >= 0 && text.length <= 24) return;
-        node = node.parentElement;
-      }
-      if (insideChallenge(target)) return;
-      report({ ok: false, closed: true });
-    });
     function boot() {
       if (!window.AliyunCaptchaBridge) {
         setTimeout(boot, 50);
         return;
       }
-      var own = document.getElementById("fr-start");
-      if (own && !own.getAttribute("data-bound")) {
-        own.setAttribute("data-bound", "1");
-        own.addEventListener("click", function (event) {
-          event.preventDefault();
-          event.stopPropagation();
-          openPuzzle();
-        });
-      }
       loadSdk();
-      if (window.MutationObserver) {
-        layoutObserver = new MutationObserver(function () { measure(); });
-        layoutObserver.observe(document.body, { childList: true, subtree: true, attributes: true });
-      }
     }
     boot();
   </script>

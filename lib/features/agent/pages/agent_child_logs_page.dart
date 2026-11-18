@@ -271,6 +271,7 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
         final nick = _showName(r['targetName']);
         final result = _text(r['result']);
         final opType = _maskText(_text(r['opType']), names);
+        final shareOp = opType.contains('占成');
         return _LogCard(
           title: opType.isEmpty ? '操作' : opType,
           time: _text(r['operTime']),
@@ -280,8 +281,10 @@ class _AgentChildLogsPageState extends ConsumerState<AgentChildLogsPage>
             ('操作内容', _maskText(_orDash(r['content']), names)),
             ('被改账号', target),
             if (nick != '—' && nick != target) ('昵称', nick),
-            if (_text(r['oldValue']).isNotEmpty) ('操作前', _maskText(_text(r['oldValue']), names)),
-            if (_text(r['newValue']).isNotEmpty) ('操作后', _maskText(_text(r['newValue']), names)),
+            if (_text(r['oldValue']).isNotEmpty)
+              (shareOp ? '改前占成' : '操作前', _maskText(_text(r['oldValue']), names)),
+            if (_text(r['newValue']).isNotEmpty)
+              (shareOp ? '改后占成' : '操作后', _maskText(_text(r['newValue']), names)),
             if (_text(r['remark']).isNotEmpty) ('备注', _maskText(_text(r['remark']), names)),
             ('操作人', _showName(r['operator'])),
             ('操作IP', _orDash(r['clientIp'])),

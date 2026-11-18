@@ -64,6 +64,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _usernameFocus = FocusNode();
   final _passwordFocus = FocusNode();
   bool _remember = false;
+  bool _submitting = false;
   bool _loading = false;
   String? _egressIp;
   bool _ipRefreshing = false;
@@ -180,13 +181,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _login() async {
+    if (_submitting) return;
     if (_usernameCtrl.text.trim().isEmpty || _passwordCtrl.text.isEmpty) {
       AppToast.info('请输入用户名和密码');
       return;
     }
 
     FocusManager.instance.primaryFocus?.unfocus();
-    setState(() => _loading = true);
+    setState(() => _submitting = true);
     final username = _usernameCtrl.text.trim();
     final password = _passwordCtrl.text;
     var shieldOpened = false;
@@ -196,9 +198,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       final param = await AliyunCaptchaPage.open(context);
       if (!mounted) return;
       if (param == null || param.isEmpty) {
-        AppToast.info('已取消安全验证');
+        AppToast.info(AliyunCaptchaPage.takeNotice() ?? '已取消安全验证');
         return;
       }
+      setState(() => _loading = true);
       final captchaToken = param;
       final user = await ref.read(authSessionProvider.notifier).login(
             username: username,
@@ -247,7 +250,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       if (e is ApiException && e.bizCode == 'LOGIN_SUPERSEDED') return;
       AppToast.error(loginFailureText(e));
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -346,7 +354,11 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                   ),
                                 ),
                                 SizedBox(height: 24.h),
-                                GlossyButton(text: '立即登录', onPressed: _login, loading: _loading),
+                                GlossyButton(
+                                  text: '立即登录',
+                                  onPressed: _submitting ? null : _login,
+                                  loading: _loading,
+                                ),
                                 SizedBox(height: 28.h),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
