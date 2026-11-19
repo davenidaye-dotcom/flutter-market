@@ -169,7 +169,7 @@ final class LotteryPeriodEngine {
             force: release,
           );
         } else if (!holdDraw) {
-          _maybeUnstickDrawing(existing, g.openAtEpochMs, now);
+          _maybeUnstickDrawing(existing, g.openAtEpochMs, g.sealAtEpochMs, now);
         }
         _mergeHttpDraw(existing, g);
         if (!pinned && !holdDraw) _recoverStuckCountdown(existing, g, now);
@@ -359,7 +359,7 @@ final class LotteryPeriodEngine {
       }
     }
     if (!holdDraw) {
-      _maybeUnstickDrawing(slot, openAtEpochMs, clock);
+      _maybeUnstickDrawing(slot, openAtEpochMs, sealAtEpochMs, clock);
     }
     _noteDrawing(slot, clock);
     _arm(slot, clock);
@@ -491,7 +491,7 @@ final class LotteryPeriodEngine {
     );
     if (pinned) {
       if (!holdDraw) {
-        _maybeUnstickDrawing(slot, patch.openAtEpochMs, now);
+        _maybeUnstickDrawing(slot, patch.openAtEpochMs, patch.sealAtEpochMs, now);
       }
       return;
     }
@@ -745,32 +745,51 @@ final class LotteryPeriodEngine {
     return now.difference(since) >= LotteryPeriodEngine.stuckDrawingGrace;
   }
 
-  void _maybeUnstickDrawing(_GameSlot slot, int? openAtMs, DateTime now) {
+  void _maybeUnstickDrawing(
+    _GameSlot slot,
+    int? openAtMs,
+    int? sealAtMs,
+    DateTime now,
+  ) {
     if (!_shouldUnstickDrawing(slot, now, openAtMs)) return;
-    _adoptFutureOpenWhileDrawing(slot, openAtMs!, now);
+    _adoptFutureOpenWhileDrawing(slot, openAtMs!, sealAtMs, now);
   }
 
-  /// 退出卡住的开奖中。封盘时刻保持在当前或更早，继续显示「封盘中，距离开奖」。
+  /// 退出卡住的开奖中。开奖时刻用服务端给的未来时刻，封盘点按原来的提前量跟着挪。
+  /// 不能把封盘钉在当前这一秒，否则 75 秒一期会整段显示「封盘中，距离开奖」。
   void _adoptFutureOpenWhileDrawing(
     _GameSlot slot,
     int openAtMs,
+    int? sealAtMs,
     DateTime now,
   ) {
     final nowMs = now.millisecondsSinceEpoch;
     if (openAtMs <= nowMs) return;
     final prevOpen = slot.model.openAtEpochMs ?? 0;
     final prevSeal = slot.model.sealAtEpochMs ?? 0;
-    var sealAt = prevSeal;
+    var gapMs = 0;
     if (prevOpen > prevSeal && prevSeal > 0) {
-      sealAt = openAtMs - (prevOpen - prevSeal);
+      gapMs = prevOpen - prevSeal;
     }
-    if (sealAt <= 0 || sealAt > nowMs) {
-      sealAt = nowMs;
+    final configured = slot.model.sealSeconds ?? 0;
+    if (configured > 0 &&
+        configured <= LotteryPeriodRules.maxSealSeconds &&
+        (gapMs <= 0 || gapMs > configured * 1000)) {
+      gapMs = configured * 1000;
+    }
+    var sealAt = gapMs > 0 ? openAtMs - gapMs : 0;
+    if (sealAtMs != null && sealAtMs > nowMs && sealAtMs < openAtMs) {
+      final incoming = openAtMs - sealAtMs;
+      if (incoming >= 1000 &&
+          incoming <= LotteryPeriodRules.maxSealSeconds * 1000 &&
+          (configured <= 0 || incoming <= configured * 1000)) {
+        sealAt = sealAtMs;
+      }
     }
     slot.openDeadline = DateTime.fromMillisecondsSinceEpoch(openAtMs);
     slot.model = slot.model.copyWith(
       openAtEpochMs: openAtMs,
-      sealAtEpochMs: sealAt,
+      sealAtEpochMs: sealAt > 0 ? sealAt : slot.model.sealAtEpochMs,
     );
     slot.drawingSince = null;
     slot.prevCd = _secondsLeft(slot, now);

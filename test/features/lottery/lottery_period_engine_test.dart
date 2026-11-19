@@ -314,6 +314,49 @@ void main() {
     expect(LotteryPeriodHelper.openRemainSeconds(held, t0), 8);
   });
 
+  test('stuck drawing adopts future open without sealing the whole 75s period', () {
+    final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
+    final sealAt = t0.add(const Duration(seconds: 65)).millisecondsSinceEpoch;
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34230266',
+      seconds: 75,
+      openAtEpochMs: openAt,
+      sealAtEpochMs: sealAt,
+      sealSeconds: 10,
+      now: t0,
+    );
+    final atZero = t0.add(const Duration(seconds: 75));
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34230266',
+      seconds: 0,
+      openAtEpochMs: openAt,
+      sealAtEpochMs: sealAt,
+      sealSeconds: 10,
+      lastIssue: '34230266',
+      lastRanks: const [10, 4, 7, 1, 2, 3, 5, 6, 8, 9],
+      now: atZero,
+    );
+    expect(engine.displayGame('JS_SC', atZero).isDrawing, isTrue);
+
+    final later = atZero.add(const Duration(milliseconds: 800));
+    final nextOpen = later.add(const Duration(seconds: 67)).millisecondsSinceEpoch;
+    engine.onPeriodTick(
+      'JS_SC',
+      issue: '34230266',
+      seconds: 67,
+      openAtEpochMs: nextOpen,
+      sealAtEpochMs: later.millisecondsSinceEpoch,
+      sealSeconds: 10,
+      now: later,
+    );
+    final g = engine.displayGame('JS_SC', later);
+    expect(LotteryPeriodHelper.phaseOf(g, later), LotteryDisplayPhase.betting);
+    expect(LotteryPeriodHelper.bettingCountdownSeconds(g, later), 57);
+    expect(LotteryPeriodHelper.openRemainSeconds(g, later), 67);
+  });
+
   test('ws newer issue advances even while local countdown positive', () {
     final openAt = t0.add(const Duration(seconds: 75)).millisecondsSinceEpoch;
     engine.onPeriodTick(

@@ -26,14 +26,22 @@ class LotteryPeriodRules {
   static bool hasSealConfig(LotteryGameModel game) => sealSecondsOf(game) > 0;
 
   /// 封盘提前量：对齐 web `sealGapSeconds`——优先 open−seal 时刻差，其次配置 sealSeconds。
+  /// 时刻差比后台提前量大时，用后台的数。恢复开奖时刻时把封盘钉在「现在」会把差拉成几十秒。
   static int sealSecondsOf(LotteryGameModel game) {
+    final configured = game.sealSeconds ?? 0;
     final open = game.openAtEpochMs ?? 0;
     final seal = game.sealAtEpochMs ?? 0;
     if (open > seal && seal > 0) {
       final gap = ((open - seal) / 1000).round();
-      if (gap >= 1 && gap <= maxSealSeconds) return gap;
+      if (gap >= 1 && gap <= maxSealSeconds) {
+        if (configured >= 1 &&
+            configured <= maxSealSeconds &&
+            gap > configured) {
+          return configured;
+        }
+        return gap;
+      }
     }
-    final configured = game.sealSeconds ?? 0;
     if (configured >= 1 && configured <= maxSealSeconds) return configured;
     return 0;
   }
