@@ -8,7 +8,6 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../security/shield_cert_pin.dart';
-import 'api_exception.dart';
 import '../security/shield_gate.dart';
 import '../security/vpn_guard.dart';
 import 'client_cert_store.dart';
@@ -27,64 +26,9 @@ Future<void> ensureMtlsMaterialLoaded() {
   return _loading ??= _load();
 }
 
-const _mainlandBlocked = '当前地区暂不支持登录';
-const _mainlandUnknown = '当前网络无法确认地区，请稍后重试';
-
-/// 登录和注册前直连查询出口地址。不走盾，包内不放业务域名。
+/// 登录和注册前不再按地区拦截。顶栏出口地址仍单独查询，失败只显示「获取失败」。
 Future<void> ensureMainland() async {
   await VpnGuard.assertClear();
-  final mainland = await _isMainland();
-  if (mainland == null) {
-    throw const ApiException(message: _mainlandUnknown, isNetwork: true);
-  }
-  if (!mainland) {
-    throw const ApiException(message: _mainlandBlocked);
-  }
-}
-
-Future<bool?> _isMainland() async {
-  final ipip = await _publicGet('https://myip.ipip.net');
-  final fromIpip = _ipipMainland(ipip);
-  if (fromIpip != null) return fromIpip;
-  final who = await _publicGet('https://ipwho.is/');
-  return _whoMainland(who);
-}
-
-bool? _ipipMainland(String? text) {
-  if (text == null || text.isEmpty) return null;
-  const mark = '来自于：';
-  final at = text.indexOf(mark);
-  if (at < 0) return null;
-  final place = text.substring(at + mark.length).trim();
-  if (place.startsWith('中国香港') || place.startsWith('中国澳门') || place.startsWith('中国台湾')) {
-    return false;
-  }
-  if (place.startsWith('香港') || place.startsWith('澳门') || place.startsWith('台湾')) {
-    return false;
-  }
-  return place.startsWith('中国 ');
-}
-
-bool? _whoMainland(String? text) {
-  if (text == null || text.isEmpty) return null;
-  final match = RegExp('"country_code"\\s*:\\s*"([A-Za-z]{2})"').firstMatch(text);
-  final code = match?.group(1);
-  if (code == null) return null;
-  return code.toUpperCase() == 'CN';
-}
-
-Future<String?> _publicGet(String url) async {
-  final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-  try {
-    final request = await client.getUrl(Uri.parse(url));
-    final response = await request.close().timeout(const Duration(seconds: 8));
-    if (response.statusCode != 200) return null;
-    return await response.transform(utf8.decoder).join().timeout(const Duration(seconds: 8));
-  } catch (_) {
-    return null;
-  } finally {
-    client.close(force: true);
-  }
 }
 
 Future<void> _load() async {
